@@ -26,109 +26,122 @@ interface ResolvedLogin {
 }
 
 Deno.serve(async (req) => {
+  // CORS preflight is handled before any JSON parsing, auth check, or other
+  // logic — this must stay the very first thing in the handler.
   const origin = req.headers.get("origin");
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
 
-  if (req.method !== "POST") {
-    return errorResponse(405, MSG.methodNotAllowed, origin);
-  }
-
-  let body: unknown;
+  // Everything else is wrapped in try/catch so that ANY unexpected error
+  // (a thrown exception from a client library, a network blip, a bug) still
+  // returns a JSON response carrying the same CORS headers as every other
+  // response — never a bare/uncaught error with no CORS headers, which is
+  // what the browser reports as a generic CORS/network failure.
   try {
-    body = await req.json();
-  } catch {
-    return errorResponse(400, MSG.invalidJson, origin);
-  }
-  if (typeof body !== "object" || body === null) {
-    return errorResponse(400, MSG.invalidJson, origin);
-  }
+    if (req.method !== "POST") {
+      return errorResponse(405, MSG.methodNotAllowed, origin);
+    }
 
-  const { employee_code, password } = body as Record<string, unknown>;
-  const normalizedCode = normalizeEmployeeCode(employee_code);
+    // JSON parsing only ever happens for POST, after the method check above.
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return errorResponse(400, MSG.invalidJson, origin);
+    }
+    if (typeof body !== "object" || body === null) {
+      return errorResponse(400, MSG.invalidJson, origin);
+    }
 
-  // Never log the raw request body — it may contain the password.
-  if (!normalizedCode || !isNonEmptyString(password, 200)) {
-    return errorResponse(400, MSG.missingFields, origin);
-  }
+    const { employee_code, password } = body as Record<string, unknown>;
+    const normalizedCode = normalizeEmployeeCode(employee_code);
 
-  const admin = adminClient();
-  const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
+    // Never log the raw request body — it may contain the password.
+    if (!normalizedCode || !isNonEmptyString(password, 200)) {
+      return errorResponse(400, MSG.missingFields, origin);
+    }
 
-  // ---- Rate limit: 5 failed attempts / 15 minutes for this employee_code ----
-  const { count: failedCount, error: countError } = await admin
-    .from("login_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("employee_code", normalizedCode)
-    .eq("success", false)
-    .gte("attempted_at", windowStart);
+    const admin = adminClient();
+    const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
 
-  if (countError) {
-    console.error("staff-login: rate-limit lookup failed:", countError.message);
-    return errorResponse(500, MSG.serverError, origin);
-  }
-  if ((failedCount ?? 0) >= MAX_FAILED_ATTEMPTS) {
-    return errorResponse(429, MSG.tooManyAttempts, origin);
-  }
+    // ---- Rate limit: 5 failed attempts / 15 minutes for this employee_code ----
+    const { count: failedCount, error: countError } = await admin
+      .from("login_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("employee_code", normalizedCode)
+      .eq("success", false)
+      .gte("attempted_at", windowStart);
 
-  const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-  const userAgent = req.headers.get("user-agent") ?? null;
+    if (countError) {
+      console.error("staff-login: rate-limit lookup failed:", countError.message);
+      return errorResponse(500, MSG.serverError, origin);
+    }
+    if ((failedCount ?? 0) >= MAX_FAILED_ATTEMPTS) {
+      return errorResponse(429, MSG.tooManyAttempts, origin);
+    }
 
-  const recordAttempt = async (success: boolean) => {
-    const { error } = await admin.from("login_attempts").insert({
-      employee_code: normalizedCode,
-      success,
-      ip_address: ipAddress,
-      user_agent: userAgent,
+    const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const userAgent = req.headers.get("user-agent") ?? null;
+
+    const recordAttempt = async (success: boolean) => {
+      const { error } = await admin.from("login_attempts").insert({
+        employee_code: normalizedCode,
+        success,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      });
+      if (error) console.error("staff-login: failed to record login_attempts row:", error.message);
+    };
+
+    // ---- Resolve employee_code -> internal auth email (service-role only) ----
+    const { data: resolved, error: resolveError } = await admin.rpc("resolve_employee_login", {
+      p_employee_code: normalizedCode,
     });
-    if (error) console.error("staff-login: failed to record login_attempts row:", error.message);
-  };
 
-  // ---- Resolve employee_code -> internal auth email (service-role only) ----
-  const { data: resolved, error: resolveError } = await admin.rpc("resolve_employee_login", {
-    p_employee_code: normalizedCode,
-  });
+    if (resolveError) {
+      console.error("staff-login: resolve_employee_login failed:", resolveError.message);
+      await recordAttempt(false);
+      return errorResponse(500, MSG.serverError, origin);
+    }
 
-  if (resolveError) {
-    console.error("staff-login: resolve_employee_login failed:", resolveError.message);
-    await recordAttempt(false);
+    const row: ResolvedLogin | undefined = Array.isArray(resolved) ? resolved[0] : resolved;
+
+    if (!row || !row.auth_user_id || !row.auth_email) {
+      // Unknown employee code — same generic message as wrong password.
+      await recordAttempt(false);
+      return errorResponse(401, MSG.invalidLogin, origin);
+    }
+    if (!row.is_active) {
+      // Inactive account — same generic message, no distinct signal to the client.
+      await recordAttempt(false);
+      return errorResponse(401, MSG.invalidLogin, origin);
+    }
+
+    // ---- Authenticate with the internally resolved email ----
+    const anon = anonClient();
+    const { data: signInData, error: signInError } = await anon.auth.signInWithPassword({
+      email: row.auth_email,
+      password,
+    });
+
+    if (signInError || !signInData?.session) {
+      await recordAttempt(false);
+      return errorResponse(401, MSG.invalidLogin, origin);
+    }
+
+    await recordAttempt(true);
+
+    return okResponse(
+      {
+        access_token: signInData.session.access_token,
+        refresh_token: signInData.session.refresh_token,
+        expires_in: signInData.session.expires_in,
+        must_change_password: !!row.must_change_password,
+      },
+      origin,
+    );
+  } catch (err) {
+    console.error("staff-login: unexpected error:", err instanceof Error ? err.message : String(err));
     return errorResponse(500, MSG.serverError, origin);
   }
-
-  const row: ResolvedLogin | undefined = Array.isArray(resolved) ? resolved[0] : resolved;
-
-  if (!row || !row.auth_user_id || !row.auth_email) {
-    // Unknown employee code — same generic message as wrong password.
-    await recordAttempt(false);
-    return errorResponse(401, MSG.invalidLogin, origin);
-  }
-  if (!row.is_active) {
-    // Inactive account — same generic message, no distinct signal to the client.
-    await recordAttempt(false);
-    return errorResponse(401, MSG.invalidLogin, origin);
-  }
-
-  // ---- Authenticate with the internally resolved email ----
-  const anon = anonClient();
-  const { data: signInData, error: signInError } = await anon.auth.signInWithPassword({
-    email: row.auth_email,
-    password,
-  });
-
-  if (signInError || !signInData?.session) {
-    await recordAttempt(false);
-    return errorResponse(401, MSG.invalidLogin, origin);
-  }
-
-  await recordAttempt(true);
-
-  return okResponse(
-    {
-      access_token: signInData.session.access_token,
-      refresh_token: signInData.session.refresh_token,
-      expires_in: signInData.session.expires_in,
-      must_change_password: !!row.must_change_password,
-    },
-    origin,
-  );
 });
