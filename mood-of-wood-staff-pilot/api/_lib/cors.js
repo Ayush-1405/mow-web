@@ -18,6 +18,7 @@ const DEFAULT_PROD_ORIGINS = [
   "https://mood-of-wood-staff-pilot-ee3f.vercel.app",
   "https://mood-of-wood-staff-pilot-mow3.vercel.app",
   "https://mood-of-wood-staff-pilot-git-main-mow3.vercel.app",
+  "https://moodofwood01.vercel.app"
 ];
 
 const DEFAULT_DEV_ORIGINS = [
