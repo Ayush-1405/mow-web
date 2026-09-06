@@ -1,0 +1,9 @@
+{
+  "name": "mow-web-vercel-root",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Placeholder root package.json for Vercel, whose project Root Directory setting still points here (at mood-of-wood-staff-pilot/) rather than at frontend/. This has no dependencies of its own — its only job is to exist so `npm install` at this level succeeds, and to define vercel-build so Vercel's actual build happens inside frontend/. See vercel.json alongside this file.",
+  "scripts": {
+    "vercel-build": "cd frontend && npm install && npm run build"
+  }
+}
