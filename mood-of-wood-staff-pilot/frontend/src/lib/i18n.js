@@ -141,6 +141,49 @@ export const STRINGS = {
   after: { en: "After", gu: "પછી" },
   remarks: { en: "Remarks", gu: "રિમાર્ક્સ" },
   entity: { en: "Entity", gu: "એન્ટિટી" },
+
+  // Audit log — human-readable action labels (staff_audit_log.action values).
+  actionCreate: { en: "Task Created", gu: "કાર્ય બનાવવામાં આવ્યું" },
+  actionAccept: { en: "Task Accepted", gu: "કાર્ય સ્વીકારવામાં આવ્યું" },
+  actionStart: { en: "Task Started", gu: "કાર્ય શરૂ કરવામાં આવ્યું" },
+  actionComplete: { en: "Task Completed", gu: "કાર્ય પૂર્ણ કરવામાં આવ્યું" },
+  actionVerify: { en: "Task Verified", gu: "કાર્ય તપાસવામાં આવ્યું" },
+  actionClose: { en: "Task Closed", gu: "કાર્ય બંધ કરવામાં આવ્યું" },
+  actionReturn: { en: "Task Returned", gu: "કાર્ય પરત કરવામાં આવ્યું" },
+  actionReassign: { en: "Task Reassigned", gu: "કાર્ય ફરીથી સોંપવામાં આવ્યું" },
+  actionRequestHelp: { en: "Help Requested", gu: "મદદ માંગવામાં આવી" },
+  actionAttach: { en: "File Attached", gu: "ફાઇલ જોડવામાં આવી" },
+  actionActivate: { en: "User Activated", gu: "વપરાશકર્તા સક્રિય કરવામાં આવ્યો" },
+  actionDeactivate: { en: "User Deactivated", gu: "વપરાશકર્તા નિષ્ક્રિય કરવામાં આવ્યો" },
+  actionUpdateProfile: { en: "Profile Updated", gu: "પ્રોફાઇલ અપડેટ કરવામાં આવી" },
+  actionCreateUser: { en: "User Created", gu: "વપરાશકર્તા બનાવવામાં આવ્યો" },
+  actionBootstrapManagement: { en: "Management Account Created", gu: "મેનેજમેન્ટ ખાતું બનાવવામાં આવ્યું" },
+  actionPasswordChanged: { en: "Password Changed", gu: "પાસવર્ડ બદલવામાં આવ્યો" },
+
+  // Audit log — human-readable entity type labels (staff_audit_log.entity_type values).
+  entityTask: { en: "Task", gu: "કાર્ય" },
+  entityBridge: { en: "Bridge", gu: "બ્રિજ" },
+  entityUser: { en: "User", gu: "વપરાશકર્તા" },
+
+  // Audit log — field labels for keys that appear only in old_value/new_value JSON.
+  fieldAssignedTo: { en: "Assigned To", gu: "ને સોંપાયું" },
+  fieldToDepartment: { en: "To Department", gu: "વિભાગમાં" },
+  fieldFromDepartment: { en: "From Department", gu: "વિભાગમાંથી" },
+  fieldEmployeeCode: { en: "Employee Code", gu: "કર્મચારી કોડ" },
+  fieldRoleCode: { en: "Role", gu: "ભૂમિકા" },
+  fieldFileType: { en: "File Type", gu: "ફાઇલ પ્રકાર" },
+
+  fileTypeImage: { en: "Image", gu: "છબી" },
+  fileTypePdf: { en: "PDF", gu: "PDF" },
+  fileTypeWord: { en: "Word Document", gu: "વર્ડ દસ્તાવેજ" },
+  fileTypeExcel: { en: "Excel Sheet", gu: "એક્સેલ શીટ" },
+  fileTypeDrawing: { en: "Drawing", gu: "ડ્રોઈંગ" },
+  fileTypeVoice: { en: "Voice Note", gu: "વોઇસ નોંધ" },
+
+  auditShowRaw: { en: "Show raw data", gu: "કાચો ડેટા બતાવો" },
+  auditHideRaw: { en: "Hide raw data", gu: "કાચો ડેટા છુપાવો" },
+  auditAttachment: { en: "Attached File", gu: "જોડાયેલી ફાઇલ" },
+  auditNoDetails: { en: "No further details.", gu: "વધુ વિગતો નથી." },
 };
 
 export function t(key, lang) {
