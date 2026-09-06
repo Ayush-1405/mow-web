@@ -125,7 +125,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       const { error } = await supabase.rpc("staff_reassign_task", payload);
       if (error) throw error;
       setReassignFor(null);
-      showToast("success", t("reassigned", lang));
+      showToast("success", payload.p_new_to_department_id ? `${t("reassigned", lang)} — ${t("bridgeCreated", lang)}` : t("reassigned", lang));
       await load();
     } catch (err) {
       showToast("error", err.message);

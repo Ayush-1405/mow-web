@@ -208,32 +208,68 @@ export function AttachmentsList({ taskId, lang, showToast }) {
 
 // Reassign panel. Calls staff_reassign_task via onSubmit(payload) — the RPC
 // itself is the authorization boundary (Management or the authorized Dept
-// Head only); this form just collects the fields it needs. Candidates are
-// restricted to the task's own destination department, matching what the
-// RPC accepts (new assignee must belong to to_department_id).
+// Head only); this form just collects the fields it needs.
+//
+// To Department defaults to the task's current to_department_id and is
+// editable — picking a different department (loaded from the same
+// staff_list_assignable_departments RPC AssignTask.jsx uses) lets an
+// existing task be handed to an employee in another department entirely.
+// The RPC creates or updates the matching Bridge row itself when the
+// department actually changes; this form just requires a new assignee
+// whenever a different department is picked, since the old assignee can't
+// belong to it.
 export function ReassignPanel({ task, candidates, lang, busy, onSubmit, onCancel }) {
+  const [departments, setDepartments] = useState([]);
+  const [toDepartment, setToDepartment] = useState(task.to_department_id);
   const [newAssignee, setNewAssignee] = useState("");
   const [newVerifier, setNewVerifier] = useState("");
   const [reason, setReason] = useState("");
 
-  const deptCandidates = candidates.filter((u) => u.department_id === task.to_department_id);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("staff_list_assignable_departments").then(({ data, error }) => {
+      if (!cancelled && !error) setDepartments(data || []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const departmentChanged = toDepartment !== task.to_department_id;
+  const deptCandidates = candidates.filter((u) => u.department_id === toDepartment);
+
+  function selectDepartment(deptId) {
+    setToDepartment(deptId);
+    setNewAssignee("");
+    setNewVerifier("");
+  }
 
   function submit(e) {
     e.preventDefault();
     if (!reason.trim()) return;
+    if (departmentChanged && !newAssignee) return;
     onSubmit({
       p_task_id: task.id,
       p_reason: reason.trim(),
       p_new_assigned_to: newAssignee || null,
       p_new_verifier_id: newVerifier || null,
+      p_new_to_department_id: departmentChanged ? toDepartment : null,
     });
   }
 
   return (
     <form onSubmit={submit} style={{ marginTop: 10 }}>
-      <label>{t("newAssignee", lang)}</label>
-      <select value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)}>
-        <option value="">{t("keepSame", lang)}</option>
+      <label>{t("toDepartment", lang)}</label>
+      <select value={toDepartment} onChange={(e) => selectDepartment(e.target.value)}>
+        {departments.map((d) => (
+          <option key={d.id} value={d.id}>{lang === "gu" ? d.name_gu : d.name_en}</option>
+        ))}
+      </select>
+      {departmentChanged && (
+        <div className="msg info" style={{ marginTop: 8 }}>🌉 {t("willCreateBridge", lang)}</div>
+      )}
+
+      <label>{t("newAssignee", lang)} {departmentChanged && "*"}</label>
+      <select value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)} required={departmentChanged}>
+        <option value="">{departmentChanged ? "—" : t("keepSame", lang)}</option>
         {deptCandidates.map((u) => (
           <option key={u.id} value={u.id}>{u.full_name} ({u.employee_code})</option>
         ))}
@@ -251,7 +287,7 @@ export function ReassignPanel({ task, candidates, lang, busy, onSubmit, onCancel
       <textarea value={reason} onChange={(e) => setReason(e.target.value)} required />
 
       <div className="btn-row">
-        <button className="btn btn-primary" type="submit" disabled={busy}>
+        <button className="btn btn-primary" type="submit" disabled={busy || (departmentChanged && !newAssignee)}>
           {t("submit", lang)}
         </button>
         <button className="btn btn-outline" type="button" onClick={onCancel}>
