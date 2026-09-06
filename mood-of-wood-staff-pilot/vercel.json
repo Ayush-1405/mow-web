@@ -1,5 +1,0 @@
-{
-  "buildCommand": "npm run vercel-build",
-  "devCommand": "npm --prefix frontend run dev -- --port $PORT",
-  "outputDirectory": "frontend/dist"
-}

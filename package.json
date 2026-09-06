@@ -1,0 +1,13 @@
+{
+  "name": "mow-web-vercel-root",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Root package.json for Vercel. The Vercel Dashboard's Root Directory / Build Command / Output Directory settings for this project are all unset (confirmed via `vercel pull`, which returns rootDirectory: null), so Vercel builds from the actual repository root, not from mood-of-wood-staff-pilot/ as earlier config assumed. That mismatch is why every prior deployment failed differently depending on what happened to exist at repo root. This file and the sibling vercel.json are the ones Vercel actually reads. Its vercel-build script builds the real frontend from mood-of-wood-staff-pilot/frontend, and it declares the runtime dependency for the api/ Node.js serverless functions (moved here from mood-of-wood-staff-pilot/api/ for the same reason — Vercel's Node builder only discovers an api/ directory at the actual build root).",
+  "scripts": {
+    "vercel-build": "cd mood-of-wood-staff-pilot/frontend && npm install && npm run build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}
