@@ -1,0 +1,29 @@
+# Mood of Wood — MVP Pilot — Supabase project config.
+#
+# project_id must match the linked project ref for `supabase functions deploy`
+# / `supabase db push` to target the right project.
+project_id = "bykmyttaesuyjwvtnxks"
+
+# staff-login and staff-first-login-ui are public (no caller token exists
+# yet when they're called) — deploy those two with verify_jwt = false.
+# staff-create-user, staff-password-change and staff-file-url are
+# authenticated: verify_jwt = true here is intentional defense-in-depth on
+# top of each function's own explicit auth.getUser() check in
+# _shared/clients.ts (verifyCaller). As of 2026-09-06 the live deployment
+# of all five functions has verify_jwt = false, which does not match this —
+# see docs/edge-functions/EDGE_FUNCTIONS_REVIEW.md and the production
+# readiness notes for the redeploy needed to correct it.
+[functions.staff-login]
+verify_jwt = false
+
+[functions.staff-create-user]
+verify_jwt = true
+
+[functions.staff-password-change]
+verify_jwt = true
+
+[functions.staff-file-url]
+verify_jwt = true
+
+[functions.staff-first-login-ui]
+verify_jwt = false
