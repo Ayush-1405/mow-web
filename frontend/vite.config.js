@@ -18,6 +18,15 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
+        strategies: "injectManifest",
+        srcDir: "src",
+        filename: "sw.js",
+        injectManifest: {
+          // The app bundle's own chunk is already precached via the JS
+          // entry; this keeps the precache manifest to real static assets
+          // instead of duplicating everything Rollup already content-hashes.
+          globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
+        },
         includeAssets: ["icons/favicon-32.png", "icons/apple-touch-icon.png"],
         manifest: {
           name: "Mood of Wood — Staff Pilot",
@@ -33,19 +42,6 @@ export default defineConfig(({ mode }) => {
             { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
             { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
             { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-          ],
-        },
-        workbox: {
-          // Supabase calls always go to the network (this is a live ERP —
-          // stale task/project data must never be served from cache);
-          // only the built app shell (JS/CSS/HTML/icons) is precached, so
-          // the app still opens offline even though data won't load.
-          navigateFallback: "/index.html",
-          runtimeCaching: [
-            {
-              urlPattern: ({ url }) => url.pathname.startsWith("/rest") || url.pathname.startsWith("/auth") || url.pathname.startsWith("/storage") || url.pathname.startsWith("/functions"),
-              handler: "NetworkOnly",
-            },
           ],
         },
       }),

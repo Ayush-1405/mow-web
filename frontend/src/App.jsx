@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
-import { requestNotificationPermission, showBrowserNotification } from "./lib/pushNotifications";
+import { requestNotificationPermission, showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
 import Login from "./screens/Login.jsx";
 import ChangePassword from "./screens/ChangePassword.jsx";
 import TodayTasks from "./screens/TodayTasks.jsx";
@@ -196,7 +196,9 @@ export default function App() {
   // elsewhere) only refreshes the count, never re-shows a popup.
   useEffect(() => {
     if (!session || !profile) return undefined;
-    requestNotificationPermission();
+    requestNotificationPermission().then((perm) => {
+      if (perm === "granted") subscribeToPush(supabase);
+    });
     const channel = supabase
       .channel("app_unread_badge")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {

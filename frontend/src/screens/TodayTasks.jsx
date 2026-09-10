@@ -57,8 +57,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       const { data: myInteriorProfile } = await getMyInteriorProfile();
       if (myInteriorProfile?.id) {
         const [snagsRes, tasksRes] = await Promise.all([
-          supabase.from("snags").select("id, issue, status, projects(project_code)").eq("assigned_to", myInteriorProfile.id).neq("status", "RESOLVED"),
-          supabase.from("tasks").select("id, title, status, projects(project_code)").eq("assigned_to", myInteriorProfile.id).neq("status", "DONE"),
+          supabase.from("snags").select("id, issue, status, projects(project_code)").eq("assigned_to", myInteriorProfile.id).neq("status", "COMPLETED"),
+          supabase.from("tasks").select("id, title, status, projects(project_code)").eq("assigned_to", myInteriorProfile.id).neq("status", "COMPLETED"),
         ]);
         (snagsRes.data || []).forEach((r) => items.push({ key: `snag-${r.id}`, typeKey: "interiorSnagItem", label: `${r.projects?.project_code ? r.projects.project_code + " — " : ""}${r.issue}`, status: r.status, route: "/interior-projects/site-execution" }));
         (tasksRes.data || []).forEach((r) => items.push({ key: `itask-${r.id}`, typeKey: "interiorTaskItem", label: `${r.projects?.project_code ? r.projects.project_code + " — " : ""}${r.title}`, status: r.status, route: "/interior-projects/timeline" }));

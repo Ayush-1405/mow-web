@@ -22,6 +22,7 @@ export default function InteriorTasks({ lang }) {
   const [teamIds, setTeamIds] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState(false);
   const [form, setForm] = useState({ title: "", due_date: "", assignedTo: "" });
 
   const load = useCallback(async () => {
@@ -72,8 +73,10 @@ export default function InteriorTasks({ lang }) {
   }
 
   async function markDone(id) {
-    const { error: err } = await updateTaskStatus(id, "DONE");
-    if (!err) loadTasks();
+    setActionError(false);
+    const { error: err } = await updateTaskStatus(id, "COMPLETED");
+    if (err) { setActionError(true); return; }
+    loadTasks();
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -140,13 +143,14 @@ export default function InteriorTasks({ lang }) {
       </div>
 
       <div className="card">
+        {actionError && <div className="msg error">{t("loadErrorRetry", lang)}</div>}
         {rows.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
         {rows.map((r) => (
           <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
             <span>{r.title}</span>
             <span className="sub">{r.assigned_to ? personName(r.assigned_to) : "—"}</span>
             <span className="sub">{r.due_date || "—"}</span>
-            {r.status === "DONE" ? <span className="badge VERIFIED">{r.status}</span> : <button className="btn btn-outline" onClick={() => markDone(r.id)}>{t("markTaskDone", lang)}</button>}
+            {r.status === "COMPLETED" ? <span className="badge VERIFIED">{r.status}</span> : <button className="btn btn-outline" onClick={() => markDone(r.id)}>{t("markTaskDone", lang)}</button>}
           </div>
         ))}
       </div>

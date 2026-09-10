@@ -73,10 +73,10 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
       supabase.from("project_changes").select("project_id, approval_status"),
       supabase.from("project_materials").select("project_id, status"),
       profile?.id
-        ? supabase.from("tasks").select("*, projects(project_code, customer)").eq("assigned_to", profile.id).neq("status", "DONE")
+        ? supabase.from("tasks").select("*, projects(project_code, customer)").eq("assigned_to", profile.id).neq("status", "COMPLETED")
         : Promise.resolve({ data: [] }),
       profile?.id
-        ? supabase.from("snags").select("*, projects(project_code, customer)").eq("assigned_to", profile.id).neq("status", "RESOLVED")
+        ? supabase.from("snags").select("*, projects(project_code, customer)").eq("assigned_to", profile.id).neq("status", "COMPLETED")
         : Promise.resolve({ data: [] }),
     ]);
     if (projRes.error || reportsRes.error || snagsRes.error || changesRes.error || materialsRes.error) {
@@ -93,7 +93,7 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
 
     const majorSnags = {};
     for (const s of snagsRes.data || []) {
-      if (s.major && s.status !== "RESOLVED") majorSnags[s.project_id] = (majorSnags[s.project_id] || 0) + 1;
+      if (s.major && s.status !== "COMPLETED") majorSnags[s.project_id] = (majorSnags[s.project_id] || 0) + 1;
     }
     setMajorSnagByProject(majorSnags);
 

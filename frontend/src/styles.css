@@ -39,6 +39,23 @@ html, body, #root {
   color: var(--ink);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
+  /* Safety net: nothing in this app is meant to scroll sideways (the few
+     things that legitimately do — .report-table-wrap, .bottom-nav — carry
+     their own overflow-x:auto and scroll independently of this). If any
+     element ever computes wider than the viewport (a long unbroken
+     Gujarati title, a stray min-width), this stops the WHOLE PAGE from
+     panning right and leaving a blank strip on the left — the actual
+     shape of the "phone view shifted right, edge content cut off" bug. */
+  overflow-x: hidden;
+  /* overflow-wrap is inherited, so this one line fixes the underlying
+     cause everywhere at once (every card title, badge, button label,
+     notification line, dropdown option, in both English and Gujarati):
+     text now always breaks rather than forcing its flex/grid container
+     wider than the space available. white-space:nowrap truncation (badges,
+     nav labels, table cells) is untouched — nowrap wins over this
+     regardless, so nothing that was intentionally single-line changes. */
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 button, input, select, textarea { font-family: inherit; }
@@ -68,14 +85,23 @@ button, input, select, textarea { font-family: inherit; }
   box-shadow: var(--shadow);
 }
 
+/* The title block (h1 + .sub) is a flex child of .app-header alongside
+   .header-actions — flex items default to min-width:auto, which refuses
+   to shrink below the text's own intrinsic width. A long title (or a
+   long unbroken Gujarati run the browser finds no break point in) then
+   forces .app-header itself wider than the viewport instead of wrapping,
+   which is what pushes the ENTIRE page into horizontal overflow. */
+.app-header > div:first-child { min-width: 0; }
+
 .app-header h1 {
   font-family: var(--font-display);
   font-size: 17px;
   margin: 0;
   font-weight: 700;
   letter-spacing: 0.2px;
+  overflow-wrap: break-word;
 }
-.app-header .sub { font-size: 11.5px; color: var(--accent-soft); margin-top: 2px; font-weight: 500; }
+.app-header .sub { font-size: 11.5px; color: var(--accent-soft); margin-top: 2px; font-weight: 500; overflow-wrap: break-word; }
 
 .header-actions { display: flex; align-items: center; gap: 8px; }
 
@@ -98,6 +124,11 @@ button, input, select, textarea { font-family: inherit; }
   .app-header { padding: 12px 14px; }
   .header-actions { gap: 6px; }
   .icon-btn { padding: 8px 11px; font-size: 12.5px; }
+  /* Reclaim horizontal room on the smallest phones (iPhone SE and similar,
+     ~360-390px) — every extra pixel matters for the 2-column KPI/function-
+     card/dept-card grids that otherwise sit right at their wrap threshold. */
+  .main-area { padding: 14px 10px; padding-bottom: 96px; }
+  .card { padding: 14px; }
 }
 
 .bell { position: relative; padding: 8px 12px; }
@@ -765,7 +796,16 @@ textarea { min-height: 84px; resize: vertical; }
 .dept-sidebar-back:hover { background: rgba(255, 255, 255, 0.22); }
 
 @media (max-width: 899px) {
-  .dept-topbar { display: flex; }
+  /* .dept-shell is a row flexbox (sidebar-beside-content, for the ≥900px
+     desktop layout where .dept-sidebar sits statically to the left). Below
+     900px .dept-sidebar becomes position:fixed/off-canvas (below), but
+     .dept-shell was never told to stop laying its children out in a row —
+     so .dept-topbar (hamburger + "Departments" title, no explicit width)
+     kept shrinking to its own content width and sitting as a narrow left
+     column, shoving .dept-shell-right's actual page content into whatever
+     space was left on the right. This is the real fix: stack them. */
+  .dept-shell { flex-direction: column; }
+  .dept-topbar { display: flex; width: 100%; }
   .dept-sidebar-toggle { display: inline-flex; align-items: center; justify-content: center; }
   .dept-sidebar {
     position: fixed;
@@ -798,6 +838,7 @@ textarea { min-height: 84px; resize: vertical; }
   align-items: center;
   gap: 14px;
   margin-bottom: 0;
+  flex-wrap: wrap;
 }
 .dept-header-icon {
   font-size: 34px;
@@ -810,29 +851,52 @@ textarea { min-height: 84px; resize: vertical; }
   border-radius: var(--radius);
   flex-shrink: 0;
 }
+/* Same flex-shrink problem as .app-header above: a long English title
+   plus a Gujarati subtitle the browser can't find a break point in was
+   forcing this card (and the whole page) wider than the phone screen
+   instead of wrapping onto more lines. */
+.dept-header-text { min-width: 0; flex: 1 1 180px; }
 .dept-header-text h1 {
   font-family: var(--font-display);
   font-size: 19px;
   color: var(--brand-dark);
   margin: 0;
+  overflow-wrap: break-word;
 }
+.dept-header-text .sub { overflow-wrap: break-word; }
 .restricted-badge { margin-top: 6px; background: var(--danger-bg); color: var(--danger); }
+
+/* Small phones (iPhone SE / older Android, ~320-360px): shrink the icon
+   so the title never has to squeeze into less than ~180px before wrapping. */
+@media (max-width: 380px) {
+  .dept-header { gap: 10px; }
+  .dept-header-icon { width: 44px; height: 44px; font-size: 24px; border-radius: var(--radius-sm); }
+  .dept-header-text h1 { font-size: 17px; }
+}
 
 .dept-meta-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
 }
 .dept-meta-tile { margin-bottom: 0; text-align: center; padding: 14px; }
 .dept-meta-tile .label { font-size: 11px; color: var(--ink-soft); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
 .dept-meta-tile .value { font-family: var(--font-display); font-size: 18px; font-weight: 800; color: var(--brand-dark); margin-top: 4px; }
+
+/* Tablet (iPad portrait and similar, ~600px+) and iPad landscape / small
+   desktop (~900px+): lock these to their natural 3-tile row instead of
+   letting auto-fit stretch each tile edge-to-edge across a much wider
+   viewport than the content needs. */
+@media (min-width: 600px) {
+  .dept-meta-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+}
 
 .kpi-grid-wide { grid-template-columns: repeat(2, 1fr); }
 @media (min-width: 640px) { .kpi-grid-wide { grid-template-columns: repeat(4, 1fr); } }
 
 .function-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
   gap: 10px;
 }
 .function-card {
@@ -856,11 +920,28 @@ textarea { min-height: 84px; resize: vertical; }
 .phase2-badge { background: var(--info-bg); color: var(--brand-dark); margin-top: auto; }
 .live-badge { background: var(--success-bg); color: var(--success); margin-top: auto; }
 
+/* Tablet portrait (~600px+, e.g. iPad Mini/Air portrait): a comfortable
+   3-across grid instead of whatever auto-fill happens to land on. */
+@media (min-width: 600px) {
+  .function-card-grid { grid-template-columns: repeat(3, 1fr); }
+}
+/* iPad landscape / small desktop (~900px+): cap each card's width instead
+   of letting auto-fill's 1fr tracks stretch into oversized, sparse-looking
+   tiles once the sidebar layout hands this grid a much wider column. */
+@media (min-width: 900px) {
+  .function-card-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 210px)); }
+}
+/* Large iPad Pro landscape / desktop (~1200px+): allow a genuinely wider
+   grid (more columns) rather than just more empty space to the right. */
+@media (min-width: 1200px) {
+  .function-card-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 220px)); }
+}
+
 /* ---------- Control tower department cards ---------- */
 
 .control-tower-dept-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 10px;
 }
 .dept-card-link {
@@ -880,8 +961,28 @@ textarea { min-height: 84px; resize: vertical; }
 }
 .dept-card-link:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
 .dept-card-icon { font-size: 20px; }
-.dept-card-name { font-weight: 700; font-size: 12.5px; color: var(--brand-dark); }
+.dept-card-name { font-weight: 700; font-size: 12.5px; color: var(--brand-dark); overflow-wrap: break-word; }
 .dept-card-count { font-size: 11px; color: var(--ink-soft); margin-top: auto; }
+
+/* Tablet portrait (~600px+): a steady 3-across grid of all 15 departments
+   instead of an auto-fill count that can land on an awkward number. */
+@media (min-width: 600px) {
+  .control-tower-dept-grid { grid-template-columns: repeat(3, 1fr); }
+}
+/* Tablet landscape (~768px+): 4-across — still finger-friendly, uses the
+   extra width without cards going huge. */
+@media (min-width: 768px) {
+  .control-tower-dept-grid { grid-template-columns: repeat(4, 1fr); }
+}
+/* iPad landscape / small desktop (~900px+): cap card width instead of
+   letting the sidebar layout's wider column stretch 1fr tracks into
+   oversized, sparse tiles. */
+@media (min-width: 900px) {
+  .control-tower-dept-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 190px)); }
+}
+@media (min-width: 1200px) {
+  .control-tower-dept-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 200px)); }
+}
 
 /* ---------- Filters ---------- */
 

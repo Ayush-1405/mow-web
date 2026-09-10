@@ -213,12 +213,15 @@ export async function createSnag({ projectId, issue, major, dueDate, assignedTo 
 
 export async function hasOpenMajorSnag(projectId) {
   const { count, error } = await supabase.from("snags").select("id", { count: "exact", head: true })
-    .eq("project_id", projectId).eq("major", true).neq("status", "RESOLVED");
+    .eq("project_id", projectId).eq("major", true).neq("status", "COMPLETED");
   return { hasOpen: (count || 0) > 0, error };
 }
 
+// snags.status has a DB check constraint allowing only OPEN / IN PROGRESS /
+// COMPLETED (this external table has no "RESOLVED" value — writing that
+// string violates the constraint and PostgREST surfaces it as a 400).
 export async function resolveSnag(id) {
-  const { data, error } = await supabase.from("snags").update({ status: "RESOLVED" }).eq("id", id).select().single();
+  const { data, error } = await supabase.from("snags").update({ status: "COMPLETED" }).eq("id", id).select().single();
   if (!error) await logAudit("snags", id, "resolve", null);
   return { data, error };
 }
@@ -270,7 +273,7 @@ export async function listTasks(projectId) {
 }
 
 export async function listMyOpenTasks(profileId) {
-  return supabase.from("tasks").select("*, projects(project_code, customer)").eq("assigned_to", profileId).neq("status", "DONE").order("due_date", { ascending: true });
+  return supabase.from("tasks").select("*, projects(project_code, customer)").eq("assigned_to", profileId).neq("status", "COMPLETED").order("due_date", { ascending: true });
 }
 
 export async function createTask({ projectId, title, assignedTo, dueDate, note, createdBy }) {
@@ -281,6 +284,8 @@ export async function createTask({ projectId, title, assignedTo, dueDate, note, 
   return { data, error };
 }
 
+// status must be one of tasks_status_check's values: OPEN / IN PROGRESS /
+// COMPLETED / BLOCKED / CANCELLED (this external table has no "DONE").
 export async function updateTaskStatus(id, status) {
   const { data, error } = await supabase.from("tasks").update({ status }).eq("id", id).select().single();
   if (!error) await logAudit("tasks", id, "update_status", { status });

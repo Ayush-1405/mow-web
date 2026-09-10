@@ -16,6 +16,7 @@ export default function InteriorSiteExecution({ lang }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [actionError, setActionError] = useState(false);
   const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
   const [form, setForm] = useState({ issue: "", major: false, dueDate: "", assignedTo: "" });
 
@@ -63,9 +64,11 @@ export default function InteriorSiteExecution({ lang }) {
 
   async function handleResolve(id) {
     setBusyId(id);
+    setActionError(false);
     const { error: err } = await resolveSnag(id);
     setBusyId(null);
-    if (!err) loadSnags();
+    if (err) { setActionError(true); return; }
+    loadSnags();
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -136,12 +139,13 @@ export default function InteriorSiteExecution({ lang }) {
           <input type="checkbox" checked={assignedToMeOnly} onChange={(e) => setAssignedToMeOnly(e.target.checked)} />
           {t("assignedToMeFilter", lang)}
         </label>
+        {actionError && <div className="msg error">{t("loadErrorRetry", lang)}</div>}
         {visibleRows.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
         {visibleRows.map((r) => (
           <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
             <span>{r.issue} {r.major && <span className="badge RETURNED">{t("majorLabel", lang)}</span>}</span>
             <span className="sub">{r.assigned_to ? personName(r.assigned_to) : "—"}</span>
-            {r.status === "RESOLVED"
+            {r.status === "COMPLETED"
               ? <span className="badge VERIFIED">{r.status}</span>
               : <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => handleResolve(r.id)}>{t("resolveSnag", lang)}</button>}
           </div>
