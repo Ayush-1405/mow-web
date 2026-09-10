@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { staffCreateUser } from "../lib/api";
+import { staffCreateUser, staffResetPassword } from "../lib/api";
 import { t } from "../lib/i18n";
 
 // Calls staff-create-user (already deployed, already reviewed). All role/
@@ -35,12 +35,50 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
   const [rowBusyId, setRowBusyId] = useState(null);
   const [roleEditFor, setRoleEditFor] = useState(null);
   const [roleEditValue, setRoleEditValue] = useState("");
+  const [resetPasswordFor, setResetPasswordFor] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
 
   // Only Super Admin/Management may change an existing user's role
   // (staff_update_user_role — Management is blocked server-side from
   // granting sysadmin itself, so the option is simply not offered here).
   const canChangeRoles = profile.isSuperAdmin || profile.isManagement;
   const assignableRoleCodes = lookups.roles.filter((r) => profile.isSuperAdmin || r.code !== "sysadmin");
+
+  // "Reset Password" — for a staff member who forgot theirs and can't use
+  // the self-service Change Password screen. staff_authorize_password_reset()
+  // is the real authorization boundary (Management/Sysadmin: anyone; Dept
+  // Head: only within their own scope, never an elevated role); these two
+  // client-side checks only decide whether to SHOW the button, so a Dept
+  // Head never sees an option that would just be rejected server-side.
+  const canResetPasswords = profile.isSuperAdmin || profile.isManagement || profile.isDeptHead;
+  const ELEVATED_RESET_BLOCKED_ROLES = ["management", "cfo", "accounts_head", "sysadmin"];
+  function canResetPasswordFor(u) {
+    if (u.id === profile.id) return false;
+    if (profile.isDeptHead && !profile.isManagement && !profile.isSuperAdmin) {
+      return !ELEVATED_RESET_BLOCKED_ROLES.includes(u.role_code);
+    }
+    return true;
+  }
+
+  function startResetPassword(u) {
+    setResetPasswordFor(u.id);
+    setResetPasswordValue("");
+  }
+
+  async function submitResetPassword(userId) {
+    if (resetPasswordValue.length < 8) return;
+    setRowBusyId(userId);
+    try {
+      await staffResetPassword(userId, resetPasswordValue);
+      setResetPasswordFor(null);
+      setResetPasswordValue("");
+      showToast("success", t("passwordResetDone", lang));
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
 
   function startRoleEdit(u) {
     setRoleEditFor(u.id);
@@ -333,12 +371,38 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
                 {canChangeRoles && (
                   <button className="btn btn-outline" onClick={() => startRoleEdit(u)}>{t("changeRole", lang)}</button>
                 )}
+                {canResetPasswords && canResetPasswordFor(u) && (
+                  <button className="btn btn-outline" onClick={() => startResetPassword(u)}>{t("resetPassword", lang)}</button>
+                )}
                 <button
                   className="btn btn-outline"
                   onClick={() => setStatusReasonFor(statusReasonFor === u.id ? null : u.id)}
                 >
                   {u.is_active ? t("deactivate", lang) : t("reactivate", lang)}
                 </button>
+              </div>
+            )}
+
+            {resetPasswordFor === u.id && (
+              <div style={{ marginTop: 10 }}>
+                <label>{t("newTemporaryPassword", lang)} *</label>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={resetPasswordValue}
+                  onChange={(e) => setResetPasswordValue(e.target.value)}
+                  placeholder="Min 8 chars, upper+lower+digit"
+                  minLength={8}
+                  maxLength={200}
+                />
+                <div className="btn-row">
+                  <button className="btn btn-primary" disabled={rowBusyId === u.id || resetPasswordValue.length < 8} onClick={() => submitResetPassword(u.id)}>
+                    {t("resetPassword", lang)}
+                  </button>
+                  <button className="btn btn-outline" onClick={() => { setResetPasswordFor(null); setResetPasswordValue(""); }}>
+                    {t("cancel", lang)}
+                  </button>
+                </div>
               </div>
             )}
 

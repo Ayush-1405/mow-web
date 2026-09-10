@@ -88,6 +88,14 @@ export function staffPasswordChange(newPassword) {
   return callFunction("staff-password-change", { new_password: newPassword }, { auth: true });
 }
 
+// Authenticated: Management/Sysadmin/Dept Head resets ANOTHER staff
+// member's password (e.g. they forgot it). Server enforces who may reset
+// whose password — see staff_authorize_password_reset(). Forces the
+// target to change this temporary password on next login.
+export function staffResetPassword(userId, newPassword) {
+  return callFunction("staff-reset-password", { user_id: userId, new_password: newPassword }, { auth: true });
+}
+
 // Authenticated: uploads a proof file for a task/bridge.
 // 1) mint a short-lived signed upload URL scoped to entityId, via staff-file-url
 // 2) PUT the file straight to Storage using that signed URL
