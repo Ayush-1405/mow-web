@@ -1,5 +1,8 @@
 {
   "buildCommand": "npm run vercel-build",
-  "devCommand": "npm --prefix mood-of-wood-staff-pilot/frontend run dev -- --port $PORT",
-  "outputDirectory": "mood-of-wood-staff-pilot/frontend/dist"
+  "devCommand": "npm --prefix frontend run dev -- --port $PORT",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
