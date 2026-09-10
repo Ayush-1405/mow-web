@@ -64,10 +64,15 @@ button, input, select, textarea { font-family: inherit; }
 
 /* ---------- Shell ---------- */
 
+/* Fixed-height shell, not min-height: the page itself never grows taller
+   than the viewport, so there's nothing for the whole document to scroll.
+   The header stays put (and the sidebar, at desktop widths below); only
+   .main-area scrolls. Mirrors the same fix on .dept-shell. */
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-header {
@@ -152,6 +157,9 @@ button, input, select, textarea { font-family: inherit; }
 
 .main-area {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 18px 16px;
   padding-bottom: 96px;
   max-width: 760px;
@@ -601,24 +609,23 @@ textarea { min-height: 84px; resize: vertical; }
 /* ---------- Desktop layout ---------- */
 
 @media (min-width: 900px) {
+  /* grid-template-rows: auto 1fr makes the header row exactly as tall as
+     its content and hands everything else to the nav/main row — which,
+     combined with .app-shell's fixed height:100vh (above) and each grid
+     item stretching to fill that row (the grid default), means .bottom-nav
+     and .main-area are always exactly "viewport minus header" tall with
+     no hardcoded pixel number involved. This replaced an earlier version
+     that pinned .bottom-nav with `top: 66px` / `height: calc(100vh - 66px)`
+     — both magic numbers assuming the header was always exactly one line
+     tall, which quietly broke (the sidebar working its way under the
+     header once scrolled) whenever the header wrapped to two lines. */
   .app-shell {
     display: grid;
     grid-template-columns: 240px 1fr;
+    grid-template-rows: auto 1fr;
     grid-template-areas: "header header" "nav main";
   }
-  /* .bottom-nav below is pinned with `top: 66px` and sized with
-     `height: calc(100vh - 66px)` — both assume the header is exactly one
-     line tall. .app-header's own `flex-wrap: wrap` (needed on phones, so
-     the action buttons can drop under the title) lets the header grow
-     taller than 66px here too whenever the title/subtitle + all the
-     action buttons don't quite fit one row — at desktop widths there's
-     always room for them on one line, so nowrap keeps the header's real
-     height matching the sidebar's hardcoded assumption. Without this, the
-     header and the sticky sidebar quietly fall out of sync: nothing looks
-     wrong until you scroll, at which point the sidebar sticks 66px from
-     the top while the (taller) header also sticks at 0 — so the header
-     ends up overlapping/clipping the first bit of the sidebar. */
-  .app-header { grid-area: header; min-height: 66px; flex-wrap: nowrap; }
+  .app-header { grid-area: header; min-height: 66px; flex-wrap: nowrap; position: static; }
   .main-area {
     grid-area: main;
     max-width: none;
@@ -628,14 +635,10 @@ textarea { min-height: 84px; resize: vertical; }
   }
   .bottom-nav {
     grid-area: nav;
-    position: sticky;
-    top: 66px;
-    left: auto;
-    right: auto;
-    bottom: auto;
+    position: static;
+    min-height: 0;
     flex-direction: column;
     align-items: stretch;
-    height: calc(100vh - 66px);
     overflow-x: visible;
     overflow-y: auto;
     border-top: none;
@@ -674,22 +677,30 @@ textarea { min-height: 84px; resize: vertical; }
    Department pages / Management Control Tower — sidebar + dashboards
    ================================================================== */
 
+/* Fixed-height shell, not min-height: the page itself never grows taller
+   than the viewport, so there's nothing for the whole document to scroll.
+   The sidebar and header stay put; only .dept-main (below) scrolls. */
 .dept-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
+  overflow: hidden;
 }
 
 .dept-shell-right {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
-.dept-main-header { position: sticky; top: 0; z-index: 15; }
+.dept-main-header { position: sticky; top: 0; z-index: 15; flex-shrink: 0; }
 
 .dept-main {
   flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 18px 16px 40px;
   max-width: 980px;
   width: 100%;
