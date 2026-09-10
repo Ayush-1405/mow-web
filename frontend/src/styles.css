@@ -606,7 +606,19 @@ textarea { min-height: 84px; resize: vertical; }
     grid-template-columns: 240px 1fr;
     grid-template-areas: "header header" "nav main";
   }
-  .app-header { grid-area: header; min-height: 66px; }
+  /* .bottom-nav below is pinned with `top: 66px` and sized with
+     `height: calc(100vh - 66px)` — both assume the header is exactly one
+     line tall. .app-header's own `flex-wrap: wrap` (needed on phones, so
+     the action buttons can drop under the title) lets the header grow
+     taller than 66px here too whenever the title/subtitle + all the
+     action buttons don't quite fit one row — at desktop widths there's
+     always room for them on one line, so nowrap keeps the header's real
+     height matching the sidebar's hardcoded assumption. Without this, the
+     header and the sticky sidebar quietly fall out of sync: nothing looks
+     wrong until you scroll, at which point the sidebar sticks 66px from
+     the top while the (taller) header also sticks at 0 — so the header
+     ends up overlapping/clipping the first bit of the sidebar. */
+  .app-header { grid-area: header; min-height: 66px; flex-wrap: nowrap; }
   .main-area {
     grid-area: main;
     max-width: none;

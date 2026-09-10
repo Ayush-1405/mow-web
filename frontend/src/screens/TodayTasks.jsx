@@ -74,7 +74,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       .from("staff_tasks")
       .select("*")
       .eq("is_active", true)
-      .order("due_date", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(100);
     if (error) {
       showToast("error", error.message);
