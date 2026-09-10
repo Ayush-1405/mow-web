@@ -30,6 +30,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [proofFor, setProofFor] = useState(null);
   const [detailsFor, setDetailsFor] = useState(null);
   const [reassignFor, setReassignFor] = useState(null);
+  const [deleteConfirmFor, setDeleteConfirmFor] = useState(null);
   const [assignedItems, setAssignedItems] = useState([]);
 
   // Retail leads/complaints/VM-tasks and Interior snags/tasks live in
@@ -175,6 +176,21 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
   }
 
+  async function handleDelete(taskId) {
+    setBusyId(taskId);
+    try {
+      const { error } = await supabase.rpc("staff_delete_task", { p_task_id: taskId });
+      if (error) throw error;
+      setDeleteConfirmFor(null);
+      showToast("success", "Task deleted / કાર્ય કાઢી નાખ્યું");
+      await load();
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const statusOf = (id) => lookups.statusById[id];
   const isOverdue = (task) => {
     const s = statusOf(task.status_id)?.code;
@@ -215,6 +231,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         const isAssignee = task.assigned_to === profile.id;
         const iAmVerifier = task.verifier_id === profile.id;
         const canManage = profile.isManagement || profile.isDeptHead;
+        const iCreatedIt = task.assigned_by === profile.id;
         const busy = busyId === task.id;
 
         return (
@@ -308,7 +325,30 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               >
                 {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
               </button>
+              {iCreatedIt && (
+                <button
+                  className="btn btn-outline"
+                  disabled={busy}
+                  onClick={() => setDeleteConfirmFor(deleteConfirmFor === task.id ? null : task.id)}
+                >
+                  {t("deleteTask", lang)}
+                </button>
+              )}
             </div>
+
+            {deleteConfirmFor === task.id && (
+              <div className="msg error" style={{ marginTop: 10 }}>
+                {t("confirmDeleteTask", lang)}
+                <div className="btn-row">
+                  <button className="btn btn-primary" disabled={busy} onClick={() => handleDelete(task.id)}>
+                    {t("confirmDelete", lang)}
+                  </button>
+                  <button className="btn btn-outline" onClick={() => setDeleteConfirmFor(null)}>
+                    {t("cancel", lang)}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {returnReasonFor === task.id && (
               <div style={{ marginTop: 10 }}>
