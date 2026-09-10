@@ -9,6 +9,23 @@ import { supabase, SUPABASE_URL_BASE, SUPABASE_ANON_KEY_VALUE } from "./supabase
 
 const FUNCTIONS_URL = `${SUPABASE_URL_BASE}/functions/v1`;
 
+// Some Android camera intents hand back a File with an empty type (common
+// when a photo comes straight from "Take Photo" rather than the gallery
+// picker) or the nonstandard "image/jpg" — either would fail the Edge
+// Function's exact MIME whitelist (image/jpeg, not image/jpg) even though
+// the file itself is a perfectly normal photo. Fall back to the file
+// extension only when the browser's own reported type is missing/wrong;
+// a genuinely unsupported file still fails server-side exactly as before.
+const EXTENSION_MIME_FALLBACK = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+  heic: "image/heic", heif: "image/heif",
+};
+export function resolveMimeType(file) {
+  if (file.type && file.type !== "image/jpg") return file.type;
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  return EXTENSION_MIME_FALLBACK[ext] || file.type || "application/octet-stream";
+}
+
 const GENERIC_ERROR = "Something went wrong. Please try again later. / કંઈક ખોટું થયું. કૃપા કરીને પછીથી ફરી પ્રયાસ કરો.";
 const NETWORK_ERROR = "Network error. Please try again. / નેટવર્ક ભૂલ. કૃપા કરીને ફરી પ્રયાસ કરો.";
 const AUTH_REQUIRED_ERROR = "You are not signed in, or your session has expired. / તમે સાઇન ઇન નથી, અથવા તમારું સત્ર સમાપ્ત થયું છે.";
@@ -77,6 +94,7 @@ export function staffPasswordChange(newPassword) {
 // 3) register the attachment via staff_record_attachment (RLS-gated RPC),
 //    which re-verifies the object actually landed before recording it
 export async function uploadTaskProof({ entityType, entityId, file, fileType, durationSeconds }) {
+  const mimeType = resolveMimeType(file);
   const urlRes = await callFunction(
     "staff-file-url",
     {
@@ -84,7 +102,7 @@ export async function uploadTaskProof({ entityType, entityId, file, fileType, du
       entity_type: entityType,
       entity_id: entityId,
       filename: file.name,
-      mime_type: file.type,
+      mime_type: mimeType,
       file_type: fileType,
       file_size: file.size,
       ...(durationSeconds != null ? { duration_seconds: durationSeconds } : {}),
@@ -105,7 +123,7 @@ export async function uploadTaskProof({ entityType, entityId, file, fileType, du
     p_file_type: fileType,
     p_storage_path: urlRes.storage_path,
     p_original_filename: file.name,
-    p_mime_type: file.type,
+    p_mime_type: mimeType,
     p_file_size: file.size,
     ...(durationSeconds != null ? { p_duration_seconds: durationSeconds } : {}),
   });

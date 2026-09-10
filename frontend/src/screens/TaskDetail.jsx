@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
-import { uploadTaskProof, downloadTaskProof } from "../lib/api";
+import { uploadTaskProof, downloadTaskProof, resolveMimeType } from "../lib/api";
 import { t } from "../lib/i18n";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 
@@ -99,7 +99,7 @@ export function AttachmentsList({ taskId, lang, showToast }) {
 
   async function handleUpload(file) {
     if (!file) return;
-    const fileType = detectFileType(file.type);
+    const fileType = detectFileType(resolveMimeType(file));
     if (!fileType) {
       showToast("error", "Unsupported file type. / અસમર્થિત ફાઇલ પ્રકાર.");
       return;

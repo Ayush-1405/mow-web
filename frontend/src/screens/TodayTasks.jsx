@@ -167,7 +167,12 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     setBusyId(task.id);
     try {
       if (file) {
-        await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "photo" });
+        // "image" — matches the Edge Function's MIME_WHITELIST key exactly
+        // (staff-file-url/_shared/validation.ts). "photo" isn't a
+        // recognized category there, so every completion-proof upload
+        // through this path was unconditionally rejected as "file type
+        // not allowed" regardless of the actual file or device.
+        await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "image" });
       }
       const { error } = await supabase.rpc("staff_complete_task", { p_task_id: task.id });
       if (error) throw error;

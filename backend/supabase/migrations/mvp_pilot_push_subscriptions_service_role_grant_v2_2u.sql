@@ -1,0 +1,12 @@
+-- push_subscriptions had RLS enabled with a policy scoped to `authenticated`
+-- only (push_subscriptions_own) — but that left NO base table GRANT at all
+-- for service_role beyond TRUNCATE/REFERENCES/TRIGGER (no SELECT, INSERT,
+-- UPDATE, or DELETE). service_role has BYPASSRLS, but RLS bypass is a
+-- separate layer from the base SQL privilege grant — without SELECT,
+-- send-push's own service-role query for a recipient's subscriptions
+-- always came back empty, no matter how many real subscriptions existed,
+-- which is why push has never actually delivered to anyone since this
+-- table was created. Exact same root cause as the earlier app_secrets fix
+-- (mvp_pilot_web_push_secrets_grant_v2_2m.sql) — a table with RLS on but
+-- an incomplete GRANT set for the one role that actually needs to bypass it.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO service_role;
