@@ -209,16 +209,30 @@ export default function ManagementControlTower({ lang, lookups, departments }) {
       </div>
 
       <div className="kpi-grid kpi-grid-wide">
-        <div className="kpi-tile"><div className="num">{activeDepartments}</div><div className="label">{t("totalActiveDepartments", lang)}</div></div>
-        <div className="kpi-tile"><div className="num">{activeUsers}</div><div className="label">{t("totalActiveUsers", lang)}</div></div>
-        <div className="kpi-tile"><div className="num">{openTasks.length}</div><div className="label">{t("tasksPendingLabel", lang)}</div></div>
-        <div className="kpi-tile"><div className="num">{overdueTasks.length}</div><div className="label">{t("tasksOverdueLabel", lang)}</div></div>
-        <div className="kpi-tile gold"><div className="num">{criticalBlockers.length}</div><div className="label">{t("criticalBlockers", lang)}</div></div>
-        <div className="kpi-tile"><div className="num">{awaitingApproval.length}</div><div className="label">{t("pendingApprovals", lang)}</div></div>
-        <div className="kpi-tile"><div className="num">{openBridges.length}</div><div className="label">{t("crossDeptDependencies", lang)}</div></div>
+        <button className="kpi-tile" onClick={() => document.getElementById("open-department-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          <div className="num">{activeDepartments}</div><div className="label">{t("totalActiveDepartments", lang)}</div>
+        </button>
+        <button className="kpi-tile" onClick={() => navigate("/users")}>
+          <div className="num">{activeUsers}</div><div className="label">{t("totalActiveUsers", lang)}</div>
+        </button>
+        <button className="kpi-tile" onClick={() => navigate("/tasks")}>
+          <div className="num">{openTasks.length}</div><div className="label">{t("tasksPendingLabel", lang)}</div>
+        </button>
+        <button className="kpi-tile" onClick={() => navigate("/tasks")}>
+          <div className="num">{overdueTasks.length}</div><div className="label">{t("tasksOverdueLabel", lang)}</div>
+        </button>
+        <button className="kpi-tile gold" onClick={() => navigate("/tasks")}>
+          <div className="num">{criticalBlockers.length}</div><div className="label">{t("criticalBlockers", lang)}</div>
+        </button>
+        <button className="kpi-tile" onClick={() => navigate("/tasks")}>
+          <div className="num">{awaitingApproval.length}</div><div className="label">{t("pendingApprovals", lang)}</div>
+        </button>
+        <button className="kpi-tile" onClick={() => navigate("/bridges")}>
+          <div className="num">{openBridges.length}</div><div className="label">{t("crossDeptDependencies", lang)}</div>
+        </button>
       </div>
 
-      <div className="card">
+      <div className="card" id="open-department-section">
         <h2>{t("openDepartment", lang)}</h2>
         <div className="control-tower-dept-grid">
           {deptCards.map((d) => (

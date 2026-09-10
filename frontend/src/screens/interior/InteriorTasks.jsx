@@ -65,7 +65,10 @@ export default function InteriorTasks({ lang }) {
     setSaving(false);
     if (err) { setError(true); return; }
     if (form.assignedTo) {
-      notifyInteriorAssignment(form.assignedTo, "task", data.id, `New task assigned: ${data.title}`, `નવું કાર્ય સોંપાયેલ: ${data.title}`);
+      // "interior_task" (not "task") — that entity_type/entity_id pair
+      // points into the external tasks table, not staff_tasks, and the two
+      // aren't interchangeable IDs. Notifications.jsx routes on this string.
+      notifyInteriorAssignment(form.assignedTo, "interior_task", data.id, `New task assigned: ${data.title}`, `નવું કાર્ય સોંપાયેલ: ${data.title}`);
     }
     setForm({ title: "", due_date: "", assignedTo: "" });
     setShowForm(false);

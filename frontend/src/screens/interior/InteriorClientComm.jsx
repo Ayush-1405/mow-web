@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
-import { listProjects, listActivity, logActivity } from "../../lib/interiorApi";
+import { listProjects, listActivity, logActivity, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Client Communication — the external system's `activity_logs` table, per
 // project.
@@ -39,6 +39,12 @@ export default function InteriorClientComm({ lang }) {
     const { error: err } = await logActivity(projectId, "client_communication", note);
     setSaving(false);
     if (err) { setError(true); return; }
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Client communication logged: ${note} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `ક્લાયન્ટ કમ્યુનિકેશન નોંધાયું: ${note}`,
+    );
     setNote("");
     loadActivity();
   }

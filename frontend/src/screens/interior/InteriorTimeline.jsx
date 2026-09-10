@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { formatCurrency } from "../../lib/retailModules";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import {
   listProjects, updateProjectField, updateProjectDetails, listProjectChanges,
-  setFreezeCheck, freezeProject, hasOpenMajorSnag,
+  setFreezeCheck, freezeProject, hasOpenMajorSnag, deleteProject, notifyDeptLeadership,
   listInteriorPeople, listProjectMembers, addProjectMember, removeProjectMember, notifyInteriorAssignment,
 } from "../../lib/interiorApi";
 
@@ -31,8 +31,9 @@ const FREEZE_FIELDS = [
   ["freeze_check_specs", "freezeCheckSpecs"], ["freeze_check_customer_approval", "freezeCheckCustomer"],
 ];
 
-export default function InteriorTimeline({ lang }) {
+export default function InteriorTimeline({ lang, staffProfile }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const myProfile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -46,6 +47,14 @@ export default function InteriorTimeline({ lang }) {
   const [team, setTeam] = useState([]);
   const [newMemberId, setNewMemberId] = useState("");
   const [teamBusy, setTeamBusy] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState("");
+
+  // Optimistic UI gate only — staff_delete_interior_project re-checks
+  // Management/Super Admin/Interior Dept Head server-side regardless, so
+  // this can't be bypassed by forging the request. No PM/Designer/
+  // Execution role gets this button, however senior on this one project.
+  const canDeleteProject = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,9 +63,22 @@ export default function InteriorTimeline({ lang }) {
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
     setPeople(peopleRes.data || []);
-    if (data?.length) setProjectId((cur) => cur || data[0].id);
+    // A notification/deep-link (?project=<id>) always wins, even over an
+    // already-selected project — this screen doesn't remount between two
+    // clicks on different project links (same route, React Router just
+    // re-renders), so without this a second click here would silently do
+    // nothing. No param at all falls back to whatever's already chosen,
+    // or the first project on a first visit.
+    const focusId = searchParams.get("project");
+    if (data?.length) {
+      if (focusId && data.some((p) => p.id === focusId)) {
+        setProjectId(focusId);
+      } else {
+        setProjectId((cur) => cur || data[0].id);
+      }
+    }
     setLoading(false);
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -115,7 +137,23 @@ export default function InteriorTimeline({ lang }) {
     const { data, error: err } = await freezeProject(projectId);
     setBusy(false);
     if (err) { setStageMsg(err.message); return; }
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Design frozen — ${project.project_code} (${project.customer})`,
+      `ડિઝાઇન ફ્રીઝ થઈ — ${project.project_code} (${project.customer})`,
+    );
     refreshProject(data);
+  }
+
+  async function handleDeleteProject() {
+    setBusy(true);
+    setDeleteMsg("");
+    const { error: err } = await deleteProject(projectId);
+    setBusy(false);
+    if (err) { setDeleteMsg(err.message); return; }
+    setDeleteConfirm(false);
+    setProjects((ps) => ps.filter((p) => p.id !== projectId));
+    setProjectId("");
   }
 
   const stageIndex = useMemo(() => (project ? STAGES.indexOf(project.stage) : -1), [project]);
@@ -152,6 +190,11 @@ export default function InteriorTimeline({ lang }) {
     const { data, error: err } = await updateProjectField(projectId, "stage", nextStage);
     setBusy(false);
     if (err) { setStageMsg(err.message); return; }
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Stage advanced: ${project.stage} → ${nextStage} — ${project.project_code} (${project.customer})`,
+      `તબક્કો આગળ વધ્યો: ${project.stage} → ${nextStage}`,
+    );
     refreshProject(data);
   }
 
@@ -348,6 +391,24 @@ export default function InteriorTimeline({ lang }) {
               <button className="btn btn-primary" type="submit" disabled={saving}>{t("save", lang)}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {project && canDeleteProject && (
+        <div className="card">
+          <h2>{t("deleteProjectAction", lang)}</h2>
+          {!deleteConfirm ? (
+            <button className="btn btn-outline" onClick={() => setDeleteConfirm(true)}>{t("deleteProjectAction", lang)}</button>
+          ) : (
+            <div className="msg error">
+              {t("confirmDeleteProject", lang)}
+              {deleteMsg && <div style={{ marginTop: 6 }}>{deleteMsg}</div>}
+              <div className="btn-row">
+                <button className="btn btn-primary" disabled={busy} onClick={handleDeleteProject}>{t("confirmDelete", lang)}</button>
+                <button className="btn btn-outline" onClick={() => { setDeleteConfirm(false); setDeleteMsg(""); }}>{t("cancel", lang)}</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
-import { addProjectMember, notifyInteriorAssignment } from "../../lib/interiorApi";
+import { addProjectMember, notifyInteriorAssignment, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // New Project — md/MOOD-OF-WOOD-SYSTEM.md §2: "Every project has one PM,
 // one designer, one deadline, one stage, one next step. The new-project
@@ -78,8 +78,13 @@ export default function InteriorProjectCreate({ lang }) {
     notifyIds.forEach((pid) => {
       notifyInteriorAssignment(pid, "project", data.id, `New project assigned: ${data.customer} (${data.project_code})`, `નવો પ્રોજેક્ટ સોંપાયેલ: ${data.customer} (${data.project_code})`);
     });
+    notifyDeptLeadership(
+      "INTERIOR", "project", data.id,
+      `New project created: ${data.customer} (${data.project_code})`,
+      `નવો પ્રોજેક્ટ બન્યો: ${data.customer} (${data.project_code})`,
+    );
 
-    navigate("/interior-projects/timeline");
+    navigate(`/interior-projects/timeline?project=${data.id}`);
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 220 }} /></div>;

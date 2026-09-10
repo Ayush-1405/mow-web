@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
-import { listProjects, listPaymentRecords, addPaymentRecord, markPaymentReceived } from "../../lib/interiorApi";
+import { listProjects, listPaymentRecords, addPaymentRecord, markPaymentReceived, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Payment Follow-up — the ONE Interior card backed by a genuinely new,
 // pilot-owned table (interior_payment_records), since the external
@@ -38,9 +38,16 @@ export default function InteriorPayments({ lang, lookups }) {
 
   useEffect(() => { loadPayments(); }, [loadPayments]);
 
-  async function handleMarkReceived(id) {
+  async function handleMarkReceived(id, amount) {
     const { error: err } = await markPaymentReceived(id);
-    if (!err) loadPayments();
+    if (err) return;
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Payment received: ${formatCurrency(amount)} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `ચુકવણી મળી: ${formatCurrency(amount)}`,
+    );
+    loadPayments();
   }
 
   async function handleAdd(e) {
@@ -53,6 +60,12 @@ export default function InteriorPayments({ lang, lookups }) {
     });
     setSaving(false);
     if (err) { setError(true); return; }
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Payment follow-up added: ${formatCurrency(Number(form.amount))} (${form.payment_type}) — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `ચુકવણી ફોલો-અપ ઉમેરાયું: ${formatCurrency(Number(form.amount))}`,
+    );
     setForm({ amount: "", payment_type: "advance", due_date: "" });
     setShowForm(false);
     loadPayments();
@@ -122,7 +135,7 @@ export default function InteriorPayments({ lang, lookups }) {
             <span>{formatCurrency(r.amount)}</span>
             <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
             {r.status !== "RECEIVED" && (
-              <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => handleMarkReceived(r.id)}>
+              <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => handleMarkReceived(r.id, r.amount)}>
                 {t("receivedLabel", lang)}
               </button>
             )}

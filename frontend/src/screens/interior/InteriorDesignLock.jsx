@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
-import { listProjects, listAttachments, lockDesignAttachment } from "../../lib/interiorApi";
+import { listProjects, listAttachments, lockDesignAttachment, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Design Lock — the Design-stage attachments, with the "Lock Design"
 // action (sets attachments.frozen = true via the single narrow
@@ -35,12 +35,19 @@ export default function InteriorDesignLock({ lang }) {
 
   useEffect(() => { loadAttachments(); }, [loadAttachments]);
 
-  async function confirmLock(id) {
+  async function confirmLock(id, title) {
     setBusyId(id);
     const { error: err } = await lockDesignAttachment(id);
     setBusyId(null);
     setConfirmId(null);
-    if (!err) loadAttachments();
+    if (err) return;
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Design locked: ${title} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `ડિઝાઇન લોક થઈ: ${title}`,
+    );
+    loadAttachments();
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -83,7 +90,7 @@ export default function InteriorDesignLock({ lang }) {
                 ? (
                   <span className="btn-row" style={{ marginTop: 0 }}>
                     <span className="sub">{t("areYouSure", lang)}</span>
-                    <button className="btn btn-danger" disabled={busyId === r.id} onClick={() => confirmLock(r.id)}>{t("confirm", lang)}</button>
+                    <button className="btn btn-danger" disabled={busyId === r.id} onClick={() => confirmLock(r.id, r.title || r.file_name)}>{t("confirm", lang)}</button>
                     <button className="btn btn-outline" onClick={() => setConfirmId(null)}>{t("cancel", lang)}</button>
                   </span>
                 )

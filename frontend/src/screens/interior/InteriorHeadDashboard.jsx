@@ -225,7 +225,7 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
             <h2>{t("needsAttentionLabel", lang)}</h2>
             {attentionFeed.length === 0 && <div className="msg info">{t("allCaughtUp", lang)}</div>}
             {attentionFeed.map((row) => (
-              <div key={row.key} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", cursor: "pointer" }} onClick={() => navigate("/interior-projects/timeline")}>
+              <div key={row.key} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", cursor: "pointer" }} onClick={() => navigate(`/interior-projects/timeline?project=${row.project.id}`)}>
                 <span>{row.project.project_code} — {row.project.customer}</span>
                 <span className="sub">{row.text}</span>
               </div>
@@ -262,7 +262,7 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
               const health = healthOf(p);
               const badgeClass = health === "ontrack" ? "VERIFIED" : health === "attention" ? "ASSIGNED" : "RETURNED";
               return (
-                <button key={p.id} className="dept-card-link" onClick={() => navigate("/interior-projects/timeline")}>
+                <button key={p.id} className="dept-card-link" onClick={() => navigate(`/interior-projects/timeline?project=${p.id}`)}>
                   <span className="dept-card-icon" aria-hidden="true">🏗️</span>
                   <span className="dept-card-name">{p.project_code} — {p.customer}</span>
                   <span className={`badge ${badgeClass}`}>{t(`health${health === "ontrack" ? "OnTrack" : health === "attention" ? "Attention" : "Delayed"}`, lang)}</span>

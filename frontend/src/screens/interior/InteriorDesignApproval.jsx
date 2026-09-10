@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
-import { listProjects, listProjectChanges, decideProjectChange } from "../../lib/interiorApi";
+import { listProjects, listProjectChanges, decideProjectChange, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Design Approval — the external system's project_changes table doubles
 // as its change/approval mechanism; approving/rejecting here writes
@@ -34,11 +34,18 @@ export default function InteriorDesignApproval({ lang }) {
 
   useEffect(() => { loadChanges(); }, [loadChanges]);
 
-  async function decide(id, decision) {
+  async function decide(id, decision, description) {
     setBusyId(id);
     const { error: err } = await decideProjectChange(id, decision);
     setBusyId(null);
-    if (!err) loadChanges();
+    if (err) return;
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Design change ${decision.toLowerCase()}: ${description} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `ડિઝાઇન ફેરફાર ${decision === "APPROVED" ? "મંજૂર" : "નકારાયો"}: ${description}`,
+    );
+    loadChanges();
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -81,8 +88,8 @@ export default function InteriorDesignApproval({ lang }) {
             <span className="badge ASSIGNED">{r.approval_status}</span>
             {r.approval_status === "PENDING" && (
               <div className="btn-row" style={{ marginTop: 0 }}>
-                <button className="btn btn-primary" disabled={busyId === r.id} onClick={() => decide(r.id, "APPROVED")}>{t("approveLabel", lang)}</button>
-                <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => decide(r.id, "REJECTED")}>{t("rejectLabel", lang)}</button>
+                <button className="btn btn-primary" disabled={busyId === r.id} onClick={() => decide(r.id, "APPROVED", r.description)}>{t("approveLabel", lang)}</button>
+                <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => decide(r.id, "REJECTED", r.description)}>{t("rejectLabel", lang)}</button>
               </div>
             )}
           </div>

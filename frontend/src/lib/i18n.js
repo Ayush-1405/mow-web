@@ -36,6 +36,8 @@ export const STRINGS = {
   deleteTask: { en: "Delete", gu: "કાઢી નાખો" },
   confirmDeleteTask: { en: "Delete this task? This cannot be undone.", gu: "આ કાર્ય કાઢી નાખવું છે? આ પાછું લઈ શકાશે નહીં." },
   confirmDelete: { en: "Yes, Delete", gu: "હા, કાઢી નાખો" },
+  deleteProjectAction: { en: "Delete Project", gu: "પ્રોજેક્ટ કાઢી નાખો" },
+  confirmDeleteProject: { en: "Delete this entire project? This cannot be undone.", gu: "આ સંપૂર્ણ પ્રોજેક્ટ કાઢી નાખવો છે? આ પાછું લઈ શકાશે નહીં." },
   requestHelp: { en: "Request Help", gu: "મદદ માંગો" },
   reason: { en: "Reason", gu: "કારણ" },
   submit: { en: "Submit", gu: "સબમિટ કરો" },

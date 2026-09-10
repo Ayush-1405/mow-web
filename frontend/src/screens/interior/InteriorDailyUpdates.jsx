@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
-import { listProjects, listSiteReports, createSiteReport } from "../../lib/interiorApi";
+import { listProjects, listSiteReports, createSiteReport, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Daily Site Update — md/MOOD-OF-WOOD-SYSTEM.md §5, "the most-used screen
 // in the system": Today's Work -> tick what's Completed -> Pending is
@@ -87,6 +87,8 @@ export default function InteriorDailyUpdates({ lang }) {
 
   useEffect(() => { loadReports(); }, [loadReports]);
 
+  const project = projects.find((p) => p.id === projectId);
+
   const pending = useMemo(() => todaysWork.filter((w) => !completed.has(w)), [todaysWork, completed]);
 
   function toggleCompleted(item) {
@@ -132,6 +134,13 @@ export default function InteriorDailyUpdates({ lang }) {
         })),
       );
     }
+
+    const projectLabel = project ? `${project.project_code} — ${project.customer}` : "";
+    notifyDeptLeadership(
+      "INTERIOR", "site_report", report.id,
+      `Daily update submitted: ${projectLabel}`,
+      `દૈનિક અપડેટ સબમિટ થયું: ${projectLabel}`,
+    );
 
     setSaving(false);
     setTodaysWork([]); setCompleted(new Set()); setMaterialRequired(false); setMaterials([]);

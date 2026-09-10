@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
-import { listProjects, listSnags, createSnag, resolveSnag, listInteriorPeople, notifyInteriorAssignment } from "../../lib/interiorApi";
+import { listProjects, listSnags, createSnag, resolveSnag, listInteriorPeople, notifyInteriorAssignment, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Site Execution — the external system's `snags` table (real punch-list
 // data per project).
@@ -57,17 +57,29 @@ export default function InteriorSiteExecution({ lang }) {
     if (form.assignedTo) {
       notifyInteriorAssignment(form.assignedTo, "snag", data.id, `New snag assigned: ${data.issue}`, `નવી ખામી સોંપાયેલ: ${data.issue}`);
     }
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `New${form.major ? " MAJOR" : ""} snag logged: ${data.issue} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `નવી ખામી નોંધાઈ: ${data.issue}`,
+    );
     setForm({ issue: "", major: false, dueDate: "", assignedTo: "" });
     setShowForm(false);
     loadSnags();
   }
 
-  async function handleResolve(id) {
+  async function handleResolve(id, issue) {
     setBusyId(id);
     setActionError(false);
     const { error: err } = await resolveSnag(id);
     setBusyId(null);
     if (err) { setActionError(true); return; }
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Snag resolved: ${issue} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `ખામી ઉકેલાઈ: ${issue}`,
+    );
     loadSnags();
   }
 
@@ -147,7 +159,7 @@ export default function InteriorSiteExecution({ lang }) {
             <span className="sub">{r.assigned_to ? personName(r.assigned_to) : "—"}</span>
             {r.status === "COMPLETED"
               ? <span className="badge VERIFIED">{r.status}</span>
-              : <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => handleResolve(r.id)}>{t("resolveSnag", lang)}</button>}
+              : <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => handleResolve(r.id, r.issue)}>{t("resolveSnag", lang)}</button>}
           </div>
         ))}
       </div>

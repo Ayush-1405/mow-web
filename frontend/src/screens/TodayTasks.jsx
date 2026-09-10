@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof } from "../lib/api";
 import { t } from "../lib/i18n";
@@ -20,6 +20,8 @@ import { getMyInteriorProfile } from "../lib/interiorApi";
 // remains the real authorization boundary either way.
 export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focusedRef = useRef(null);
   const [tasks, setTasks] = useState([]);
   const [usersById, setUsersById] = useState({});
   const [directory, setDirectory] = useState([]);
@@ -111,6 +113,24 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [load]);
+
+  // Arriving here via a notification click (?focus=<task id>) or a
+  // Control Tower KPI tile — open that task's Details panel and scroll it
+  // into view. Tracks the last focus id actually handled (not just
+  // "ever ran") so clicking a SECOND, different task notification while
+  // this page is already open still re-focuses — the route doesn't
+  // remount between two clicks here, only re-renders — while a later
+  // realtime reload for the SAME focus id doesn't keep re-scrolling.
+  useEffect(() => {
+    const focusId = searchParams.get("focus");
+    if (!focusId || focusId === focusedRef.current) return;
+    if (!tasks.some((tsk) => tsk.id === focusId)) return;
+    focusedRef.current = focusId;
+    setDetailsFor(focusId);
+    requestAnimationFrame(() => {
+      document.getElementById(`task-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [tasks, searchParams]);
 
   async function runAction(rpcName, taskId, extraArgs = {}) {
     setBusyId(taskId);
@@ -232,10 +252,15 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         const iAmVerifier = task.verifier_id === profile.id;
         const canManage = profile.isManagement || profile.isDeptHead;
         const iCreatedIt = task.assigned_by === profile.id;
+        // staff_delete_task server-side also allows Management/Super Admin/
+        // Department Head to delete ANY task, not just their own creations
+        // — this mirrors that exactly (it's only the optimistic UI gate;
+        // the RPC re-checks regardless of what this computes).
+        const canDeleteTask = iCreatedIt || profile.isManagement || profile.isSuperAdmin || profile.isDeptHead;
         const busy = busyId === task.id;
 
         return (
-          <div className="task-card" key={task.id}>
+          <div className="task-card" id={`task-${task.id}`} key={task.id}>
             <div className="top-row">
               <div>
                 <div className="task-title">{task.title}</div>
@@ -325,7 +350,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               >
                 {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
               </button>
-              {iCreatedIt && (
+              {canDeleteTask && (
                 <button
                   className="btn btn-outline"
                   disabled={busy}

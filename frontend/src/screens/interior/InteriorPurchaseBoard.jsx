@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
-import { updateMaterialStatus } from "../../lib/interiorApi";
+import { updateMaterialStatus, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Purchase Board — md/MOOD-OF-WOOD-SYSTEM.md §6: five clickable status
 // cards over ALL running projects' project_materials rows, filtering the
@@ -53,9 +53,15 @@ export default function InteriorPurchaseBoard({ lang }) {
     || r.status === "Delayed",
   ), [rows, today, soon]);
 
-  async function changeStatus(id, status) {
+  async function changeStatus(id, status, row) {
     const { error: err } = await updateMaterialStatus("project_materials", id, status);
-    if (!err) load();
+    if (err) return;
+    notifyDeptLeadership(
+      "INTERIOR", "project", row.project_id,
+      `Purchase status: ${row.material} → ${status} — ${projectLabel(row.project_id)}`,
+      `ખરીદી સ્થિતિ: ${row.material} → ${status}`,
+    );
+    load();
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -103,7 +109,7 @@ export default function InteriorPurchaseBoard({ lang }) {
           <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", flexWrap: "wrap", gap: 6 }}>
             <span>{r.material} — {projectLabel(r.project_id)}</span>
             <span className="sub">{t("requiredByLabel", lang)}: {r.required_by || "—"}</span>
-            <select value={r.status} onChange={(e) => changeStatus(r.id, e.target.value)}>
+            <select value={r.status} onChange={(e) => changeStatus(r.id, e.target.value, r)}>
               {[...STATUSES, "Not Required"].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>

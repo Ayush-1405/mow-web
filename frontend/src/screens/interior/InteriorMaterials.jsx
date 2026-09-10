@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
-import { listProjects, listMaterials, listProjectMaterials, updateMaterialStatus, updateMaterialField } from "../../lib/interiorApi";
+import { listProjects, listMaterials, listProjectMaterials, updateMaterialStatus, updateMaterialField, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Material Requirements / Purchase Coordination — both read the external
 // system's `materials` + `project_materials` tables; Purchase Coordination
@@ -38,9 +38,16 @@ export default function InteriorMaterials({ lang, filterSource }) {
 
   useEffect(() => { loadMaterials(); }, [loadMaterials]);
 
-  async function updateStatus(table, id, status) {
+  async function updateStatus(table, id, status, material) {
     const { error: err } = await updateMaterialStatus(table, id, status);
-    if (!err) loadMaterials();
+    if (err) return;
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Material status: ${material} → ${status} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `સામગ્રી સ્થિતિ: ${material} → ${status}`,
+    );
+    loadMaterials();
   }
 
   async function toggleFlag(id, field, current) {
@@ -101,7 +108,7 @@ export default function InteriorMaterials({ lang, filterSource }) {
         {projectMaterials.map((m) => (
           <div key={m.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
             <span>{m.material} · {t("neededByLabel", lang)}: {m.required_by || "—"}</span>
-            <select value={m.status} onChange={(e) => updateStatus("project_materials", m.id, e.target.value)}>
+            <select value={m.status} onChange={(e) => updateStatus("project_materials", m.id, e.target.value, m.material)}>
               {["Pending to Order", "Ordered", "Received"].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>

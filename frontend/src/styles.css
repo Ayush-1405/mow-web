@@ -529,6 +529,10 @@ textarea { min-height: 84px; resize: vertical; }
 .notif-row.unread { background: var(--info-bg); border-radius: var(--radius-sm); }
 .notif-row .n-title { font-size: 13.5px; color: var(--ink); font-weight: 500; }
 .notif-row .n-time { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+.notif-row.clickable { cursor: pointer; }
+.notif-row.clickable:hover { background: var(--surface-2); }
+.notif-row.clickable.unread:hover { background: var(--accent-soft); }
+.notif-row.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .file-input-label {
   display: inline-flex;
@@ -948,16 +952,14 @@ textarea { min-height: 84px; resize: vertical; }
 @media (min-width: 600px) {
   .function-card-grid { grid-template-columns: repeat(3, 1fr); }
 }
-/* iPad landscape / small desktop (~900px+): cap each card's width instead
-   of letting auto-fill's 1fr tracks stretch into oversized, sparse-looking
-   tiles once the sidebar layout hands this grid a much wider column. */
+/* iPad landscape / desktop (~900px+): this grid always has a dozen-plus
+   cards (every department has 12-18 function cards), so unlike the
+   Control Tower's project grid (which can have as few as one or two
+   items) there's no risk of auto-fit stretching a sparse row into
+   oversized tiles — auto-fit fills the row edge-to-edge with equal-width
+   columns instead of leaving a hard-capped trailing gap on wide screens. */
 @media (min-width: 900px) {
-  .function-card-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 210px)); }
-}
-/* Large iPad Pro landscape / desktop (~1200px+): allow a genuinely wider
-   grid (more columns) rather than just more empty space to the right. */
-@media (min-width: 1200px) {
-  .function-card-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 220px)); }
+  .function-card-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 }
 
 /* ---------- Control tower department cards ---------- */

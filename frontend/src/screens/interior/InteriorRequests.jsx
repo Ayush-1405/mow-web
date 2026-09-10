@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
-import { listProjects, listRequests, createRequest, updateRequestStatus } from "../../lib/interiorApi";
+import { listProjects, listRequests, createRequest, updateRequestStatus, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Customer Requests & Complaints — the external system's `project_requests`
 // table, per project.
@@ -43,6 +43,12 @@ export default function InteriorRequests({ lang }) {
     const { error: err } = await createRequest({ projectId, requestType: form.request_type || "general", description: form.description, createdBy: profile?.id });
     setSaving(false);
     if (err) { setError(true); return; }
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `New customer request/complaint: ${form.description} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `નવી ગ્રાહક વિનંતી/ફરિયાદ: ${form.description}`,
+    );
     setForm({ request_type: "", description: "" });
     setShowForm(false);
     loadRequests();

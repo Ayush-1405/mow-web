@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
-import { listProjects, listAttachments, addAttachmentRecord, uploadAttachmentFile, getAttachmentUrl } from "../../lib/interiorApi";
+import { listProjects, listAttachments, addAttachmentRecord, uploadAttachmentFile, getAttachmentUrl, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Shared by the Quotation / Design / Drawings cards — each is just a
 // different `stage` filter over the external system's own `attachments`
@@ -54,6 +54,11 @@ export default function InteriorAttachments({ lang, stage, titleKey }) {
       : await addAttachmentRecord({ projectId, stage, title: form.title, fileName: form.fileName, note: form.note, uploadedBy: profile?.id });
     setSaving(false);
     if (err) { setError(true); return; }
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `${stage} file uploaded: ${form.title} — ${currentProject ? `${currentProject.project_code} (${currentProject.customer})` : ""}`,
+      `${stage} ફાઈલ અપલોડ થઈ: ${form.title}`,
+    );
     setForm({ title: "", fileName: "", note: "" });
     setFile(null);
     setShowForm(false);

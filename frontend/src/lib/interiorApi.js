@@ -74,8 +74,33 @@ export async function notifyInteriorAssignment(assigneeProfileId, entityType, en
   }
 }
 
+// Notifies every Management user plus the given department's Department
+// Head — e.g. so submitting a Daily Update reaches Interior leadership
+// without the submitter (often a plain PM/Designer/Execution person)
+// needing read access to anyone else's user_profiles row. Fire-and-forget,
+// same as notifyInteriorAssignment — a failed notification must never
+// block the save it follows.
+export async function notifyDeptLeadership(departmentCode, entityType, entityId, titleEn, titleGu) {
+  try {
+    await supabase.rpc("staff_notify_dept_leadership", {
+      p_department_code: departmentCode, p_entity_type: entityType, p_entity_id: entityId, p_title_en: titleEn, p_title_gu: titleGu,
+    });
+  } catch {
+    // intentional no-op — see comment above
+  }
+}
+
 export async function listProjects() {
   return supabase.from("projects").select("*").eq("archived", false).order("created_at", { ascending: false });
+}
+
+// Server-side gated: staff_delete_interior_project (SECURITY DEFINER)
+// re-checks Management/Super Admin/Interior Dept Head on its own — this
+// isn't just a UI-hidden button, a direct RPC call from anyone else is
+// rejected by the function itself. Soft-delete (archived = true), same
+// convention every project list query already filters on.
+export async function deleteProject(projectId) {
+  return supabase.rpc("staff_delete_interior_project", { p_project_id: projectId });
 }
 
 // project_members — the "extra team, beyond PM/designer/execution" list

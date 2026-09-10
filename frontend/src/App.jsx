@@ -427,6 +427,32 @@ export default function App() {
           </ProtectedRoute>
         </DeptShell>
       } />
+      {/* Router-addressable versions of the same TodayTasks/Bridges screens
+          already reachable from "/" via the legacy view toggle — added so
+          the Control Tower KPI tiles and a notification click can link
+          straight to a task/bridge instead of only being reachable through
+          the bottom-nav. staff_tasks/bridges RLS already scopes what each
+          caller sees (Management sees everything, a regular employee sees
+          only their own), so this needs no extra allow-check beyond being
+          logged in — same as the bottom-nav's own "Today's Tasks"/"Bridge"
+          buttons, which are open to every role today. */}
+      <Route path="/tasks" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <TodayTasks lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
+        </DeptShell>
+      } />
+      <Route path="/bridges" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <Bridges lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
+        </DeptShell>
+      } />
+      <Route path="/users" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <ProtectedRoute allowed={!!(profile.isDeptHead || profile.isManagement)} lang={lang}>
+            <UserCreation lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
+          </ProtectedRoute>
+        </DeptShell>
+      } />
       <Route path="/retail" element={deptPage("RETAIL")} />
       <Route path="/retail/leads" element={deptModulePage("RETAIL", <RetailLeads lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/quotations" element={deptModulePage("RETAIL", <RetailQuotations lang={lang} profile={profile} lookups={lookups} />)} />
@@ -454,7 +480,7 @@ export default function App() {
       <Route path="/interior-projects/purchase" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseBoard lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/tasks" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTasks lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/requests" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorRequests lang={lang} /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/timeline" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTimeline lang={lang} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/timeline" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTimeline lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/new" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorProjectCreate lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/communication" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorClientComm lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/payments" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPayments lang={lang} lookups={lookups} /></InteriorProfileGate>)} />

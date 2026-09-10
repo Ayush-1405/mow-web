@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
-import { listProjects, getHandover, setHandoverFlag, submitFeedback } from "../../lib/interiorApi";
+import { listProjects, getHandover, setHandoverFlag, submitFeedback, notifyDeptLeadership } from "../../lib/interiorApi";
 
 const HANDOVER_FLAGS = [
   ["qc_complete", "qcCompleteLabel"],
@@ -51,12 +51,20 @@ export default function InteriorCompletion({ lang }) {
 
   useEffect(() => { loadHandover(); }, [loadHandover]);
 
-  async function toggleFlag(field) {
+  async function toggleFlag(field, labelKey) {
     setBusyField(field);
-    const { error: err } = await setHandoverFlag(projectId, field, !handover?.[field]);
+    const nextValue = !handover?.[field];
+    const { error: err } = await setHandoverFlag(projectId, field, nextValue);
     setBusyField(null);
     setConfirmField(null);
-    if (!err) loadHandover();
+    if (err) return;
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `${t(labelKey, "en")}: ${nextValue ? "done" : "undone"} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `${t(labelKey, "gu")}: ${nextValue ? "પૂર્ણ" : "અપૂર્ણ"}`,
+    );
+    loadHandover();
   }
 
   async function handleFeedback(e) {
@@ -64,7 +72,14 @@ export default function InteriorCompletion({ lang }) {
     setSavingFeedback(true);
     const { error: err } = await submitFeedback({ project_id: projectId, ...feedback });
     setSavingFeedback(false);
-    if (!err) setFeedbackSent(true);
+    if (err) return;
+    const project = projects.find((p) => p.id === projectId);
+    notifyDeptLeadership(
+      "INTERIOR", "project", projectId,
+      `Customer feedback submitted (overall ${feedback.overall_score}/10) — ${project ? `${project.project_code} (${project.customer})` : ""}`,
+      `ગ્રાહક પ્રતિસાદ સબમિટ થયો (એકંદરે ${feedback.overall_score}/10)`,
+    );
+    setFeedbackSent(true);
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -103,7 +118,7 @@ export default function InteriorCompletion({ lang }) {
             {confirmField === field ? (
               <span className="btn-row" style={{ marginTop: 0 }}>
                 <span className="sub">{t("areYouSure", lang)}</span>
-                <button className="btn btn-primary" disabled={busyField === field} onClick={() => toggleFlag(field)}>{t("confirm", lang)}</button>
+                <button className="btn btn-primary" disabled={busyField === field} onClick={() => toggleFlag(field, labelKey)}>{t("confirm", lang)}</button>
                 <button className="btn btn-outline" onClick={() => setConfirmField(null)}>{t("cancel", lang)}</button>
               </span>
             ) : (
