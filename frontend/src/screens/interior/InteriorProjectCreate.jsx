@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
+import { addProjectMember, notifyInteriorAssignment } from "../../lib/interiorApi";
 
 // New Project — md/MOOD-OF-WOOD-SYSTEM.md §2: "Every project has one PM,
 // one designer, one deadline, one stage, one next step. The new-project
@@ -22,6 +23,7 @@ export default function InteriorProjectCreate({ lang }) {
     customer: "", location: "", project_value: "", project_manager_id: "", designer_id: "",
     due_date: "", next_action: "",
   });
+  const [extraMembers, setExtraMembers] = useState([]);
 
   const canCreate = profile && ["director", "head", "pm"].includes(profile.role);
 
@@ -65,8 +67,19 @@ export default function InteriorProjectCreate({ lang }) {
     }).select().single();
     setSaving(false);
     if (err) { setError(true); return; }
+
+    // PM = project owner with full access to this project; designer plus
+    // any hand-picked extras join project_members so InteriorTimeline's
+    // team panel and InteriorTasks' assignee picker both see them from the
+    // start. Every one of them gets an assignment notification.
+    const teamIds = Array.from(new Set([form.designer_id, ...extraMembers].filter(Boolean)));
+    await Promise.all(teamIds.map((pid) => addProjectMember(data.id, pid)));
+    const notifyIds = Array.from(new Set([form.project_manager_id, ...teamIds]));
+    notifyIds.forEach((pid) => {
+      notifyInteriorAssignment(pid, "project", data.id, `New project assigned: ${data.customer} (${data.project_code})`, `નવો પ્રોજેક્ટ સોંપાયેલ: ${data.customer} (${data.project_code})`);
+    });
+
     navigate("/interior-projects/timeline");
-    void data;
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -113,7 +126,7 @@ export default function InteriorProjectCreate({ lang }) {
             <input type="number" min="0" value={form.project_value} onChange={(e) => setForm((f) => ({ ...f, project_value: e.target.value }))} />
           </div>
           <div className="field">
-            <label>{t("interiorRole_pm", lang)} *</label>
+            <label>{t("interiorRole_pm", lang)} ({t("projectOwnerBadge", lang)}) *</label>
             <select value={form.project_manager_id} onChange={(e) => setForm((f) => ({ ...f, project_manager_id: e.target.value }))} required>
               <option value="" disabled>—</option>
               {pms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -133,6 +146,23 @@ export default function InteriorProjectCreate({ lang }) {
           <div className="field full">
             <label>{t("nextActionLabel", lang)} *</label>
             <input value={form.next_action} onChange={(e) => setForm((f) => ({ ...f, next_action: e.target.value }))} required />
+          </div>
+          <div className="field full">
+            <label>{t("extraTeamMembersLabel", lang)}</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {people
+                .filter((p) => p.id !== form.project_manager_id && p.id !== form.designer_id)
+                .map((p) => (
+                  <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={extraMembers.includes(p.id)}
+                      onChange={(e) => setExtraMembers((cur) => (e.target.checked ? [...cur, p.id] : cur.filter((id) => id !== p.id)))}
+                    />
+                    <span>{p.name} <span className="sub">({p.role})</span></span>
+                  </label>
+                ))}
+            </div>
           </div>
           <div className="field full">
             <button className="btn btn-primary" type="submit" disabled={saving}>{t("save", lang)}</button>

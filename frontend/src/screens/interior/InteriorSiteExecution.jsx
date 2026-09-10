@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
-import { listProjects, listSnags, createSnag, resolveSnag, listInteriorPeople } from "../../lib/interiorApi";
+import { listProjects, listSnags, createSnag, resolveSnag, listInteriorPeople, notifyInteriorAssignment } from "../../lib/interiorApi";
 
 // Site Execution — the external system's `snags` table (real punch-list
 // data per project).
@@ -50,9 +50,12 @@ export default function InteriorSiteExecution({ lang }) {
     e.preventDefault();
     if (!projectId || !form.issue) return;
     setSaving(true);
-    const { error: err } = await createSnag({ projectId, issue: form.issue, major: form.major, dueDate: form.dueDate, assignedTo: form.assignedTo });
+    const { data, error: err } = await createSnag({ projectId, issue: form.issue, major: form.major, dueDate: form.dueDate, assignedTo: form.assignedTo });
     setSaving(false);
     if (err) { setError(true); return; }
+    if (form.assignedTo) {
+      notifyInteriorAssignment(form.assignedTo, "snag", data.id, `New snag assigned: ${data.issue}`, `નવી ખામી સોંપાયેલ: ${data.issue}`);
+    }
     setForm({ issue: "", major: false, dueDate: "", assignedTo: "" });
     setShowForm(false);
     loadSnags();

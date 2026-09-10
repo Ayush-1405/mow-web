@@ -523,6 +523,20 @@ export const STRINGS = {
   inactiveLabel: { en: "Inactive", gu: "નિષ્ક્રિય" },
   relatedOrderLabel: { en: "Related Order", gu: "સંબંધિત ઓર્ડર" },
   assignedToMeFilter: { en: "Assigned to me only", gu: "ફક્ત મને સોંપાયેલ" },
+  myAssignedItems: { en: "Assigned to You", gu: "તમને સોંપાયેલ" },
+  retailLeadItem: { en: "Lead", gu: "લીડ" },
+  retailComplaintItem: { en: "Complaint", gu: "ફરિયાદ" },
+  retailDisplayItem: { en: "Display Task", gu: "ડિસ્પ્લે કાર્ય" },
+  interiorSnagItem: { en: "Snag", gu: "ખામી" },
+  interiorTaskItem: { en: "Project Task", gu: "પ્રોજેક્ટ કાર્ય" },
+  goToItem: { en: "Open", gu: "ખોલો" },
+  projectTeamTitle: { en: "Project Team (Full Access)", gu: "પ્રોજેક્ટ ટીમ (સંપૂર્ણ ઍક્સેસ)" },
+  projectOwnerBadge: { en: "Owner (PM)", gu: "માલિક (PM)" },
+  addTeamMemberLabel: { en: "Add Team Member", gu: "ટીમ સભ્ય ઉમેરો" },
+  removeMember: { en: "Remove", gu: "દૂર કરો" },
+  manageTasksAction: { en: "Manage Tasks", gu: "કાર્યો સંચાલિત કરો" },
+  taskAssignRestricted: { en: "Only the project owner, execution lead, team members, Head, or Director can assign tasks on this project.", gu: "ફક્ત પ્રોજેક્ટ માલિક, એક્ઝિક્યુશન લીડ, ટીમ સભ્યો, હેડ અથવા ડિરેક્ટર આ પ્રોજેક્ટ પર કાર્યો સોંપી શકે છે." },
+  extraTeamMembersLabel: { en: "Additional Team Members (optional)", gu: "વધારાના ટીમ સભ્યો (વૈકલ્પિક)" },
 };
 
 export function t(key, lang) {

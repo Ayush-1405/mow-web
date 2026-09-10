@@ -36,12 +36,15 @@ export default function RetailDisplay({ lang, lookups }) {
     e.preventDefault();
     if (!form.title || !retailDept) return;
     setSaving(true);
-    const { error: err } = await supabase.from("retail_vm_tasks").insert({
+    const { data, error: err } = await supabase.from("retail_vm_tasks").insert({
       department_id: retailDept.id, title: form.title, description: form.description || null, due_date: form.due_date || null,
       assigned_to: form.assigned_to || null,
-    });
+    }).select().single();
     setSaving(false);
     if (err) { setError(true); return; }
+    if (form.assigned_to) {
+      notifyAssignment(form.assigned_to, "retail_vm_task", data.id, `New display task assigned: ${data.title}`, `નવું ડિસ્પ્લે કાર્ય સોંપાયેલ: ${data.title}`);
+    }
     setForm({ title: "", description: "", due_date: "", assigned_to: "" });
     setShowForm(false);
     load();
@@ -52,9 +55,12 @@ export default function RetailDisplay({ lang, lookups }) {
     if (!err) load();
   }
 
-  async function updateAssignee(id, assignedTo) {
+  async function updateAssignee(id, assignedTo, title) {
     const { error: err } = await supabase.from("retail_vm_tasks").update({ assigned_to: assignedTo || null }).eq("id", id);
-    if (!err) load();
+    if (!err) {
+      if (assignedTo) notifyAssignment(assignedTo, "retail_vm_task", id, `Display task assigned to you: ${title}`, `તમને ડિસ્પ્લે કાર્ય સોંપાયેલ: ${title}`);
+      load();
+    }
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -112,7 +118,7 @@ export default function RetailDisplay({ lang, lookups }) {
               <div style={{ fontWeight: 700 }}>{r.title}</div>
               <div className="sub">{r.due_date || "—"} {r.assigned_to ? `· ${memberName(r.assigned_to)}` : ""}</div>
             </div>
-            <select value={r.assigned_to || ""} onChange={(e) => updateAssignee(r.id, e.target.value)} title={t("assignedToLabel", lang)}>
+            <select value={r.assigned_to || ""} onChange={(e) => updateAssignee(r.id, e.target.value, r.title)} title={t("assignedToLabel", lang)}>
               <option value="">{t("assignedToLabel", lang)}: —</option>
               {members.map((m) => <option key={m.id} value={m.id}>{memberName(m.id)}</option>)}
             </select>

@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof } from "../lib/api";
 import { t } from "../lib/i18n";
 import { TaskTimeline, ReassignPanel, AttachmentsList } from "./TaskDetail.jsx";
+import { getMyInteriorProfile } from "../lib/interiorApi";
 
 // Today's Tasks. Reads public.staff_tasks through the normal RLS-scoped
 // client (staff_tasks_select_scoped decides which rows come back — this
@@ -17,6 +19,7 @@ import { TaskTimeline, ReassignPanel, AttachmentsList } from "./TaskDetail.jsx";
 // column here would only hide/show a button incorrectly — the RPC itself
 // remains the real authorization boundary either way.
 export default function TodayTasks({ lang, profile, lookups, showToast }) {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState([]);
   const [usersById, setUsersById] = useState({});
   const [directory, setDirectory] = useState([]);
@@ -27,6 +30,43 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [proofFor, setProofFor] = useState(null);
   const [detailsFor, setDetailsFor] = useState(null);
   const [reassignFor, setReassignFor] = useState(null);
+  const [assignedItems, setAssignedItems] = useState([]);
+
+  // Retail leads/complaints/VM-tasks and Interior snags/tasks live in
+  // separate tables from staff_tasks (different lifecycle, no shared
+  // status enum), so they're fetched and rendered as their own list here
+  // rather than merged into the staff_tasks cards above. Scoped by the
+  // caller's own department — no point querying a module the user has no
+  // department match for.
+  const loadAssignedItems = useCallback(async () => {
+    const deptCode = lookups.departments.find((d) => d.id === profile.department_id)?.code;
+    const items = [];
+
+    if (deptCode === "RETAIL") {
+      const [leadsRes, complaintsRes, vmRes] = await Promise.all([
+        supabase.from("retail_leads").select("id, customer_name, status").eq("assigned_to", profile.id).eq("is_active", true).not("status", "in", "(CONVERTED,LOST)"),
+        supabase.from("retail_complaints").select("id, customer_name, status").eq("assigned_to", profile.id).eq("is_active", true).not("status", "in", "(RESOLVED,CLOSED)"),
+        supabase.from("retail_vm_tasks").select("id, title, status").eq("assigned_to", profile.id).eq("is_active", true).neq("status", "DONE"),
+      ]);
+      (leadsRes.data || []).forEach((r) => items.push({ key: `lead-${r.id}`, typeKey: "retailLeadItem", label: r.customer_name, status: r.status, route: "/retail/leads" }));
+      (complaintsRes.data || []).forEach((r) => items.push({ key: `complaint-${r.id}`, typeKey: "retailComplaintItem", label: r.customer_name, status: r.status, route: "/retail/complaints" }));
+      (vmRes.data || []).forEach((r) => items.push({ key: `vm-${r.id}`, typeKey: "retailDisplayItem", label: r.title, status: r.status, route: "/retail/display" }));
+    }
+
+    if (deptCode === "INTERIOR") {
+      const { data: myInteriorProfile } = await getMyInteriorProfile();
+      if (myInteriorProfile?.id) {
+        const [snagsRes, tasksRes] = await Promise.all([
+          supabase.from("snags").select("id, issue, status, projects(project_code)").eq("assigned_to", myInteriorProfile.id).neq("status", "RESOLVED"),
+          supabase.from("tasks").select("id, title, status, projects(project_code)").eq("assigned_to", myInteriorProfile.id).neq("status", "DONE"),
+        ]);
+        (snagsRes.data || []).forEach((r) => items.push({ key: `snag-${r.id}`, typeKey: "interiorSnagItem", label: `${r.projects?.project_code ? r.projects.project_code + " — " : ""}${r.issue}`, status: r.status, route: "/interior-projects/site-execution" }));
+        (tasksRes.data || []).forEach((r) => items.push({ key: `itask-${r.id}`, typeKey: "interiorTaskItem", label: `${r.projects?.project_code ? r.projects.project_code + " — " : ""}${r.title}`, status: r.status, route: "/interior-projects/timeline" }));
+      }
+    }
+
+    setAssignedItems(items);
+  }, [lookups.departments, profile.department_id, profile.id]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,7 +98,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   useEffect(() => {
     load();
     loadDirectory();
-  }, [load, loadDirectory]);
+    loadAssignedItems();
+  }, [load, loadDirectory, loadAssignedItems]);
 
   // Live updates: any INSERT/UPDATE/DELETE on staff_tasks reloads the list.
   // RLS still decides which rows this subscriber actually receives.
@@ -148,8 +189,24 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         {t("refresh", lang)}
       </button>
 
+      {assignedItems.length > 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="section-title" style={{ fontSize: 15 }}>{t("myAssignedItems", lang)}</div>
+          {assignedItems.map((item) => (
+            <div key={item.key} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
+              <span>
+                <span className="badge ASSIGNED" style={{ marginRight: 8 }}>{t(item.typeKey, lang)}</span>
+                {item.label}
+              </span>
+              <span className="sub">{item.status}</span>
+              <button className="btn btn-outline" onClick={() => navigate(item.route)}>{t("goToItem", lang)}</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {loading && tasks.length === 0 && <div className="msg info">…</div>}
-      {!loading && tasks.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
+      {!loading && tasks.length === 0 && assignedItems.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
 
       {tasks.map((task) => {
         const status = statusOf(task.status_id);

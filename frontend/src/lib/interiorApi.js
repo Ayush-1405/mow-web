@@ -54,8 +54,60 @@ export async function listInteriorPeople() {
   return supabase.from("profiles").select("id, name, role").eq("active", true).order("name");
 }
 
+// Notifies an Interior assignee. profiles.id (used for assigned_to on
+// snags/tasks) is NOT auth.uid() — resolve profiles.auth_id first (the
+// actual Supabase auth identity, set by interior_ensure_profile()) and use
+// THAT as the recipient for staff_notify_assignment, which expects a
+// user_profiles.id/auth.uid()-shaped id. No-ops if the assignee has no
+// auth_id yet (never provisioned a staff-pilot login) — same fire-and-
+// forget shape as the Retail notifier, never blocks the save it follows.
+export async function notifyInteriorAssignment(assigneeProfileId, entityType, entityId, titleEn, titleGu) {
+  if (!assigneeProfileId) return;
+  try {
+    const { data } = await supabase.from("profiles").select("auth_id").eq("id", assigneeProfileId).maybeSingle();
+    if (!data?.auth_id) return;
+    await supabase.rpc("staff_notify_assignment", {
+      p_recipient_id: data.auth_id, p_entity_type: entityType, p_entity_id: entityId, p_title_en: titleEn, p_title_gu: titleGu,
+    });
+  } catch {
+    // intentional no-op — see comment above
+  }
+}
+
 export async function listProjects() {
   return supabase.from("projects").select("*").eq("archived", false).order("created_at", { ascending: false });
+}
+
+// project_members — the "extra team, beyond PM/designer/execution" list
+// for a project. No FK to profiles in the schema (only to projects), so
+// callers join against listInteriorPeople()'s roster client-side rather
+// than embedding — an embed here would 400 (PostgREST has no relationship
+// to walk).
+export async function listProjectMembers(projectId) {
+  return supabase.from("project_members").select("id, profile_id, assigned_at").eq("project_id", projectId);
+}
+
+export async function addProjectMember(projectId, profileId) {
+  const { data, error } = await supabase.from("project_members").insert({ project_id: projectId, profile_id: profileId }).select().single();
+  if (!error) await logAudit("project_members", data.id, "add_member", { profile_id: profileId });
+  return { data, error };
+}
+
+export async function removeProjectMember(projectId, profileId) {
+  const { error } = await supabase.from("project_members").delete().eq("project_id", projectId).eq("profile_id", profileId);
+  if (!error) await logAudit("project_members", projectId, "remove_member", { profile_id: profileId });
+  return { error };
+}
+
+// Everyone with "full access" to a project: PM (owner), designer,
+// execution, plus anyone added to project_members. This is the set a
+// project owner can delegate tasks to, and the set InteriorTimeline shows
+// as the project's team.
+export async function listProjectTeamIds(project) {
+  const ids = new Set([project.project_manager_id, project.designer_id, project.execution_id].filter(Boolean));
+  const { data } = await listProjectMembers(project.id);
+  (data || []).forEach((m) => ids.add(m.profile_id));
+  return Array.from(ids);
 }
 
 // last_update is the doc's own "computed on save" field — every project

@@ -2,22 +2,28 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { formatCurrency } from "../../lib/retailModules";
+import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import {
   listProjects, updateProjectField, updateProjectDetails, listProjectChanges,
   setFreezeCheck, freezeProject, hasOpenMajorSnag,
+  listInteriorPeople, listProjectMembers, addProjectMember, removeProjectMember, notifyInteriorAssignment,
 } from "../../lib/interiorApi";
 
 const emptyDetails = { location: "", start_date: "", next_update: "", on_time: null, next_action: "", remarks: "" };
 
-// md/MOOD-OF-WOOD-SYSTEM.md §2 — the 13-stage workflow, verbatim from the
-// doc, plus the rules the system refuses to let you skip:
+// The live `projects.stage` CHECK constraint (projects_stage_check) is the
+// authoritative list — 11 stages, not the doc's 13. "Deal Closed" and
+// "Kick-off" were never valid values in the actually-deployed system (the
+// doc's §2 describes an aspirational/earlier version); using anything
+// outside this exact list makes the database itself reject the write.
+// Same skip-prevention rules still apply:
 //   - No design approval -> no design freeze (4-point checklist below)
 //   - No design freeze -> no execution release
 //   - Open major snag -> no project closure
 //   - Pending change request -> no stage advance
 const STAGES = [
-  "Quotation", "Deal Closed", "Kick-off", "Design", "Client Approval",
-  "Design Freeze", "Execution Planning", "Purchase/Production", "Execution",
+  "Quotation", "Design", "Client Approval", "Design Freeze",
+  "Execution Planning", "Purchase/Production", "Execution",
   "QC", "Snagging", "Handover", "Completed",
 ];
 const FREEZE_FIELDS = [
@@ -27,6 +33,7 @@ const FREEZE_FIELDS = [
 
 export default function InteriorTimeline({ lang }) {
   const navigate = useNavigate();
+  const myProfile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -35,18 +42,33 @@ export default function InteriorTimeline({ lang }) {
   const [saving, setSaving] = useState(false);
   const [stageMsg, setStageMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [people, setPeople] = useState([]);
+  const [team, setTeam] = useState([]);
+  const [newMemberId, setNewMemberId] = useState("");
+  const [teamBusy, setTeamBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const { data, error: err } = await listProjects();
+    const [{ data, error: err }, peopleRes] = await Promise.all([listProjects(), listInteriorPeople()]);
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
+    setPeople(peopleRes.data || []);
     if (data?.length) setProjectId((cur) => cur || data[0].id);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadTeam = useCallback(async () => {
+    if (!projectId) { setTeam([]); return; }
+    const { data } = await listProjectMembers(projectId);
+    setTeam(data || []);
+  }, [projectId]);
+
+  useEffect(() => { loadTeam(); }, [loadTeam]);
+
+  const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
 
   const project = projects.find((p) => p.id === projectId);
   useEffect(() => {
@@ -135,6 +157,34 @@ export default function InteriorTimeline({ lang }) {
 
   const canFreezeNow = project && FREEZE_FIELDS.every(([f]) => project[f]);
 
+  // "Full access" to a project = its owner (PM), designer, execution lead,
+  // or anyone added to project_members; Head/Director manage every
+  // project's team regardless. Same set InteriorTasks uses to decide who
+  // may delegate tasks on this project.
+  const isOwner = !!(project && myProfile?.id && project.project_manager_id === myProfile.id);
+  const canManageTeam = isOwner || myProfile?.role === "head" || myProfile?.role === "director";
+  const teamMemberIds = project ? Array.from(new Set([project.designer_id, project.execution_id, ...team.map((m) => m.profile_id)].filter(Boolean))) : [];
+  const addableMembers = people.filter((p) => p.id !== project?.project_manager_id && !teamMemberIds.includes(p.id));
+
+  async function handleAddMember() {
+    if (!newMemberId || !projectId) return;
+    setTeamBusy(true);
+    const { error: err } = await addProjectMember(projectId, newMemberId);
+    setTeamBusy(false);
+    if (!err) {
+      notifyInteriorAssignment(newMemberId, "project", projectId, `Added to project team: ${project.customer} (${project.project_code})`, `પ્રોજેક્ટ ટીમમાં ઉમેરાયા: ${project.customer} (${project.project_code})`);
+      setNewMemberId("");
+      loadTeam();
+    }
+  }
+
+  async function handleRemoveMember(profileId) {
+    setTeamBusy(true);
+    const { error: err } = await removeProjectMember(projectId, profileId);
+    setTeamBusy(false);
+    if (!err) loadTeam();
+  }
+
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
   if (error) {
     return (
@@ -163,11 +213,59 @@ export default function InteriorTimeline({ lang }) {
               {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
             </select>
           </div>
-          <button className="btn btn-outline" onClick={() => navigate("/interior-projects/new")}>
-            {t("addNewProject", lang)}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-outline" onClick={() => navigate("/interior-projects/tasks")} disabled={!projectId}>
+              {t("manageTasksAction", lang)}
+            </button>
+            <button className="btn btn-outline" onClick={() => navigate("/interior-projects/new")}>
+              {t("addNewProject", lang)}
+            </button>
+          </div>
         </div>
       </div>
+
+      {project && (
+        <div className="card">
+          <h2>{t("projectTeamTitle", lang)}</h2>
+          <div className="task-meta" style={{ marginTop: 0, padding: "4px 0" }}>
+            <span className="badge VERIFIED">{t("projectOwnerBadge", lang)}</span>
+            <span>{personName(project.project_manager_id)}</span>
+          </div>
+          {project.designer_id && (
+            <div className="task-meta" style={{ padding: "4px 0" }}>
+              <span className="badge ASSIGNED">{t("interiorRole_designer", lang)}</span>
+              <span>{personName(project.designer_id)}</span>
+            </div>
+          )}
+          {project.execution_id && (
+            <div className="task-meta" style={{ padding: "4px 0" }}>
+              <span className="badge ASSIGNED">{t("interiorRole_execution", lang)}</span>
+              <span>{personName(project.execution_id)}</span>
+            </div>
+          )}
+          {team.map((m) => (
+            <div key={m.id} className="task-meta" style={{ justifyContent: "space-between", padding: "4px 0" }}>
+              <span>{personName(m.profile_id)}</span>
+              {canManageTeam && (
+                <button className="btn btn-outline" disabled={teamBusy} onClick={() => handleRemoveMember(m.profile_id)}>{t("removeMember", lang)}</button>
+              )}
+            </div>
+          ))}
+          {canManageTeam && (
+            <div className="field-action-row" style={{ marginTop: 10 }}>
+              <div className="field">
+                <label>{t("addTeamMemberLabel", lang)}</label>
+                <select value={newMemberId} onChange={(e) => setNewMemberId(e.target.value)}>
+                  <option value="">—</option>
+                  {addableMembers.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.role})</option>)}
+                </select>
+              </div>
+              <button className="btn btn-primary" disabled={teamBusy || !newMemberId} onClick={handleAddMember}>{t("addTeamMemberLabel", lang)}</button>
+            </div>
+          )}
+          {!canManageTeam && <div className="msg info" style={{ marginTop: 10 }}>{t("taskAssignRestricted", lang)}</div>}
+        </div>
+      )}
 
       {project && (
         <div className="dept-meta-grid">
