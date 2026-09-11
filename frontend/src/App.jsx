@@ -502,6 +502,7 @@ export default function App() {
           <div className="sub">{profile.full_name} · {profile.roles?.[lang === "gu" ? "name_gu" : "name_en"] || profile.roleCode}</div>
         </div>
         <div className="header-actions">
+          <button className="icon-btn" onClick={() => window.location.reload()} aria-label={t("refresh", lang)} title={t("refresh", lang)}>🔄</button>
           <button className="icon-btn" onClick={() => setLang(lang === "en" ? "gu" : "en")}>{lang === "en" ? "ગુજરાતી" : "EN"}</button>
           {myDepartmentRoute && (
             <button className="icon-btn" onClick={() => navigate(myDepartmentRoute)}>

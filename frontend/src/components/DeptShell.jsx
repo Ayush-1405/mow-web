@@ -17,6 +17,7 @@ export default function DeptShell({ lang, items, managementLinks, onBackToTasks,
             <h1>Mood of Wood</h1>
           </div>
           <div className="header-actions">
+            <button className="icon-btn" onClick={() => window.location.reload()} aria-label={t("refresh", lang)} title={t("refresh", lang)}>🔄</button>
             <button className="icon-btn" onClick={onBackToTasks}>⬅ {t("backToTasks", lang)}</button>
             <button className="icon-btn" onClick={onLogout}>{t("logout", lang)}</button>
           </div>
