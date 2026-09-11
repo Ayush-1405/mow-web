@@ -27,3 +27,6 @@ verify_jwt = true
 
 [functions.staff-first-login-ui]
 verify_jwt = false
+
+[functions.staff-reset-password]
+verify_jwt = true

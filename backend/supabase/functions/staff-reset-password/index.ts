@@ -86,40 +86,18 @@ Deno.serve(async (req) => {
     return errorResponse(500, MSG.serverError, origin);
   }
 
-  // ---- Force the target to change this temporary password on next login,
-  // same as a freshly created account. ----
-  const { data: targetProfile, error: flagError } = await admin
-    .from("user_profiles")
-    .update({ must_change_password: true })
-    .eq("id", targetUserId)
-    .select("department_id")
-    .maybeSingle();
-
-  if (flagError) {
-    console.error("staff-reset-password: must_change_password update failed:", flagError.message);
-    return errorResponse(500, MSG.serverError, origin);
-  }
-
-  // ---- Trusted audit entry. staff_write_audit() itself is EXECUTE-granted
-  // only to `postgres` — this Edge Function instead inserts directly with
-  // the service-role client, the same way staff-create-user's own
-  // CREATE_USER audit row is written; performed_by is always the
-  // server-verified caller id, never anything from the request body. ----
-  const { error: auditError } = await admin.from("staff_audit_log").insert({
-    entity_type: "user_profile",
-    entity_id: targetUserId,
-    action: "PASSWORD_RESET",
-    old_value: null,
-    new_value: null,
-    department_id: targetProfile?.department_id ?? null,
-    performed_by: verifiedUser.id,
-  });
-
-  if (auditError) {
+  // ---- Force the target to change this temporary password on next login
+  // (same as a freshly created account), and write the audit row -- both
+  // done inside staff_mark_password_reset(), a SECURITY DEFINER RPC
+  // EXECUTE-granted only to service_role (service_role itself has no
+  // direct UPDATE grant on user_profiles, same as every other
+  // password/profile mutation in this codebase). ----
+  const { error: markError } = await admin.rpc("staff_mark_password_reset", { p_user_id: targetUserId });
+  if (markError) {
     // The Auth password itself already changed successfully at this
     // point — log and continue rather than pretending the reset didn't
     // happen.
-    console.error("staff-reset-password: staff_audit_log insert failed:", auditError.message);
+    console.error("staff-reset-password: staff_mark_password_reset failed:", markError.message);
   }
 
   return okResponse(
