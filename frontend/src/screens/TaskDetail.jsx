@@ -60,7 +60,7 @@ export function TaskTimeline({ task, usersById, lang }) {
 // attachment/staff-file-url actually accept (mirrors MIME_WHITELIST in the
 // staff-file-url Edge Function) — server-side validation is still the real
 // enforcement boundary; this only decides what the client attempts.
-function detectFileType(mimeType) {
+export function detectFileType(mimeType) {
   if (["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(mimeType)) return "image";
   if (mimeType === "application/pdf") return "pdf";
   if (["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(mimeType)) return "word";

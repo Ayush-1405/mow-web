@@ -101,6 +101,8 @@ export const STRINGS = {
   markRead: { en: "Mark read", gu: "વાંચેલું ચિહ્નિત કરો" },
   noNotifications: { en: "No notifications.", gu: "કોઈ સૂચનાઓ નથી." },
   attachProof: { en: "Attach Photo Proof", gu: "ફોટો પુરાવો જોડો" },
+  attachDocument: { en: "Attach Document", gu: "દસ્તાવેજ જોડો" },
+  customerConfirmationLabel: { en: "Customer Confirmation", gu: "ગ્રાહક પુષ્ટિ" },
   uploading: { en: "Uploading…", gu: "અપલોડ થઈ રહ્યું છે…" },
   viewFile: { en: "View File", gu: "ફાઇલ જુઓ" },
   overdue: { en: "Overdue", gu: "મુદત વીતી ગઈ" },

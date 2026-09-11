@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { uploadTaskProof } from "../lib/api";
+import { uploadTaskProof, resolveMimeType } from "../lib/api";
 import { t } from "../lib/i18n";
-import { TaskTimeline, ReassignPanel, AttachmentsList } from "./TaskDetail.jsx";
+import { TaskTimeline, ReassignPanel, AttachmentsList, detectFileType } from "./TaskDetail.jsx";
 import { getMyInteriorProfile } from "../lib/interiorApi";
+import VoiceRecorder from "./VoiceRecorder.jsx";
 
 // Today's Tasks. Reads public.staff_tasks through the normal RLS-scoped
 // client (staff_tasks_select_scoped decides which rows come back — this
@@ -73,6 +74,9 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    // requirement_text/quantity now live directly on staff_tasks (every
+    // task, not just Bridges — see mvp_pilot_task_requirement_quantity_
+    // v2_2z.sql), so a plain select("*") picks them up like any other field.
     const { data, error } = await supabase
       .from("staff_tasks")
       .select("*")
@@ -163,18 +167,46 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
   }
 
-  async function completeWithProof(task, file) {
+  // Matches exactly what staff_validate_task_transition's trigger checks
+  // for each proof_types.code before it allows COMPLETED — the whole
+  // point of this rewrite is that the upload actually satisfies the same
+  // requirement the DB is about to enforce, instead of always guessing
+  // "image" regardless of what the task actually asked for.
+  async function completeWithProof(task, proofTypeCode, file, confirmationText, voiceDurationSeconds) {
     setBusyId(task.id);
     try {
-      if (file) {
-        // "image" — matches the Edge Function's MIME_WHITELIST key exactly
-        // (staff-file-url/_shared/validation.ts). "photo" isn't a
-        // recognized category there, so every completion-proof upload
-        // through this path was unconditionally rejected as "file type
-        // not allowed" regardless of the actual file or device.
+      if (proofTypeCode === "photo" || proofTypeCode === "barcode") {
+        if (!file) throw new Error("A photo is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે ફોટો જરૂરી છે.");
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "image" });
+      } else if (proofTypeCode === "document") {
+        if (!file) throw new Error("A document (PDF/Word/Excel) is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે દસ્તાવેજ જરૂરી છે.");
+        const detected = detectFileType(resolveMimeType(file));
+        if (!detected || detected === "image") {
+          throw new Error("Please attach a PDF, Word, or Excel file — not a photo. / કૃપા કરીને PDF, Word અથવા Excel ફાઇલ જોડો — ફોટો નહીં.");
+        }
+        await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: detected });
+      } else if (proofTypeCode === "voice") {
+        if (!file) throw new Error("A voice note is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે વોઇસ નોંધ જરૂરી છે.");
+        await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "voice", durationSeconds: voiceDurationSeconds });
+      } else if (proofTypeCode === "customer_confirmation") {
+        if (!confirmationText?.trim() && !file) {
+          throw new Error("Enter the customer's confirmation, or attach evidence. / ગ્રાહકની પુષ્ટિ દાખલ કરો, અથવા પુરાવો જોડો.");
+        }
+        if (file) {
+          const detected = detectFileType(resolveMimeType(file)) || "image";
+          await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: detected });
+        }
+      } else if (proofTypeCode !== "none") {
+        // Covers any proof_type_id the active lookup no longer recognizes
+        // — the DB trigger would reject this transition unconditionally
+        // regardless of what's uploaded, so don't even try.
+        throw new Error("This task's required proof type isn't supported in this pilot. Ask whoever created it to change the proof type. / આ કાર્યનો જરૂરી પુરાવો પ્રકાર આ પાયલોટમાં સમર્થિત નથી.");
       }
-      const { error } = await supabase.rpc("staff_complete_task", { p_task_id: task.id });
+
+      const { error } = await supabase.rpc("staff_complete_task", {
+        p_task_id: task.id,
+        p_customer_confirmation_text: proofTypeCode === "customer_confirmation" ? (confirmationText?.trim() || null) : null,
+      });
       if (error) throw error;
       setProofFor(null);
       showToast("success", "Task completed / કાર્ય પૂર્ણ થયું");
@@ -263,6 +295,13 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         // the RPC re-checks regardless of what this computes).
         const canDeleteTask = iCreatedIt || profile.isManagement || profile.isSuperAdmin || profile.isDeptHead;
         const busy = busyId === task.id;
+        // Undefined here means either an unrecognized proof_type_id or one
+        // that's since been deactivated (e.g. "voice" — see
+        // mvp_pilot_task_proof_type_fixes_v2_30.sql, disabled because the
+        // DB trigger unconditionally rejects completing it). ProofUploader
+        // treats "undefined" the same as an explicitly unsupported type —
+        // a clear message instead of a picker that can only ever fail.
+        const proofTypeCode = lookups.proofTypes?.find((pt) => pt.id === task.proof_type_id)?.code;
 
         return (
           <div className="task-card" id={`task-${task.id}`} key={task.id}>
@@ -274,12 +313,19 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               <span className={`badge ${statusCode}`}>{lang === "gu" ? status?.name_gu : status?.name_en || statusCode}</span>
             </div>
             {task.description && <div style={{ fontSize: 13, marginTop: 6 }}>{task.description}</div>}
+            {task.requirement_text && (
+              <div style={{ fontSize: 13, marginTop: 6 }}>
+                <strong>{t("requirementText", lang)}:</strong> {task.requirement_text}
+              </div>
+            )}
             <div className="task-meta">
               {task.due_date && (
                 <span className={isOverdue(task) ? "overdue" : ""}>
                   {t("dueDate", lang)}: {task.due_date}{isOverdue(task) ? ` · ${t("overdue", lang)}` : ""}
                 </span>
               )}
+              {task.reference_number && <span>{t("referenceNumber", lang)}: {task.reference_number}</span>}
+              {task.quantity && <span>{t("quantity", lang)}: {task.quantity}</span>}
               {task.is_bridge && <span>🌉 {t("bridges", lang)}</span>}
               {task.help_requested && <span>🆘 {t("requestHelp", lang)}</span>}
             </div>
@@ -317,7 +363,11 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                 </>
               )}
               {statusCode === "IN_PROGRESS" && mine && (
-                <button className="btn btn-gold" disabled={busy} onClick={() => setProofFor(task.id)}>
+                <button
+                  className="btn btn-gold"
+                  disabled={busy}
+                  onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
+                >
                   {t("complete", lang)}
                 </button>
               )}
@@ -399,8 +449,9 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               <ProofUploader
                 lang={lang}
                 busy={busy}
+                proofTypeCode={proofTypeCode}
                 onCancel={() => setProofFor(null)}
-                onSubmit={(file) => completeWithProof(task, file)}
+                onSubmit={(file, confirmationText, voiceDurationSeconds) => completeWithProof(task, proofTypeCode, file, confirmationText, voiceDurationSeconds)}
               />
             )}
 
@@ -428,21 +479,62 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   );
 }
 
-function ProofUploader({ lang, busy, onCancel, onSubmit }) {
+const DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif";
+
+const SUPPORTED_PROOF_CODES = new Set(["photo", "barcode", "document", "voice", "customer_confirmation", "none"]);
+
+// Adapts to the task's actual proof_type_code — matching what the DB
+// trigger is about to check, instead of always assuming "attach a photo"
+// regardless of what proof was actually configured (photo/barcode need an
+// image, document needs a PDF/Word/Excel, voice needs a recorded note,
+// customer_confirmation needs text and/or evidence, and any type this
+// pilot doesn't recognize gets a clear message instead of a picker that
+// can only ever fail).
+function ProofUploader({ lang, busy, proofTypeCode, onCancel, onSubmit }) {
   const [file, setFile] = useState(null);
+  const [confirmationText, setConfirmationText] = useState("");
+  const [voiceDuration, setVoiceDuration] = useState(0);
+
+  if (!SUPPORTED_PROOF_CODES.has(proofTypeCode)) {
+    return (
+      <div style={{ marginTop: 10 }}>
+        <div className="msg error">
+          This task's required proof type isn't supported in this pilot. Ask whoever created it to change the proof type. / આ કાર્યનો જરૂરી પુરાવો પ્રકાર આ પાયલોટમાં સમર્થિત નથી.
+        </div>
+        <div className="btn-row">
+          <button className="btn btn-outline" onClick={onCancel}>{t("cancel", lang)}</button>
+        </div>
+      </div>
+    );
+  }
+
+  const accept = proofTypeCode === "document" ? DOCUMENT_ACCEPT : IMAGE_ACCEPT;
+
   return (
     <div style={{ marginTop: 10 }}>
-      <label className="file-input-label">
-        {file ? file.name : t("attachProof", lang)}
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-          style={{ display: "none" }}
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
-      </label>
+      {proofTypeCode === "customer_confirmation" && (
+        <div className="field">
+          <label>{t("customerConfirmationLabel", lang)}</label>
+          <textarea value={confirmationText} onChange={(e) => setConfirmationText(e.target.value)} />
+        </div>
+      )}
+      {proofTypeCode === "voice" && (
+        <VoiceRecorder lang={lang} disabled={busy} onRecorded={(f, duration) => { setFile(f); setVoiceDuration(duration); }} />
+      )}
+      {proofTypeCode !== "none" && proofTypeCode !== "voice" && (
+        <label className="file-input-label">
+          {file ? file.name : (proofTypeCode === "document" ? t("attachDocument", lang) : t("attachProof", lang))}
+          <input
+            type="file"
+            accept={accept}
+            style={{ display: "none" }}
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+          />
+        </label>
+      )}
       <div className="btn-row">
-        <button className="btn btn-primary" disabled={busy} onClick={() => onSubmit(file)}>
+        <button className="btn btn-primary" disabled={busy} onClick={() => onSubmit(file, confirmationText, voiceDuration)}>
           {busy ? t("uploading", lang) : t("complete", lang)}
         </button>
         <button className="btn btn-outline" onClick={onCancel}>{t("cancel", lang)}</button>

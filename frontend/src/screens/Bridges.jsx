@@ -172,10 +172,12 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
               {status && <span className={`badge ${statusCode}`}>{lang === "gu" ? status.name_gu : status.name_en}</span>}
             </div>
             <div style={{ fontSize: 13, marginTop: 6 }}>{bridge.requirement_text}</div>
+            {task?.description && <div style={{ fontSize: 13, marginTop: 4 }}>{task.description}</div>}
             {bridge.quantity && <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{t("quantity", lang)}: {bridge.quantity}</div>}
 
             <div className="task-meta">
               <span>{deptName(bridge.from_department_id)} → {deptName(bridge.to_department_id)}</span>
+              {task?.reference_number && <span>{t("referenceNumber", lang)}: {task.reference_number}</span>}
               {task?.task_type_id && <span>{lang === "gu" ? taskTypeOf(task.task_type_id)?.name_gu : taskTypeOf(task.task_type_id)?.name_en}</span>}
               {task?.priority_id && (
                 <span>
