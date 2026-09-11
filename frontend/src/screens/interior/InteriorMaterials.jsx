@@ -6,7 +6,7 @@ import { listProjects, listMaterials, listProjectMaterials, updateMaterialStatus
 // system's `materials` + `project_materials` tables; Purchase Coordination
 // is simply project_materials filtered to source='purchase' (filterSource
 // prop), per the module rollout plan, rather than a separate table.
-export default function InteriorMaterials({ lang, filterSource }) {
+export default function InteriorMaterials({ lang, filterSource, lockedProjectId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -20,9 +20,9 @@ export default function InteriorMaterials({ lang, filterSource }) {
     const { data, error: err } = await listProjects();
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
-    if (data?.length) setProjectId((cur) => cur || data[0].id);
+    if (data?.length) setProjectId((cur) => cur || lockedProjectId || data[0].id);
     setLoading(false);
-  }, []);
+  }, [lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -78,9 +78,15 @@ export default function InteriorMaterials({ lang, filterSource }) {
       <div className="card">
         <div className="field">
           <label>{t("projectCodeLabel", lang)}</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-          </select>
+          {lockedProjectId ? (
+            <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>
+              {(() => { const p = projects.find((pr) => pr.id === projectId); return p ? `${p.project_code} — ${p.customer}` : "—"; })()}
+            </div>
+          ) : (
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+            </select>
+          )}
         </div>
       </div>
 

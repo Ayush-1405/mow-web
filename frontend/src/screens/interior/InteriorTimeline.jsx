@@ -31,7 +31,7 @@ const FREEZE_FIELDS = [
   ["freeze_check_specs", "freezeCheckSpecs"], ["freeze_check_customer_approval", "freezeCheckCustomer"],
 ];
 
-export default function InteriorTimeline({ lang, staffProfile }) {
+export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const myProfile = useInteriorProfile();
@@ -63,13 +63,14 @@ export default function InteriorTimeline({ lang, staffProfile }) {
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
     setPeople(peopleRes.data || []);
-    // A notification/deep-link (?project=<id>) always wins, even over an
-    // already-selected project — this screen doesn't remount between two
-    // clicks on different project links (same route, React Router just
-    // re-renders), so without this a second click here would silently do
-    // nothing. No param at all falls back to whatever's already chosen,
-    // or the first project on a first visit.
-    const focusId = searchParams.get("project");
+    // lockedProjectId (opened as a Project Detail tab) wins over
+    // everything else. Otherwise a notification/deep-link (?project=<id>)
+    // always wins, even over an already-selected project — this screen
+    // doesn't remount between two clicks on different project links (same
+    // route, React Router just re-renders), so without this a second
+    // click here would silently do nothing. No param at all falls back to
+    // whatever's already chosen, or the first project on a first visit.
+    const focusId = lockedProjectId || searchParams.get("project");
     if (data?.length) {
       if (focusId && data.some((p) => p.id === focusId)) {
         setProjectId(focusId);
@@ -78,7 +79,7 @@ export default function InteriorTimeline({ lang, staffProfile }) {
       }
     }
     setLoading(false);
-  }, [searchParams]);
+  }, [searchParams, lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -252,18 +253,24 @@ export default function InteriorTimeline({ lang, staffProfile }) {
         <div className="field-action-row">
           <div className="field">
             <label>{t("projectCodeLabel", lang)}</label>
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-            </select>
+            {lockedProjectId ? (
+              <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>{project ? `${project.project_code} — ${project.customer}` : "—"}</div>
+            ) : (
+              <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+              </select>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-outline" onClick={() => navigate("/interior-projects/tasks")} disabled={!projectId}>
-              {t("manageTasksAction", lang)}
-            </button>
-            <button className="btn btn-outline" onClick={() => navigate("/interior-projects/new")}>
-              {t("addNewProject", lang)}
-            </button>
-          </div>
+          {!lockedProjectId && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-outline" onClick={() => navigate("/interior-projects/tasks")} disabled={!projectId}>
+                {t("manageTasksAction", lang)}
+              </button>
+              <button className="btn btn-outline" onClick={() => navigate("/interior-projects/new")}>
+                {t("addNewProject", lang)}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

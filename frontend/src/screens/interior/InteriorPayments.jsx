@@ -6,7 +6,7 @@ import { listProjects, listPaymentRecords, addPaymentRecord, markPaymentReceived
 // Payment Follow-up — the ONE Interior card backed by a genuinely new,
 // pilot-owned table (interior_payment_records), since the external
 // Interior Projects system has no payment ledger at all.
-export default function InteriorPayments({ lang, lookups }) {
+export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -24,9 +24,9 @@ export default function InteriorPayments({ lang, lookups }) {
     const { data, error: err } = await listProjects();
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
-    if (data?.length) setProjectId((cur) => cur || data[0].id);
+    if (data?.length) setProjectId((cur) => cur || lockedProjectId || data[0].id);
     setLoading(false);
-  }, []);
+  }, [lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -94,9 +94,15 @@ export default function InteriorPayments({ lang, lookups }) {
       <div className="card">
         <div className="field">
           <label>{t("projectCodeLabel", lang)}</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-          </select>
+          {lockedProjectId ? (
+            <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>
+              {(() => { const p = projects.find((pr) => pr.id === projectId); return p ? `${p.project_code} — ${p.customer}` : "—"; })()}
+            </div>
+          ) : (
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+            </select>
+          )}
         </div>
       </div>
 

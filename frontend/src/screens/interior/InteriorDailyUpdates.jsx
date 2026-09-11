@@ -48,7 +48,7 @@ function ChipInput({ value, onChange, placeholder }) {
   );
 }
 
-export default function InteriorDailyUpdates({ lang }) {
+export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   const profile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -73,9 +73,9 @@ export default function InteriorDailyUpdates({ lang }) {
     const { data, error: err } = await listProjects();
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
-    if (data?.length) setProjectId((cur) => cur || data[0].id);
+    if (data?.length) setProjectId((cur) => cur || lockedProjectId || data[0].id);
     setLoading(false);
-  }, []);
+  }, [lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -171,9 +171,13 @@ export default function InteriorDailyUpdates({ lang }) {
       <div className="card">
         <div className="field">
           <label>{t("projectCodeLabel", lang)}</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-          </select>
+          {lockedProjectId ? (
+            <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>{project ? `${project.project_code} — ${project.customer}` : "—"}</div>
+          ) : (
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+            </select>
+          )}
         </div>
       </div>
 

@@ -15,7 +15,7 @@ import { t } from "../lib/i18n";
 function routeFor(n) {
   switch (n.entity_type) {
     case "task": return `/tasks?focus=${n.entity_id}`;
-    case "project": return `/interior-projects/timeline?project=${n.entity_id}`;
+    case "project": return `/interior-projects/detail/${n.entity_id}`;
     case "snag": return "/interior-projects/site-execution";
     case "interior_task": return "/interior-projects/tasks";
     case "site_report": return "/interior-projects/daily-updates";

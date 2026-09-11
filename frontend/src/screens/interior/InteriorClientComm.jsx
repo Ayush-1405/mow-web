@@ -4,7 +4,7 @@ import { listProjects, listActivity, logActivity, notifyDeptLeadership } from ".
 
 // Client Communication — the external system's `activity_logs` table, per
 // project.
-export default function InteriorClientComm({ lang }) {
+export default function InteriorClientComm({ lang, lockedProjectId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -19,9 +19,9 @@ export default function InteriorClientComm({ lang }) {
     const { data, error: err } = await listProjects();
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
-    if (data?.length) setProjectId((cur) => cur || data[0].id);
+    if (data?.length) setProjectId((cur) => cur || lockedProjectId || data[0].id);
     setLoading(false);
-  }, []);
+  }, [lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -72,9 +72,15 @@ export default function InteriorClientComm({ lang }) {
       <div className="card">
         <div className="field">
           <label>{t("projectCodeLabel", lang)}</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-          </select>
+          {lockedProjectId ? (
+            <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>
+              {(() => { const p = projects.find((pr) => pr.id === projectId); return p ? `${p.project_code} — ${p.customer}` : "—"; })()}
+            </div>
+          ) : (
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+            </select>
+          )}
         </div>
         <div className="field full" style={{ marginTop: 10 }}>
           <label>{t("logUpdate", lang)}</label>

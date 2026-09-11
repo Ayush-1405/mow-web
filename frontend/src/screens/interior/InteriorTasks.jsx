@@ -11,7 +11,7 @@ import {
 // execution, project_members) plus Head/Director — the "project owner
 // assigns tasks to other employees" flow — everyone else sees the board
 // read-only (can still update their own task status).
-export default function InteriorTasks({ lang }) {
+export default function InteriorTasks({ lang, lockedProjectId }) {
   const profile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -32,9 +32,9 @@ export default function InteriorTasks({ lang }) {
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
     setPeople(peopleRes.data || []);
-    if (data?.length) setProjectId((cur) => cur || data[0].id);
+    if (data?.length) setProjectId((cur) => cur || lockedProjectId || data[0].id);
     setLoading(false);
-  }, []);
+  }, [lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -105,9 +105,15 @@ export default function InteriorTasks({ lang }) {
       <div className="card">
         <div className="field">
           <label>{t("projectCodeLabel", lang)}</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-          </select>
+          {lockedProjectId ? (
+            <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>
+              {(() => { const p = projects.find((pr) => pr.id === projectId); return p ? `${p.project_code} — ${p.customer}` : "—"; })()}
+            </div>
+          ) : (
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+            </select>
+          )}
         </div>
       </div>
 

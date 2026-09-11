@@ -5,7 +5,7 @@ import { listProjects, listSnags, createSnag, resolveSnag, listInteriorPeople, n
 
 // Site Execution — the external system's `snags` table (real punch-list
 // data per project).
-export default function InteriorSiteExecution({ lang }) {
+export default function InteriorSiteExecution({ lang, lockedProjectId }) {
   const myProfile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -27,9 +27,9 @@ export default function InteriorSiteExecution({ lang }) {
     if (projRes.error) { setError(true); setLoading(false); return; }
     setProjects(projRes.data || []);
     setPeople(peopleRes.data || []);
-    if (projRes.data?.length) setProjectId((cur) => cur || projRes.data[0].id);
+    if (projRes.data?.length) setProjectId((cur) => cur || lockedProjectId || projRes.data[0].id);
     setLoading(false);
-  }, []);
+  }, [lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -106,9 +106,15 @@ export default function InteriorSiteExecution({ lang }) {
       <div className="card">
         <div className="field">
           <label>{t("projectCodeLabel", lang)}</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-          </select>
+          {lockedProjectId ? (
+            <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>
+              {(() => { const p = projects.find((pr) => pr.id === projectId); return p ? `${p.project_code} — ${p.customer}` : "—"; })()}
+            </div>
+          ) : (
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+            </select>
+          )}
         </div>
       </div>
 

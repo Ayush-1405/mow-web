@@ -10,7 +10,7 @@ import { listProjects, listAttachments, addAttachmentRecord, uploadAttachmentFil
 // mvp_pilot_interior_head_dashboard_v2_2f.sql); "Save without a file"
 // stays available for a pure metadata record (e.g. logging a physical
 // document that was handed over in person).
-export default function InteriorAttachments({ lang, stage, titleKey }) {
+export default function InteriorAttachments({ lang, stage, titleKey, lockedProjectId }) {
   const profile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -28,10 +28,10 @@ export default function InteriorAttachments({ lang, stage, titleKey }) {
     const { data, error: err } = await listProjects();
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
-    if (data?.length && !projectId) setProjectId(data[0].id);
+    if (data?.length && !projectId) setProjectId(lockedProjectId || data[0].id);
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lockedProjectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -93,9 +93,13 @@ export default function InteriorAttachments({ lang, stage, titleKey }) {
       <div className="card">
         <div className="field">
           <label>{t("projectCodeLabel", lang)}</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
-          </select>
+          {lockedProjectId ? (
+            <div className="sub" style={{ fontWeight: 700, marginTop: 4 }}>{currentProject?.project_code} — {currentProject?.customer}</div>
+          ) : (
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.project_code} — {p.customer}</option>)}
+            </select>
+          )}
         </div>
         {currentProject && <div className="sub">{t("stageLabel", lang)}: {currentProject.stage}</div>}
       </div>

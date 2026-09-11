@@ -84,7 +84,7 @@ export default function InteriorProjectCreate({ lang }) {
       `નવો પ્રોજેક્ટ બન્યો: ${data.customer} (${data.project_code})`,
     );
 
-    navigate(`/interior-projects/timeline?project=${data.id}`);
+    navigate(`/interior-projects/detail/${data.id}`);
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 220 }} /></div>;

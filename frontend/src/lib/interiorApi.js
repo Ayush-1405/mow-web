@@ -23,12 +23,18 @@
 // only so every Interior screen has one single API surface to import.
 import { supabase } from "./supabase";
 
-async function logAudit(tableName, recordId, action, detail) {
+async function logAudit(tableName, recordId, action, detail, projectId) {
   // Best-effort: a failed audit insert must never block the real action it
   // describes (the action above has already succeeded by the time this
   // runs) — errors are swallowed deliberately, not surfaced to the user.
+  // projectId is what lets the Activity History tab filter by
+  // .eq('project_id', currentProjectId) instead of resolving it at read
+  // time — every call site either already has it in scope, or reads it
+  // off the just-written row's own project_id column (never a fresh query).
   try {
-    await supabase.from("interior_pilot_audit_log").insert({ table_name: tableName, record_id: recordId, action, detail: detail || null });
+    await supabase.from("interior_pilot_audit_log").insert({
+      table_name: tableName, record_id: recordId, action, detail: detail || null, project_id: projectId || null,
+    });
   } catch {
     // intentional no-op — see comment above
   }
@@ -90,6 +96,24 @@ export async function notifyDeptLeadership(departmentCode, entityType, entityId,
   }
 }
 
+// Project-scoped activity trail (Activity History tab) — the pilot's own
+// interior_pilot_audit_log, which logAudit() above already writes to on
+// nearly every mutation. unassignedOnly surfaces old rows whose project_id
+// couldn't be backfilled (see mvp_pilot_interior_audit_project_id_v2_2v.sql)
+// so Management/Dept Head can review them, rather than them being silently
+// invisible everywhere.
+export async function listProjectActivity(projectId) {
+  return supabase.from("interior_pilot_audit_log").select("*").eq("project_id", projectId).order("performed_at", { ascending: false }).limit(200);
+}
+
+export async function listUnassignedActivity() {
+  return supabase.from("interior_pilot_audit_log").select("*").is("project_id", null).order("performed_at", { ascending: false }).limit(200);
+}
+
+export async function assignActivityToProject(auditLogId, projectId) {
+  return supabase.from("interior_pilot_audit_log").update({ project_id: projectId }).eq("id", auditLogId).select().single();
+}
+
 export async function listProjects() {
   return supabase.from("projects").select("*").eq("archived", false).order("created_at", { ascending: false });
 }
@@ -114,13 +138,13 @@ export async function listProjectMembers(projectId) {
 
 export async function addProjectMember(projectId, profileId) {
   const { data, error } = await supabase.from("project_members").insert({ project_id: projectId, profile_id: profileId }).select().single();
-  if (!error) await logAudit("project_members", data.id, "add_member", { profile_id: profileId });
+  if (!error) await logAudit("project_members", data.id, "add_member", { profile_id: profileId }, projectId);
   return { data, error };
 }
 
 export async function removeProjectMember(projectId, profileId) {
   const { error } = await supabase.from("project_members").delete().eq("project_id", projectId).eq("profile_id", profileId);
-  if (!error) await logAudit("project_members", projectId, "remove_member", { profile_id: profileId });
+  if (!error) await logAudit("project_members", projectId, "remove_member", { profile_id: profileId }, projectId);
   return { error };
 }
 
@@ -143,7 +167,7 @@ export async function updateProjectField(id, field, value) {
   const patch = { [field]: value };
   if (field !== "last_update") patch.last_update = new Date().toISOString().slice(0, 10);
   const { data, error } = await supabase.from("projects").update(patch).eq("id", id).select().single();
-  if (!error) await logAudit("projects", id, `update_${field}`, { value });
+  if (!error) await logAudit("projects", id, `update_${field}`, { value }, id);
   return { data, error };
 }
 
@@ -156,7 +180,7 @@ export async function updateProjectField(id, field, value) {
 export async function updateProjectDetails(id, { location, start_date, next_update, on_time, next_action, remarks }) {
   const patch = { location, start_date, next_update, on_time, next_action, remarks, last_update: new Date().toISOString().slice(0, 10) };
   const { data, error } = await supabase.from("projects").update(patch).eq("id", id).select().single();
-  if (!error) await logAudit("projects", id, "update_details", null);
+  if (!error) await logAudit("projects", id, "update_details", null, id);
   return { data, error };
 }
 
@@ -172,7 +196,7 @@ export async function addAttachmentRecord({ projectId, stage, title, fileName, n
     storage_path: storagePath || null, file_type: fileType || null, file_size: fileSize || null,
     uploaded_by: uploadedBy || null,
   }).select().single();
-  if (!error) await logAudit("attachments", data.id, "create", { stage, title });
+  if (!error) await logAudit("attachments", data.id, "create", { stage, title }, projectId);
   return { data, error };
 }
 
@@ -181,7 +205,8 @@ export async function addAttachmentRecord({ projectId, stage, title, fileName, n
 // upload fails, no attachment row is created — never a metadata record
 // pointing at a file that was never actually saved.
 export async function uploadAttachmentFile({ projectId, stage, file, title, note, uploadedBy }) {
-  const path = `${projectId}/${stage}/${Date.now()}-${file.name}`;
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-140);
+  const path = `projects/${projectId}/${stage}/${crypto.randomUUID()}-${safeName}`;
   const { error: uploadError } = await supabase.storage.from("interior-attachments").upload(path, file);
   if (uploadError) return { data: null, error: uploadError };
   return addAttachmentRecord({
@@ -197,7 +222,7 @@ export async function getAttachmentUrl(storagePath) {
 
 export async function lockDesignAttachment(id) {
   const { data, error } = await supabase.from("attachments").update({ frozen: true }).eq("id", id).select().single();
-  if (!error) await logAudit("attachments", id, "lock_design", null);
+  if (!error) await logAudit("attachments", id, "lock_design", null, data.project_id);
   return { data, error };
 }
 
@@ -211,7 +236,7 @@ export async function decideProjectChange(id, decision, decidedBy) {
     approved_date: decision === "APPROVED" ? new Date().toISOString().slice(0, 10) : null,
     approved_by: decision === "APPROVED" ? decidedBy || null : null,
   }).eq("id", id).select().single();
-  if (!error) await logAudit("project_changes", id, `decide_${decision}`, null);
+  if (!error) await logAudit("project_changes", id, `decide_${decision}`, null, data.project_id);
   return { data, error };
 }
 
@@ -220,7 +245,7 @@ export async function requestProjectChange({ projectId, requestedBy, description
     project_id: projectId, requested_by: requestedBy, requested_date: new Date().toISOString().slice(0, 10),
     description, additional_cost: additionalCost || 0, timeline_impact: timelineImpact || null, material_impact: materialImpact || null,
   }).select().single();
-  if (!error) await logAudit("project_changes", data.id, "create", { description });
+  if (!error) await logAudit("project_changes", data.id, "create", { description }, projectId);
   return { data, error };
 }
 
@@ -232,7 +257,7 @@ export async function createSnag({ projectId, issue, major, dueDate, assignedTo 
   const { data, error } = await supabase.from("snags").insert({
     project_id: projectId, issue, major: !!major, due_date: dueDate || null, assigned_to: assignedTo || null,
   }).select().single();
-  if (!error) await logAudit("snags", data.id, "create", { issue });
+  if (!error) await logAudit("snags", data.id, "create", { issue }, projectId);
   return { data, error };
 }
 
@@ -247,7 +272,7 @@ export async function hasOpenMajorSnag(projectId) {
 // string violates the constraint and PostgREST surfaces it as a 400).
 export async function resolveSnag(id) {
   const { data, error } = await supabase.from("snags").update({ status: "COMPLETED" }).eq("id", id).select().single();
-  if (!error) await logAudit("snags", id, "resolve", null);
+  if (!error) await logAudit("snags", id, "resolve", null, data.project_id);
   return { data, error };
 }
 
@@ -257,7 +282,7 @@ export async function listSiteReports(projectId) {
 
 export async function createSiteReport(payload) {
   const { data, error } = await supabase.from("site_reports").insert(payload).select().single();
-  if (!error) await logAudit("site_reports", data.id, "create", { report_date: payload.report_date });
+  if (!error) await logAudit("site_reports", data.id, "create", { report_date: payload.report_date }, payload.project_id);
   return { data, error };
 }
 
@@ -273,13 +298,13 @@ export async function listProjectMaterials(projectId, source) {
 
 export async function updateMaterialStatus(table, id, status) {
   const { data, error } = await supabase.from(table).update({ status }).eq("id", id).select().single();
-  if (!error) await logAudit(table, id, "update_status", { status });
+  if (!error) await logAudit(table, id, "update_status", { status }, data.project_id);
   return { data, error };
 }
 
 export async function updateMaterialField(table, id, field, value) {
   const { data, error } = await supabase.from(table).update({ [field]: value }).eq("id", id).select().single();
-  if (!error) await logAudit(table, id, `update_${field}`, { value });
+  if (!error) await logAudit(table, id, `update_${field}`, { value }, data.project_id);
   return { data, error };
 }
 
@@ -289,7 +314,7 @@ export async function listActivity(projectId) {
 
 export async function logActivity(projectId, action, description, userId) {
   const { data, error } = await supabase.from("activity_logs").insert({ project_id: projectId, action, description, user_id: userId || null }).select().single();
-  if (!error) await logAudit("activity_logs", data.id, "create", { action });
+  if (!error) await logAudit("activity_logs", data.id, "create", { action }, projectId);
   return { data, error };
 }
 
@@ -305,7 +330,7 @@ export async function createTask({ projectId, title, assignedTo, dueDate, note, 
   const { data, error } = await supabase.from("tasks").insert({
     project_id: projectId, title, assigned_to: assignedTo || null, due_date: dueDate || null, note: note || null, created_by: createdBy || null,
   }).select().single();
-  if (!error) await logAudit("tasks", data.id, "create", { title });
+  if (!error) await logAudit("tasks", data.id, "create", { title }, projectId);
   return { data, error };
 }
 
@@ -313,7 +338,7 @@ export async function createTask({ projectId, title, assignedTo, dueDate, note, 
 // COMPLETED / BLOCKED / CANCELLED (this external table has no "DONE").
 export async function updateTaskStatus(id, status) {
   const { data, error } = await supabase.from("tasks").update({ status }).eq("id", id).select().single();
-  if (!error) await logAudit("tasks", id, "update_status", { status });
+  if (!error) await logAudit("tasks", id, "update_status", { status }, data.project_id);
   return { data, error };
 }
 
@@ -325,13 +350,13 @@ export async function createRequest({ projectId, requestType, description, creat
   const { data, error } = await supabase.from("project_requests").insert({
     project_id: projectId, request_type: requestType, description, created_by: createdBy || null,
   }).select().single();
-  if (!error) await logAudit("project_requests", data.id, "create", { requestType });
+  if (!error) await logAudit("project_requests", data.id, "create", { requestType }, projectId);
   return { data, error };
 }
 
 export async function updateRequestStatus(id, status) {
   const { data, error } = await supabase.from("project_requests").update({ status }).eq("id", id).select().single();
-  if (!error) await logAudit("project_requests", id, "update_status", { status });
+  if (!error) await logAudit("project_requests", id, "update_status", { status }, data.project_id);
   return { data, error };
 }
 
@@ -347,7 +372,7 @@ export async function setHandoverFlag(projectId, field, value, updatedBy) {
   } else {
     result = await supabase.from("handovers").insert({ project_id: projectId, [field]: value, updated_by: updatedBy || null }).select().single();
   }
-  if (!result.error) await logAudit("handovers", result.data.id, `set_${field}`, { value });
+  if (!result.error) await logAudit("handovers", result.data.id, `set_${field}`, { value }, projectId);
   return result;
 }
 
@@ -387,7 +412,7 @@ export async function canCloseProject(projectId) {
 
 export async function submitFeedback(payload) {
   const { data, error } = await supabase.from("customer_feedback").insert(payload).select().single();
-  if (!error) await logAudit("customer_feedback", data.id, "create", null);
+  if (!error) await logAudit("customer_feedback", data.id, "create", null, payload.project_id);
   return { data, error };
 }
 

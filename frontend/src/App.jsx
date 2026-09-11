@@ -43,6 +43,7 @@ import InteriorProjectCreate from "./screens/interior/InteriorProjectCreate.jsx"
 import InteriorClientComm from "./screens/interior/InteriorClientComm.jsx";
 import InteriorPayments from "./screens/interior/InteriorPayments.jsx";
 import InteriorCompletion from "./screens/interior/InteriorCompletion.jsx";
+import InteriorProjectDetail from "./screens/interior/InteriorProjectDetail.jsx";
 import DeptShell from "./components/DeptShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import InteriorProfileGate from "./components/InteriorProfileGate.jsx";
@@ -485,6 +486,7 @@ export default function App() {
       <Route path="/interior-projects/communication" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorClientComm lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/payments" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPayments lang={lang} lookups={lookups} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/completion" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorCompletion lang={lang} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/detail/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorProjectDetail lang={lang} staffProfile={profile} lookups={lookups} /></InteriorProfileGate>)} />
       <Route path="/b2b-b2g" element={deptPage("B2B_B2G")} />
       <Route path="/procurement" element={deptPage("PROCUREMENT")} />
       <Route path="/inventory" element={deptPage("GODOWN_INV")} />
