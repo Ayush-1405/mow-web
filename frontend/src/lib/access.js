@@ -31,17 +31,16 @@ export function canAccessManagement(profile) {
 }
 
 // Super Admin (roleCode 'sysadmin') gets the same broad visibility as
-// Management, with one deliberate exception this project's architecture
-// doc calls out explicitly: confidential Finance data stays restricted to
-// Management/CFO/Accounts Head unless separately, explicitly granted —
-// System Admin never gets it as a side-effect of being an admin. Mirrors
-// the RLS in mvp_pilot_super_admin_access_v2_2g.sql exactly: staff_is_
-// super_admin() was added to every general-visibility branch there, never
-// to a confidential-domain allow-list.
+// Management, INCLUDING confidential Accounts/Finance domains — an
+// explicit, deliberate grant (mvp_pilot_super_admin_grant_v2_43.sql),
+// superseding the narrower rule this file used to enforce (Super Admin
+// previously got everything except confidential data by design). The DB
+// side (staff_tasks_select_scoped, staff_task_visible(), staff_record_
+// attachment(), staff_list_assignable_departments/_users*()) was updated
+// in the same migration so this is a real access grant, not just a label.
 export function canAccessDepartment(profile, departments, dept) {
   if (!profile || !dept) return false;
-  if (profile.isManagement) return true;
-  if (profile.isSuperAdmin) return !dept.is_confidential_domain;
+  if (profile.isManagement || profile.isSuperAdmin) return true;
   if (dept.is_control_tower) return false; // Management/Super Admin-only, always
 
   if (dept.id === profile.department_id) return true;

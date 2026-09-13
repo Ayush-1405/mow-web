@@ -253,6 +253,30 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, [session, profile, loadUnread, lang]);
 
+  // Live permission refresh: if this user's own role/department/active
+  // status changes mid-session (e.g. a Super Admin grant, or any future
+  // role/department change), reload the profile immediately so
+  // isManagement/isSuperAdmin/isDeptHead and the whole access matrix update
+  // without a forced logout/login — these flags come from a plain DB read
+  // (loadProfile), never from JWT claims, so no fresh token is needed.
+  useEffect(() => {
+    if (!session?.user?.id) return undefined;
+    const channel = supabase
+      .channel("app_own_profile_changes")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "user_profiles", filter: `id=eq.${session.user.id}` },
+        () => loadProfile(session.user.id),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.user?.id, loadProfile]);
+
+  // Belt-and-suspenders: catches anything a dropped websocket might have
+  // missed (phone locked, brief network drop, tab backgrounded during the
+  // exact moment a role change was made).
+  useForegroundRefresh(session?.user?.id ? () => loadProfile(session.user.id) : undefined);
+
   // Belt-and-suspenders on top of the realtime badge channel above: if a
   // websocket was dropped while the tab was backgrounded/offline, silently
   // catch up on unread notifications once the tab/device is usable again
@@ -353,7 +377,7 @@ export default function App() {
       { key: "bridges", icon: "🌉", label: t("bridges", lang) },
       { key: "notifications", icon: "🔔", label: t("notifications", lang) },
     ];
-    if (profile.isDeptHead || profile.isManagement) {
+    if (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) {
       items.push({ key: "users", icon: "👥", label: t("userCreation", lang) });
       items.push({ key: "dashboard", icon: "📊", label: t("dashboard", lang) });
       items.push({ key: "auditlog", icon: "🗂️", label: t("auditLog", lang) });
@@ -492,7 +516,7 @@ export default function App() {
       } />
       <Route path="/users" element={
         <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
-          <ProtectedRoute allowed={!!(profile.isDeptHead || profile.isManagement)} lang={lang}>
+          <ProtectedRoute allowed={!!(profile.isDeptHead || profile.isManagement || profile.isSuperAdmin)} lang={lang}>
             <UserCreation lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
           </ProtectedRoute>
         </DeptShell>
@@ -588,13 +612,13 @@ export default function App() {
         {view === "assign" && <AssignTask lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
         {view === "bridges" && <Bridges lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
         {view === "notifications" && <Notifications lang={lang} showToast={showToast} />}
-        {view === "users" && (profile.isDeptHead || profile.isManagement) && (
+        {view === "users" && (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) && (
           <UserCreation lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
         )}
-        {view === "dashboard" && (profile.isDeptHead || profile.isManagement) && (
+        {view === "dashboard" && (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) && (
           <ManagementDashboard lang={lang} lookups={lookups} showToast={showToast} />
         )}
-        {view === "auditlog" && (profile.isDeptHead || profile.isManagement) && (
+        {view === "auditlog" && (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) && (
           <AuditLog lang={lang} lookups={lookups} showToast={showToast} />
         )}
         {view === "admindepartments" && profile.isSuperAdmin && (
