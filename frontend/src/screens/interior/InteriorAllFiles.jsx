@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
-import { listAttachments, listInteriorPeople, getAttachmentUrl, listMaterialSelectionAttachmentsForProject } from "../../lib/interiorApi";
+import { listAttachments, listInteriorPeople, getAttachmentUrl, listMaterialSelectionAttachmentsForProject, listWorkingDrawingAttachmentsForProject } from "../../lib/interiorApi";
 
 // "All Files" — every file uploaded for THIS project across every module,
 // in one place. Reuses listAttachments(projectId) with no stage filter
@@ -23,19 +23,27 @@ export default function InteriorAllFiles({ lang, projectId }) {
     if (!projectId) { setRows([]); setLoading(false); return; }
     setLoading(true);
     setError(false);
-    const [{ data, error: err }, peopleRes, msAttRes] = await Promise.all([
+    const [{ data, error: err }, peopleRes, msAttRes, wdaRes] = await Promise.all([
       listAttachments(projectId), listInteriorPeople(), listMaterialSelectionAttachmentsForProject(projectId),
+      listWorkingDrawingAttachmentsForProject(projectId),
     ]);
     if (err) { setError(true); setLoading(false); return; }
     const generic = (data || []).map((r) => ({
-      id: r.id, title: r.title || r.file_name, stage: r.stage, version: r.version, frozen: r.frozen,
+      id: r.id, title: r.title || r.file_name, stage: r.file_category ? `${r.stage} — ${r.file_category}` : r.stage, version: r.version, frozen: r.frozen,
       uploaded_by: r.uploaded_by, created_at: r.created_at, storage_path: r.storage_path, file_type: r.file_type,
     }));
     const materialSelection = (msAttRes.data || []).map((a) => ({
       id: a.id, title: a.original_file_name || a.file_name, stage: "Material Selection", version: null, frozen: false,
       uploaded_by: a.uploaded_by, created_at: a.uploaded_at, storage_path: a.storage_path, file_type: a.file_type,
     }));
-    setRows([...generic, ...materialSelection]);
+    // Legacy uploads from the brief life of the earlier, more complex
+    // Working Drawings module — kept visible here even though that
+    // module's own page no longer manages them (nothing was deleted).
+    const workingDrawingLegacy = (wdaRes.data || []).map((a) => ({
+      id: a.id, title: a.original_file_name || a.file_name, stage: `Working Drawings — ${a.file_category || "Uncategorised"}`, version: null, frozen: false,
+      uploaded_by: a.uploaded_by, created_at: a.uploaded_at, storage_path: a.storage_path, file_type: a.file_type,
+    }));
+    setRows([...generic, ...materialSelection, ...workingDrawingLegacy]);
     setPeople(peopleRes.data || []);
     setLoading(false);
   }, [projectId]);

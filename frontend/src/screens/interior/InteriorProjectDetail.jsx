@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { formatCurrency } from "../../lib/retailModules";
 import { listProjects, listInteriorPeople } from "../../lib/interiorApi";
@@ -36,13 +36,15 @@ const STAGES = [
 const TABS = [
   { key: "overview", labelKey: "tabOverview", render: null },
   { key: "quotation", labelKey: "tabQuotation", render: (pid, c) => <InteriorAttachments lang={c.lang} stage="Quotation" titleKey="interiorAttachmentsTitle" lockedProjectId={pid} /> },
-  { key: "dealClosure", labelKey: "tabDealClosure", render: (pid, c) => <InteriorTimeline lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
+  // Deal Closure and Project Timeline used to be two separate tabs that
+  // both rendered this exact same InteriorTimeline component — a literal
+  // duplicate, not just a UI label issue. Consolidated into one tab/key.
+  { key: "projectTimeline", labelKey: "tabProjectTimeline", render: (pid, c) => <InteriorTimeline lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
   { key: "workingDrawings", labelKey: "tabWorkingDrawings", render: (pid, c) => <InteriorWorkingDrawings lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
   { key: "siteExecution", labelKey: "tabSiteExecution", render: (pid, c) => <InteriorSiteExecution lang={c.lang} lockedProjectId={pid} /> },
   { key: "dailyUpdates", labelKey: "tabDailyUpdates", render: (pid, c) => <InteriorDailyUpdates lang={c.lang} lockedProjectId={pid} /> },
   { key: "materials", labelKey: "tabMaterials", render: (pid, c) => <InteriorMaterials lang={c.lang} filterSource={null} lockedProjectId={pid} /> },
   { key: "purchaseManagement", labelKey: "tabPurchaseManagement", render: (pid, c) => <InteriorPurchaseManagement lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
-  { key: "timeline", labelKey: "tabTimeline", render: (pid, c) => <InteriorTimeline lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
   { key: "clientComm", labelKey: "tabClientComm", render: (pid, c) => <InteriorClientComm lang={c.lang} lockedProjectId={pid} /> },
   { key: "payments", labelKey: "tabPayments", render: (pid, c) => <InteriorPayments lang={c.lang} lookups={c.lookups} lockedProjectId={pid} /> },
   { key: "tasks", labelKey: "tabTasks", render: (pid, c) => <InteriorTasks lang={c.lang} lockedProjectId={pid} /> },
@@ -55,11 +57,23 @@ const TABS = [
 export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [project, setProject] = useState(null);
   const [people, setPeople] = useState([]);
-  const [activeTab, setActiveTab] = useState("overview");
+  // "project-timeline" is accepted as an alias for the tab's own "projectTimeline"
+  // key so a plain, readable query string (?tab=project-timeline) works
+  // without requiring callers to know the internal camelCase key.
+  const requestedTab = searchParams.get("tab");
+  const initialTab = requestedTab === "project-timeline" ? "projectTimeline"
+    : TABS.some((tb) => tb.key === requestedTab) ? requestedTab : "overview";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  function selectTab(key) {
+    setActiveTab(key);
+    setSearchParams(key === "overview" ? {} : { tab: key === "projectTimeline" ? "project-timeline" : key });
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,8 +90,10 @@ export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
   useEffect(() => { load(); }, [load]);
   // A different project link (Control Tower card, notification, etc.)
   // while this page is already mounted — same route component, just a
-  // new :projectId param — resets the active tab back to Overview.
-  useEffect(() => { setActiveTab("overview"); }, [projectId]);
+  // new :projectId param — resets the active tab to whatever ?tab= says
+  // for THIS navigation (falling back to Overview), not the previous
+  // project's leftover tab selection.
+  useEffect(() => { setActiveTab(initialTab); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
   const isElevated = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead;
@@ -127,7 +143,7 @@ export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
               key={tb.key}
               className={`btn ${activeTab === tb.key ? "btn-primary" : "btn-outline"}`}
               style={{ marginTop: 0, width: "auto" }}
-              onClick={() => setActiveTab(tb.key)}
+              onClick={() => selectTab(tb.key)}
             >
               {t(tb.labelKey, lang)}
             </button>

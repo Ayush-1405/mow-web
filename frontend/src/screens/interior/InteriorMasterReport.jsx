@@ -254,8 +254,20 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
     const hasFile = (arr) => arr.some((a) => a.storage_path);
     const items = [
       { key: "quotation", labelKey: "tabQuotation", status: !has(report.attachments.filter((a) => a.stage === "Quotation")) ? "not_started" : hasFile(report.attachments.filter((a) => a.stage === "Quotation")) ? "complete" : "partial" },
-      { key: "dealClosure", labelKey: "tabDealClosure", status: report.project.location || report.project.next_action ? "complete" : "not_started" },
+      { key: "projectTimeline", labelKey: "tabProjectTimeline", status: (() => {
+        const hasDealClosure = report.project.location || report.project.next_action;
+        const hasTimeline = report.project.start_date && report.project.next_action;
+        if (hasDealClosure && hasTimeline) return "complete";
+        if (hasDealClosure || report.project.start_date || report.project.next_action) return "partial";
+        return "not_started";
+      })() },
       { key: "workingDrawings", labelKey: "tabWorkingDrawings", status: (() => {
+        // Simplified page: presence of any uploaded working-drawing file is
+        // "complete" — a plain file register has no partial/pending-approval
+        // state of its own. Falls back to the older room/version workflow's
+        // richer status only for historical projects that still have that data.
+        const hasFiles = has(report.attachments.filter((a) => a.stage === "Working Drawings" || a.stage === "Drawings")) || has(report.workingDrawingAttachments);
+        if (hasFiles) return "complete";
         if (!has(report.workingDrawingAreas) && !has(report.materialSelections)) return "not_started";
         const pendingDesign = report.designVersions.some((v) => v.is_current && ["Submitted for Internal Review", "Submitted to Client", "Resubmitted"].includes(v.approval_status));
         const pendingMaterial = report.materialSelections.some((m) => ["Selection Pending", "Submitted to Client", "Client Review Pending"].includes(m.approval_status));
@@ -274,7 +286,6 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
       { key: "dailyUpdates", labelKey: "tabDailyUpdates", status: has(report.siteReports) ? "complete" : "not_started" },
       { key: "materials", labelKey: "tabMaterials", status: has(report.materialsRequirements) ? "complete" : "not_started" },
       { key: "purchase", labelKey: "tabPurchase", status: has(report.materialsPurchase) ? "complete" : "not_started" },
-      { key: "timeline", labelKey: "tabTimeline", status: report.project.start_date && report.project.next_action ? "complete" : (report.project.start_date || report.project.next_action) ? "partial" : "not_started" },
       { key: "clientComm", labelKey: "tabClientComm", status: has(report.activity) ? "complete" : "not_started" },
       { key: "payments", labelKey: "tabPayments", status: has(report.payments) ? "complete" : "not_started" },
       { key: "completion", labelKey: "tabCompletion", status: report.handover?.handover_complete ? "complete" : Object.values(report.handover || {}).some((v) => v === true) ? "partial" : "not_started" },
@@ -316,6 +327,10 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
     addSheet("Design Approvals", report.designApprovals);
     addSheet("Design Locks", report.designLocks);
     addSheet("Working Drawings", report.workingDrawings);
+    addSheet("Working Drawing Files", [
+      ...report.attachments.filter((a) => a.stage === "Working Drawings" || a.stage === "Drawings"),
+      ...report.workingDrawingAttachments,
+    ]);
     addSheet("Drawing Versions", report.drawingVersions);
     addSheet("Drawing Checklist Results", report.checklistResults);
     addSheet("Drawing Issues", report.drawingIssues);
@@ -337,7 +352,7 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
     addSheet("Site Execution", report.snags);
     addSheet("Daily Updates", report.siteReports);
     addSheet("Material Requirements", report.materialsRequirements);
-    addSheet("Purchase Coordination", report.materialsPurchase);
+    addSheet("Purchase-Sourced Materials", report.materialsPurchase);
     addSheet("Client Communication", report.activity);
     addSheet("Payments", report.payments);
     addSheet("Tasks", report.tasks);
@@ -504,12 +519,18 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
       {/* ---------- 1. Quotation ---------- */}
       <AttachmentSection id="section-quotation" lang={lang} titleKey="tabQuotation" rows={report.attachments.filter((a) => a.stage === "Quotation")} personName={personName} />
 
-      {/* ---------- 2. Deal Closure ---------- */}
-      <div className="card" id="section-dealclosure">
-        <h2>{t("tabDealClosure", lang)}</h2>
-        <div className="msg info">{t("dealClosureSameAsTimelineNote", lang)}</div>
+      {/* ---------- 2, 11. Project Timeline & Deal Closure (consolidated —
+           these were two separate report sections built over the exact
+           same project fields; merged into one) ---------- */}
+      <div className="card" id="section-projecttimeline">
+        <h2>{t("tabProjectTimeline", lang)}</h2>
+        <div className="task-meta" style={{ padding: "6px 0" }}>
+          {STAGES.map((s, i) => <span key={s} className={`badge ${i <= stageIndex ? "VERIFIED" : "CLOSED"}`}>{s}</span>)}
+        </div>
         <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("interiorLocationLabel", lang)}</span><span className="sub">{p.location || "—"}</span></div>
         <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("nextActionLabel", lang)}</span><span className="sub">{p.next_action || "—"}</span></div>
+        <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("nextUpdateLabel", lang)}</span><span className="sub">{p.next_update || "—"}</span></div>
+        <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("onTimeLabel", lang)}</span><span className="sub">{p.on_time == null ? "—" : p.on_time ? t("yesLabel", lang) : t("noLabel", lang)}</span></div>
         <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("remarksLabel", lang)}</span><span className="sub">{p.remarks || "—"}</span></div>
       </div>
 
@@ -517,7 +538,34 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
            Approval / Design Lock / Drawings / Material Selection) ---------- */}
       <div className="card" id="section-workingdrawings">
         <h2>{t("tabWorkingDrawings", lang)}</h2>
-        {wdAreaSummary.length === 0 && <EmptySection lang={lang} />}
+
+        {/* Current simplified file register — title/category/note, per the
+            simplified Working Drawings page. The per-area breakdown below
+            is historical data from that page's earlier, richer design
+            (room/version/checklist workflow) — never deleted, but frozen
+            in time since the page no longer creates new rows there. */}
+        <div className="sub" style={{ fontWeight: 700 }}>{t("uploadFileAction", lang)}</div>
+        {(() => {
+          const wdFiles = [
+            ...report.attachments.filter((a) => a.stage === "Working Drawings" || a.stage === "Drawings"),
+            ...report.workingDrawingAttachments,
+          ];
+          if (wdFiles.length === 0) return <EmptySection lang={lang} />;
+          return wdFiles.map((f) => {
+            const category = f.file_category === "Other" ? (f.custom_category || f.file_category) : f.file_category;
+            return (
+              <div key={f.id} className="task-meta" style={{ justifyContent: "space-between", padding: "4px 0", flexWrap: "wrap", gap: 6 }}>
+                <span>{f.title || f.original_file_name || f.file_name}</span>
+                <span className="badge ASSIGNED">{category || t("uncategorisedLabel", lang)}</span>
+                <span className="sub">{personName(f.uploaded_by)} · {(f.created_at || f.uploaded_at || "").slice(0, 10)}</span>
+                {(f.note || f.description) && <span className="sub">{t("notesLabel", lang)}: {f.note || f.description}</span>}
+                <DownloadButton storagePath={f.storage_path} lang={lang} />
+              </div>
+            );
+          });
+        })()}
+
+        {wdAreaSummary.length > 0 && <div className="sub" style={{ fontWeight: 700, marginTop: 14 }}>{t("roomAreaLabel", lang)}</div>}
         {wdAreaSummary.map(({ area, current, versions, changeCounts, approvals, lock, drawings, drawingVersionsForArea, checklistPct, issues, areaMaterials, materialsApproved }) => (
           <div key={area.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 10, marginBottom: 10 }}>
             <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
@@ -794,16 +842,6 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
         ))}
       </div>
 
-      {/* ---------- 11. Project Timeline ---------- */}
-      <div className="card" id="section-timeline">
-        <h2>{t("tabTimeline", lang)}</h2>
-        <div className="task-meta" style={{ padding: "6px 0" }}>
-          {STAGES.map((s, i) => <span key={s} className={`badge ${i <= stageIndex ? "VERIFIED" : "CLOSED"}`}>{s}</span>)}
-        </div>
-        <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("nextUpdateLabel", lang)}</span><span className="sub">{p.next_update || "—"}</span></div>
-        <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("onTimeLabel", lang)}</span><span className="sub">{p.on_time == null ? "—" : p.on_time ? t("yesLabel", lang) : t("noLabel", lang)}</span></div>
-      </div>
-
       {/* ---------- 12. Client Communication ---------- */}
       <div className="card" id="section-clientcomm">
         <h2>{t("tabClientComm", lang)}</h2>
@@ -856,25 +894,10 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
         ))}
       </div>
 
-      {/* ---------- 15. Purchase Board ---------- */}
-      <div className="card" id="section-purchaseboard">
-        <h2>{t("tabPurchaseBoard", lang)}</h2>
-        <div className="msg info" style={{ marginBottom: 6 }}>{t("purchaseBoardSameAsCoordinationNote", lang)}</div>
-        {report.materialsPurchase.length === 0 && <EmptySection lang={lang} />}
-        {report.materialsPurchase.map((m) => (
-          <div key={m.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", flexWrap: "wrap", gap: 6 }}>
-            <span>{m.material}</span>
-            <span className="sub">{m.requested_by ? personName(m.requested_by) : "—"}</span>
-            {m.remark && <span className="sub">{t("notesLabel", lang)}: {m.remark}</span>}
-            <span className="badge ASSIGNED">{m.status}</span>
-          </div>
-        ))}
-      </div>
-
       {/* ---------- 16. Tasks ---------- */}
       <div className="card" id="section-tasks">
         <h2>{t("tabTasks", lang)}</h2>
-        {report.tasks.length === 0 && <EmptySection lang={lang} />}
+        {report.tasks.length === 0 && report.staffTasks.length === 0 && <EmptySection lang={lang} />}
         {report.tasks.map((r) => (
           <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", flexWrap: "wrap", gap: 6 }}>
             <span>{r.title}</span>
@@ -882,6 +905,17 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
             <span className="sub">{r.due_date || "—"}</span>
             {r.note && <span className="sub">{t("notesLabel", lang)}: {r.note}</span>}
             <span className={`badge ${r.status === "COMPLETED" ? "VERIFIED" : "ASSIGNED"}`}>{r.status}</span>
+          </div>
+        ))}
+        {/* staff_tasks linked to this project (Daily Site Update assignments
+            and any future project-linked source) — assigned_to/assigned_by
+            are user_profiles ids, resolved via staffUserName, not personName. */}
+        {report.staffTasks.map((r) => (
+          <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", flexWrap: "wrap", gap: 6 }}>
+            <span>{r.title}</span>
+            <span className="sub">{t("assignedToLabel", lang)}: {staffUserName(r.assigned_to)}</span>
+            <span className="sub">{r.due_date || "—"}</span>
+            {r.source_module === "daily_site_update" && <span className="badge ASSIGNED">{t("sourceDailySiteUpdateLabel", lang)}</span>}
           </div>
         ))}
       </div>

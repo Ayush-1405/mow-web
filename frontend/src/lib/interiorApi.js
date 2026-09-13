@@ -190,13 +190,13 @@ export async function listAttachments(projectId, stage) {
   return q;
 }
 
-export async function addAttachmentRecord({ projectId, stage, title, fileName, note, storagePath, fileType, fileSize, uploadedBy }) {
+export async function addAttachmentRecord({ projectId, stage, title, fileName, note, storagePath, fileType, fileSize, uploadedBy, fileCategory, customCategory }) {
   const { data, error } = await supabase.from("attachments").insert({
     project_id: projectId, stage, title, file_name: fileName, note: note || null,
     storage_path: storagePath || null, file_type: fileType || null, file_size: fileSize || null,
-    uploaded_by: uploadedBy || null,
+    uploaded_by: uploadedBy || null, file_category: fileCategory || null, custom_category: customCategory || null,
   }).select().single();
-  if (!error) await logAudit("attachments", data.id, "create", { stage, title }, projectId);
+  if (!error) await logAudit("attachments", data.id, "create", { stage, title, file_category: fileCategory }, projectId);
   return { data, error };
 }
 
@@ -218,6 +218,65 @@ export async function uploadAttachmentFile({ projectId, stage, file, title, note
 export async function getAttachmentUrl(storagePath) {
   const { data, error } = await supabase.storage.from("interior-attachments").createSignedUrl(storagePath, 3600);
   return { url: data?.signedUrl || null, error };
+}
+
+// ---------------------------------------------------------------------
+// Working Drawings (simplified) — a plain project-wise file register:
+// title, mandatory category, optional note. Reuses the generic
+// `attachments` table (stage='Working Drawings') rather than the
+// room/area/version schema built earlier this session, per the explicit
+// "I do not need the current complicated features" request. Legacy files
+// from both earlier eras (`attachments` stage='Drawings', and
+// `working_drawing_attachments` from the brief life of the complex
+// module) are surfaced read-and-editable alongside new uploads, never
+// migrated or deleted — see listWorkingDrawingFiles().
+// ---------------------------------------------------------------------
+export async function uploadWorkingDrawingFile({ projectId, title, fileCategory, customCategory, file, note, uploadedBy }) {
+  const safeCategory = (fileCategory || "Other").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-140);
+  const path = `projects/${projectId}/working-drawings/${safeCategory}/${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await supabase.storage.from("interior-attachments").upload(path, file);
+  if (uploadError) return { data: null, error: uploadError };
+  return addAttachmentRecord({
+    projectId, stage: "Working Drawings", title, fileName: file.name, note,
+    storagePath: path, fileType: file.type, fileSize: file.size, uploadedBy,
+    fileCategory, customCategory,
+  });
+}
+
+// Merges the new simplified uploads with both legacy sources so nothing
+// previously uploaded ever disappears from this page, normalized onto one
+// shape. `source` on each row records which table it actually lives in, so
+// a later category edit (updateWorkingDrawingFileCategory) writes back to
+// the right place.
+export async function listWorkingDrawingFiles(projectId) {
+  const [attRes, wdaRes] = await Promise.all([
+    supabase.from("attachments").select("*").eq("project_id", projectId).in("stage", ["Working Drawings", "Drawings"]).order("created_at", { ascending: false }),
+    supabase.from("working_drawing_attachments").select("*").eq("project_id", projectId).order("uploaded_at", { ascending: false }),
+  ]);
+  if (attRes.error) return { data: null, error: attRes.error };
+  const fromAttachments = (attRes.data || []).map((r) => ({
+    source: "attachments", id: r.id, title: r.title || r.file_name, original_file_name: r.file_name,
+    file_category: r.file_category || null, custom_category: r.custom_category || null, note: r.note,
+    storage_path: r.storage_path, file_type: r.file_type, file_size: r.file_size,
+    uploaded_by: r.uploaded_by, uploaded_at: r.created_at,
+  }));
+  const fromLegacyModule = (wdaRes.data || []).map((r) => ({
+    source: "working_drawing_attachments", id: r.id, title: r.original_file_name || r.file_name, original_file_name: r.file_name,
+    file_category: r.file_category || null, custom_category: null, note: r.description,
+    storage_path: r.storage_path, file_type: r.file_type, file_size: r.file_size,
+    uploaded_by: r.uploaded_by, uploaded_at: r.uploaded_at,
+  }));
+  const merged = [...fromAttachments, ...fromLegacyModule].sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
+  return { data: merged, error: null };
+}
+
+export async function updateWorkingDrawingFileCategory(source, projectId, id, fileCategory, customCategory) {
+  const table = source === "working_drawing_attachments" ? "working_drawing_attachments" : "attachments";
+  const patch = table === "attachments" ? { file_category: fileCategory, custom_category: customCategory || null } : { file_category: fileCategory };
+  const { data, error } = await supabase.from(table).update(patch).eq("id", id).eq("project_id", projectId).select().single();
+  if (!error) await logAudit(table, id, "assign_category", { file_category: fileCategory }, projectId);
+  return { data, error };
 }
 
 export async function lockDesignAttachment(id) {
@@ -284,6 +343,43 @@ export async function createSiteReport(payload) {
   const { data, error } = await supabase.from("site_reports").insert(payload).select().single();
   if (!error) await logAudit("site_reports", data.id, "create", { report_date: payload.report_date }, payload.project_id);
   return { data, error };
+}
+
+// ---------------------------------------------------------------------
+// Person-wise task assignment from Daily Site Updates -- wired into the
+// REAL staff_tasks system (Accept/Start/Complete/Verify/Close, already
+// rendered as full cards in Today's Tasks) via the new staff_create_project_task
+// RPC (mvp_pilot_daily_update_tasks_v2_38.sql), never Interior's own thin
+// `tasks` table. See that migration's header comment for why.
+// ---------------------------------------------------------------------
+
+// Candidates for the "Assign To" dropdown need profiles.auth_id (the
+// user_profiles.id / auth.uid() value staff_tasks.assigned_to actually
+// expects) -- NOT profiles.id. A profile with no auth_id has never logged
+// into the staff pilot and cannot receive a task; filtered out here so it
+// never silently appears as a pickable-but-broken option.
+export async function listAssignableInteriorPeople() {
+  return supabase.from("profiles").select("id, name, role, auth_id").eq("active", true).not("auth_id", "is", null).order("name");
+}
+
+export async function createProjectTask({ projectId, title, description, assignedTo, dueDate, priorityCode, sourceSiteReportId, sourceWorkItemId, sourceType }) {
+  const { data, error } = await supabase.rpc("staff_create_project_task", {
+    p_project_id: projectId, p_title: title, p_description: description || null, p_assigned_to: assignedTo,
+    p_due_date: dueDate, p_priority_code: priorityCode || "NORMAL",
+    p_source_site_report_id: sourceSiteReportId, p_source_work_item_id: sourceWorkItemId, p_source_type: sourceType,
+  });
+  const row = Array.isArray(data) ? data[0] : data;
+  return { data: row, error };
+}
+
+// All staff_tasks linked to this project (Daily Site Update assignments,
+// and any future project-linked source) -- used by Project Tasks, the
+// Daily Update report list, and the Master Report. assigned_to/assigned_by
+// here are user_profiles ids, resolved for display via
+// staff_list_assignable_users_all() (same resolver TodayTasks.jsx/
+// AssignTask.jsx already use), never listInteriorPeople().
+export async function listProjectStaffTasks(projectId) {
+  return supabase.from("staff_tasks").select("*").eq("project_id", projectId).order("created_at", { ascending: false });
 }
 
 export async function listMaterials(projectId) {
@@ -467,7 +563,7 @@ export async function loadMasterReport(projectId, isOrgWide) {
     purchaseRequestsRes, purchaseRequestItemsRes, inhouseProductionRequestsRes, outsourceRequirementsRes,
     vendorQuotationsRes, purchaseVendorSelectionsRes, purchaseApprovalsRes, purchaseOrdersRes,
     purchaseCostingRes, purchaseChecklistResultsRes, purchaseChecklistItemsRes, vendorFollowupsRes,
-    purchaseReceiptsRes, purchasePaymentCoordinationRes, purchaseAttachmentsRes,
+    purchaseReceiptsRes, purchasePaymentCoordinationRes, purchaseAttachmentsRes, staffTasksRes,
   ] = await Promise.all([
     listProjects(), listInteriorPeople(), listAttachments(projectId), listProjectChanges(projectId),
     listSnags(projectId), listSiteReports(projectId), listProjectMaterials(projectId, null),
@@ -502,6 +598,7 @@ export async function loadMasterReport(projectId, isOrgWide) {
     supabase.from("purchase_receipts").select("*").eq("project_id", projectId),
     supabase.from("purchase_payment_coordination").select("*").eq("project_id", projectId),
     listPurchaseAttachmentsForProject(projectId),
+    listProjectStaffTasks(projectId),
   ]);
 
   const project = (projectsRes.data || []).find((p) => p.id === projectId) || null;
@@ -564,6 +661,7 @@ export async function loadMasterReport(projectId, isOrgWide) {
     purchaseReceipts: purchaseReceiptsRes.data || [],
     purchasePaymentCoordination: purchasePaymentCoordinationRes.data || [],
     purchaseAttachments: purchaseAttachmentsRes.data || [],
+    staffTasks: staffTasksRes.data || [],
   };
 }
 

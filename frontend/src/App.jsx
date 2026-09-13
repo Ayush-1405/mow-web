@@ -74,10 +74,23 @@ function RedirectToWorkingDrawings() {
 }
 
 // Purchase Coordination + Purchase Board consolidated into Purchase
-// Management — same "keep old URLs working" treatment as Working Drawings.
+// Management, whose one canonical route is /interior-projects/purchase —
+// same "keep old URLs working" treatment as Working Drawings. Also used to
+// retire the short-lived /interior-projects/purchase-management path back
+// down to a redirect once the canonical route moved.
 function RedirectToPurchaseManagement() {
   const { projectId } = useParams();
-  return <Navigate to={projectId ? `/interior-projects/purchase-management/${projectId}` : "/interior-projects/purchase-management"} replace />;
+  return <Navigate to={projectId ? `/interior-projects/purchase/${projectId}` : "/interior-projects/purchase"} replace />;
+}
+
+// Deal Closure + Project Timeline used to be two separate cards/tabs/routes
+// that opened the exact same InteriorTimeline screen — consolidated into
+// one "Project Timeline & Deal Closure" module at /interior-projects/project-timeline.
+// Neither old route ever carried a :projectId segment (InteriorTimeline
+// itself has no useParams-based lock, only the lockedProjectId prop used
+// from inside Project Detail), so this is a plain unconditional redirect.
+function RedirectToProjectTimeline() {
+  return <Navigate to="/interior-projects/project-timeline" replace />;
 }
 
 export default function App() {
@@ -497,12 +510,15 @@ export default function App() {
       <Route path="/interior-projects/site-execution" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorSiteExecution lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/daily-updates" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorDailyUpdates lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/materials" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorMaterials lang={lang} filterSource={null} /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/purchase" element={<RedirectToPurchaseManagement />} />
-      <Route path="/interior-projects/purchase-management" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseManagement lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/purchase-management/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseManagement lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/purchase" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseManagement lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/purchase/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseManagement lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/purchase-management" element={<RedirectToPurchaseManagement />} />
+      <Route path="/interior-projects/purchase-management/:projectId" element={<RedirectToPurchaseManagement />} />
       <Route path="/interior-projects/tasks" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTasks lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/requests" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorRequests lang={lang} /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/timeline" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTimeline lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/project-timeline" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTimeline lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/timeline" element={<RedirectToProjectTimeline />} />
+      <Route path="/interior-projects/deal-closure" element={<RedirectToProjectTimeline />} />
       <Route path="/interior-projects/new" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorProjectCreate lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/communication" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorClientComm lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/payments" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPayments lang={lang} lookups={lookups} /></InteriorProfileGate>)} />

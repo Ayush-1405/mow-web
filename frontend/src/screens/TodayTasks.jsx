@@ -24,6 +24,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [searchParams] = useSearchParams();
   const focusedRef = useRef(null);
   const [tasks, setTasks] = useState([]);
+  const [projectsById, setProjectsById] = useState({});
   const [usersById, setUsersById] = useState({});
   const [directory, setDirectory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +66,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           supabase.from("tasks").select("id, title, status, projects(project_code)").eq("assigned_to", myInteriorProfile.id).neq("status", "COMPLETED"),
         ]);
         (snagsRes.data || []).forEach((r) => items.push({ key: `snag-${r.id}`, typeKey: "interiorSnagItem", label: `${r.projects?.project_code ? r.projects.project_code + " — " : ""}${r.issue}`, status: r.status, route: "/interior-projects/site-execution" }));
-        (tasksRes.data || []).forEach((r) => items.push({ key: `itask-${r.id}`, typeKey: "interiorTaskItem", label: `${r.projects?.project_code ? r.projects.project_code + " — " : ""}${r.title}`, status: r.status, route: "/interior-projects/timeline" }));
+        (tasksRes.data || []).forEach((r) => items.push({ key: `itask-${r.id}`, typeKey: "interiorTaskItem", label: `${r.projects?.project_code ? r.projects.project_code + " — " : ""}${r.title}`, status: r.status, route: "/interior-projects/project-timeline" }));
       }
     }
 
@@ -85,8 +86,21 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       .limit(100);
     if (error) {
       showToast("error", error.message);
+      setLoading(false);
+      return;
+    }
+    setTasks(data || []);
+    // Project-linked tasks (e.g. from Daily Site Updates) need the
+    // project's code/customer/location shown as its own field, never
+    // buried inside the description — a second small query only for the
+    // distinct project_ids actually present, not every project this user
+    // can see.
+    const projectIds = Array.from(new Set((data || []).map((tsk) => tsk.project_id).filter(Boolean)));
+    if (projectIds.length) {
+      const { data: projRows } = await supabase.from("projects").select("id, project_code, customer, location").in("id", projectIds);
+      setProjectsById(Object.fromEntries((projRows || []).map((p) => [p.id, p])));
     } else {
-      setTasks(data || []);
+      setProjectsById({});
     }
     setLoading(false);
   }, [showToast]);
@@ -249,11 +263,18 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   }
 
   const statusOf = (id) => lookups.statusById[id];
+  const todayStr = new Date().toISOString().slice(0, 10);
   const isOverdue = (task) => {
     const s = statusOf(task.status_id)?.code;
     if (!task.due_date || s === "CLOSED" || s === "VERIFIED") return false;
-    return task.due_date < new Date().toISOString().slice(0, 10);
+    return task.due_date < todayStr;
   };
+  // Today/overdue/no-due-date tasks stay in the primary list exactly as
+  // before; anything due strictly after today moves under its own
+  // "Upcoming" heading instead of being mixed in unconditionally.
+  const isUpcoming = (task) => !!task.due_date && task.due_date > todayStr;
+  const sortedTasks = [...tasks].sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));
+  const firstUpcomingIndex = sortedTasks.findIndex(isUpcoming);
 
   return (
     <div>
@@ -281,7 +302,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       {loading && tasks.length === 0 && <div className="msg info">…</div>}
       {!loading && tasks.length === 0 && assignedItems.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
 
-      {tasks.map((task) => {
+      {sortedTasks.map((task, index) => {
         const status = statusOf(task.status_id);
         const statusCode = status?.code || "";
         const mine = task.current_owner_id === profile.id;
@@ -302,9 +323,12 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         // treats "undefined" the same as an explicitly unsupported type —
         // a clear message instead of a picker that can only ever fail.
         const proofTypeCode = lookups.proofTypes?.find((pt) => pt.id === task.proof_type_id)?.code;
+        const taskProject = task.project_id ? projectsById[task.project_id] : null;
 
         return (
-          <div className="task-card" id={`task-${task.id}`} key={task.id}>
+          <React.Fragment key={task.id}>
+          {index === firstUpcomingIndex && <div className="section-title" style={{ marginTop: 16 }}>{t("upcomingLabel", lang)}</div>}
+          <div className="task-card" id={`task-${task.id}`}>
             <div className="top-row">
               <div>
                 <div className="task-title">{task.title}</div>
@@ -312,6 +336,13 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               </div>
               <span className={`badge ${statusCode}`}>{lang === "gu" ? status?.name_gu : status?.name_en || statusCode}</span>
             </div>
+            {taskProject && (
+              <div className="task-meta" style={{ marginTop: 4 }}>
+                <span style={{ fontWeight: 700 }}>{taskProject.project_code} — {taskProject.customer}</span>
+                {taskProject.location && <span className="sub">{taskProject.location}</span>}
+                {task.source_module === "daily_site_update" && <span className="badge ASSIGNED">{t("sourceDailySiteUpdateLabel", lang)}</span>}
+              </div>
+            )}
             {task.description && <div style={{ fontSize: 13, marginTop: 6 }}>{task.description}</div>}
             {task.requirement_text && (
               <div style={{ fontSize: 13, marginTop: 6 }}>
@@ -399,6 +430,18 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                   {t("reassign", lang)}
                 </button>
               )}
+              {taskProject && (
+                <>
+                  <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}`)}>
+                    {t("viewProjectAction", lang)}
+                  </button>
+                  {task.source_module === "daily_site_update" && (
+                    <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}?tab=dailyUpdates`)}>
+                      {t("viewDailyUpdateAction", lang)}
+                    </button>
+                  )}
+                </>
+              )}
               <button
                 className="btn btn-outline"
                 onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)}
@@ -473,6 +516,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               </>
             )}
           </div>
+          </React.Fragment>
         );
       })}
     </div>

@@ -16,9 +16,12 @@ import { getModuleRoute } from "../../lib/moduleRegistry";
 // InteriorProfileGate — those are two different profiles.
 const ELEVATED_ROLES = new Set(["dept_head", "supervisor", "accounts_head", "cfo", "sysadmin"]);
 
+// Purchase Management is deliberately NOT repeated here — it already has
+// its own card in departmentConfig.js's INTERIOR function-card list
+// (rendered separately below); listing it again here was the literal
+// duplicate-card bug. These three have no equivalent function card.
 const EXTRA_LINKS = [
   { en: "New Project", gu: "નવો પ્રોજેક્ટ", route: "/interior-projects/new", icon: "➕" },
-  { en: "Purchase Management", gu: "ખરીદી વ્યવસ્થાપન", route: "/interior-projects/purchase-management", icon: "🧾" },
   { en: "Tasks", gu: "કાર્યો", route: "/interior-projects/tasks", icon: "✅" },
   { en: "Customer Requests & Complaints", gu: "ગ્રાહક વિનંતીઓ", route: "/interior-projects/requests", icon: "📮" },
 ];
