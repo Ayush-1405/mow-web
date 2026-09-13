@@ -882,6 +882,15 @@ export const STRINGS = {
   completedOnLabel: { en: "Completed On", gu: "ક્યારે પૂર્ણ કર્યું" },
   completionNoteLabel: { en: "Completion Note", gu: "પૂર્ણતાની નોંધ" },
   removalReasonPlaceholder: { en: "Reason for this change", gu: "આ ફેરફારનું કારણ" },
+
+  // Lead Executive / Executive Assistant (replaces Project Manager / 3D Designer)
+  leadExecutiveLabel: { en: "Lead Executive", gu: "લીડ એક્ઝિક્યુટિવ" },
+  executiveAssistantLabel: { en: "Executive Assistant", gu: "એક્ઝિક્યુટિવ આસિસ્ટન્ટ" },
+  selectLeadExecutivePlaceholder: { en: "Select Lead Executive", gu: "લીડ એક્ઝિક્યુટિવ પસંદ કરો" },
+  selectExecutiveAssistantPlaceholder: { en: "Select Executive Assistant", gu: "એક્ઝિક્યુટિવ આસિસ્ટન્ટ પસંદ કરો" },
+  activeInteriorEmployeesLabel: { en: "Active Interior Employees", gu: "સક્રિય ઇન્ટિરિયર કર્મચારીઓ" },
+  noActiveEmployeeFoundMsg: { en: "No active employee found", gu: "કોઈ સક્રિય કર્મચારી મળ્યો નથી" },
+  leadExecutiveAssistantSamePersonMsg: { en: "Lead Executive and Executive Assistant must be different employees.", gu: "લીડ એક્ઝિક્યુટિવ અને એક્ઝિક્યુટિવ આસિસ્ટન્ટ અલગ કર્મચારી હોવા જોઈએ." },
 };
 
 export function t(key, lang) {

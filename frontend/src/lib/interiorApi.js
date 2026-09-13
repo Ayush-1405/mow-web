@@ -54,11 +54,24 @@ export async function ensureInteriorProfile(functionalRole) {
   return supabase.rpc("interior_ensure_profile", { p_functional_role: functionalRole || null }).single();
 }
 
-// Team roster for "Assign To" pickers (snags, tasks) — the external
-// system's own `profiles` table, not user_profiles. active=true only.
+// Team roster for "Assign To" pickers (snags, tasks, Lead Executive/
+// Executive Assistant/project team) — the SINGLE reusable active-employee
+// source (interior_list_active_employees(), mvp_pilot_lead_executive_v2_42.sql).
+// Previously this ran a plain `profiles` select, which only ever returned
+// someone once they'd personally opened an Interior screen and picked a
+// functional role (interior_ensure_profile()) — a brand-new employee was
+// invisible here until then. A DB trigger on user_profiles now keeps
+// `profiles` in sync automatically (created/renamed/activated/deactivated),
+// so this RPC reflects every active Interior employee immediately, with no
+// login required. Returns the same `id`/`name`/`role` shape every existing
+// caller already expects, plus `employee_code`/`role_label_en`/
+// `role_label_gu`/`auth_id`/`active` for the newer "Name — Code — Role"
+// dropdowns. `listActiveInteriorEmployees` is the same function under the
+// name a couple of newer call sites use — one implementation, two names.
 export async function listInteriorPeople() {
-  return supabase.from("profiles").select("id, name, role").eq("active", true).order("name");
+  return supabase.rpc("interior_list_active_employees");
 }
+export const listActiveInteriorEmployees = listInteriorPeople;
 
 // Notifies an Interior assignee. profiles.id (used for assigned_to on
 // snags/tasks) is NOT auth.uid() — resolve profiles.auth_id first (the
@@ -148,12 +161,17 @@ export async function removeProjectMember(projectId, profileId) {
   return { error };
 }
 
-// Everyone with "full access" to a project: PM (owner), designer,
-// execution, plus anyone added to project_members. This is the set a
-// project owner can delegate tasks to, and the set InteriorTimeline shows
-// as the project's team.
+// Everyone with "full access" to a project: Lead Executive (owner),
+// Executive Assistant, legacy designer/execution (historical projects
+// still resolve correctly), plus anyone added to project_members. Mirrors
+// interior_is_project_member()'s own RLS check field-for-field. This is
+// the set a project owner can delegate tasks to, and the set
+// InteriorTimeline shows as the project's team.
 export async function listProjectTeamIds(project) {
-  const ids = new Set([project.project_manager_id, project.designer_id, project.execution_id].filter(Boolean));
+  const ids = new Set([
+    project.lead_executive_id, project.executive_assistant_id,
+    project.project_manager_id, project.designer_id, project.execution_id,
+  ].filter(Boolean));
   const { data } = await listProjectMembers(project.id);
   (data || []).forEach((m) => ids.add(m.profile_id));
   return Array.from(ids);

@@ -389,7 +389,7 @@ export default function InteriorMaterialSelection({ lang, staffProfile, lockedPr
           <div className="dept-meta-grid" style={{ marginTop: 10 }}>
             <div className="card dept-meta-tile"><div className="label">{t("clientNameLabel", lang)}</div><div className="value">{currentProject.customer}</div></div>
             <div className="card dept-meta-tile"><div className="label">{t("siteAddressLabel", lang)}</div><div className="value">{currentProject.location || "—"}</div></div>
-            <div className="card dept-meta-tile"><div className="label">{t("interiorRole_pm", lang)}</div><div className="value">{personName(currentProject.project_manager_id)}</div></div>
+            <div className="card dept-meta-tile"><div className="label">{t("leadExecutiveLabel", lang)}</div><div className="value">{personName(currentProject.lead_executive_id)}</div></div>
             <div className="card dept-meta-tile"><div className="label">{t("stageLabel", lang)}</div><div className="value">{currentProject.stage}</div></div>
           </div>
         )}

@@ -147,12 +147,20 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
 
   useForegroundRefresh(load);
 
+  // Scoped by actual project assignment, not the Interior functional role
+  // string — since new employees now default to a generic 'employee' role
+  // (the employee-directory sync fix, mvp_pilot_lead_executive_v2_42.sql),
+  // a role-based branch would silently fall through to "see all projects"
+  // for anyone who never manually picked pm/designer/execution. Checking
+  // the actual owner/assistant/execution/legacy fields directly is correct
+  // for both new and historical projects regardless of role.
   const scopedProjects = useMemo(() => {
     if (!profile) return projects;
-    if (profile.role === "pm") return projects.filter((p) => p.project_manager_id === profile.id);
-    if (profile.role === "designer") return projects.filter((p) => p.designer_id === profile.id);
-    if (profile.role === "execution") return projects.filter((p) => p.execution_id === profile.id);
-    return projects; // director / head / purchase / crm see all
+    if (["director", "head", "purchase", "crm"].includes(profile.role)) return projects;
+    return projects.filter((p) =>
+      p.lead_executive_id === profile.id || p.executive_assistant_id === profile.id ||
+      p.execution_id === profile.id || p.project_manager_id === profile.id || p.designer_id === profile.id,
+    );
   }, [projects, profile]);
 
   const today = new Date().toISOString().slice(0, 10);

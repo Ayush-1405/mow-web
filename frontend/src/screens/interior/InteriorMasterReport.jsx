@@ -464,8 +464,8 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
         <h2>{t("tabOverview", lang)}</h2>
         <div className="dept-meta-grid">
           <div className="card dept-meta-tile"><div className="label">{t("stageLabel", lang)}</div><div className="value">{p.stage}</div></div>
-          <div className="card dept-meta-tile"><div className="label">{t("interiorRole_pm", lang)}</div><div className="value">{personName(p.project_manager_id)}</div></div>
-          <div className="card dept-meta-tile"><div className="label">{t("interiorRole_designer", lang)}</div><div className="value">{p.designer_id ? personName(p.designer_id) : "—"}</div></div>
+          <div className="card dept-meta-tile"><div className="label">{t("leadExecutiveLabel", lang)}</div><div className="value">{personName(p.lead_executive_id)}</div></div>
+          <div className="card dept-meta-tile"><div className="label">{t("executiveAssistantLabel", lang)}</div><div className="value">{p.executive_assistant_id ? personName(p.executive_assistant_id) : "—"}</div></div>
           <div className="card dept-meta-tile"><div className="label">{t("interiorRole_execution", lang)}</div><div className="value">{p.execution_id ? personName(p.execution_id) : "—"}</div></div>
           <div className="card dept-meta-tile"><div className="label">{t("startDateLabel", lang)}</div><div className="value">{p.start_date || "—"}</div></div>
           <div className="card dept-meta-tile"><div className="label">{t("dueDateLabel", lang)}</div><div className="value">{p.due_date || "—"}</div></div>
@@ -958,8 +958,8 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
       {/* ---------- 19. Project Team ---------- */}
       <div className="card" id="section-team">
         <h2>{t("projectTeamTitle", lang)}</h2>
-        <div className="task-meta" style={{ padding: "4px 0" }}><span className="badge VERIFIED">{t("projectOwnerBadge", lang)}</span><span>{personName(p.project_manager_id)}</span></div>
-        {p.designer_id && <div className="task-meta" style={{ padding: "4px 0" }}><span className="badge ASSIGNED">{t("interiorRole_designer", lang)}</span><span>{personName(p.designer_id)}</span></div>}
+        <div className="task-meta" style={{ padding: "4px 0" }}><span className="badge VERIFIED">{t("leadExecutiveLabel", lang)}</span><span>{personName(p.lead_executive_id)}</span></div>
+        {p.executive_assistant_id && <div className="task-meta" style={{ padding: "4px 0" }}><span className="badge ASSIGNED">{t("executiveAssistantLabel", lang)}</span><span>{personName(p.executive_assistant_id)}</span></div>}
         {p.execution_id && <div className="task-meta" style={{ padding: "4px 0" }}><span className="badge ASSIGNED">{t("interiorRole_execution", lang)}</span><span>{personName(p.execution_id)}</span></div>}
         {report.team.map((m) => (
           <div key={m.id} className="task-meta" style={{ padding: "4px 0" }}><span>{personName(m.profile_id)}</span></div>

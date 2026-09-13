@@ -233,14 +233,14 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
 
   const canFreezeNow = project && FREEZE_FIELDS.every(([f]) => project[f]);
 
-  // "Full access" to a project = its owner (PM), designer, execution lead,
-  // or anyone added to project_members; Head/Director manage every
-  // project's team regardless. Same set InteriorTasks uses to decide who
-  // may delegate tasks on this project.
-  const isOwner = !!(project && myProfile?.id && project.project_manager_id === myProfile.id);
+  // "Full access" to a project = its Lead Executive (owner), Executive
+  // Assistant, execution lead, or anyone added to project_members; Head/
+  // Director manage every project's team regardless. Same set InteriorTasks
+  // uses to decide who may delegate tasks on this project.
+  const isOwner = !!(project && myProfile?.id && project.lead_executive_id === myProfile.id);
   const canManageTeam = isOwner || myProfile?.role === "head" || myProfile?.role === "director";
-  const teamMemberIds = project ? Array.from(new Set([project.designer_id, project.execution_id, ...team.map((m) => m.profile_id)].filter(Boolean))) : [];
-  const addableMembers = people.filter((p) => p.id !== project?.project_manager_id && !teamMemberIds.includes(p.id));
+  const teamMemberIds = project ? Array.from(new Set([project.executive_assistant_id, project.execution_id, ...team.map((m) => m.profile_id)].filter(Boolean))) : [];
+  const addableMembers = people.filter((p) => p.id !== project?.lead_executive_id && !teamMemberIds.includes(p.id));
 
   async function handleAddMember() {
     if (!newMemberId || !projectId) return;
@@ -310,13 +310,13 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
         <div className="card">
           <h2>{t("projectTeamTitle", lang)}</h2>
           <div className="task-meta" style={{ marginTop: 0, padding: "4px 0" }}>
-            <span className="badge VERIFIED">{t("projectOwnerBadge", lang)}</span>
-            <span>{personName(project.project_manager_id)}</span>
+            <span className="badge VERIFIED">{t("leadExecutiveLabel", lang)}</span>
+            <span>{personName(project.lead_executive_id)}</span>
           </div>
-          {project.designer_id && (
+          {project.executive_assistant_id && (
             <div className="task-meta" style={{ padding: "4px 0" }}>
-              <span className="badge ASSIGNED">{t("interiorRole_designer", lang)}</span>
-              <span>{personName(project.designer_id)}</span>
+              <span className="badge ASSIGNED">{t("executiveAssistantLabel", lang)}</span>
+              <span>{personName(project.executive_assistant_id)}</span>
             </div>
           )}
           {project.execution_id && (

@@ -3,14 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
-import { addProjectMember, notifyInteriorAssignment, notifyDeptLeadership } from "../../lib/interiorApi";
+import { listActiveInteriorEmployees, addProjectMember, notifyInteriorAssignment, notifyDeptLeadership } from "../../lib/interiorApi";
 
-// New Project — md/MOOD-OF-WOOD-SYSTEM.md §2: "Every project has one PM,
-// one designer, one deadline, one stage, one next step. The new-project
-// form refuses to save without them." Enforced client-side here (required
-// fields) AND the project_code is generated the same way the existing 3
-// live projects are named (MOW-<number>), continuing that same sequence
-// rather than starting a parallel numbering scheme.
+// New Project. Ownership model: Lead Executive (required, replaces the old
+// "Project Manager") + optional Executive Assistant — both selected from
+// the single realtime active-employee source (listActiveInteriorEmployees(),
+// interior_list_active_employees() RPC), not filtered to any old functional
+// role, since any authorised active Interior employee is eligible. 3D
+// Designer is no longer collected here at all — designer_id stays on the
+// table for historical projects but is never written by new creates.
+// project_code continues the existing MOW-<number> sequence.
 export default function InteriorProjectCreate({ lang }) {
   const navigate = useNavigate();
   const profile = useInteriorProfile();
@@ -20,10 +22,11 @@ export default function InteriorProjectCreate({ lang }) {
   const [people, setPeople] = useState([]);
   const [nextCode, setNextCode] = useState("");
   const [form, setForm] = useState({
-    customer: "", location: "", project_value: "", project_manager_id: "", designer_id: "",
+    customer: "", location: "", project_value: "", lead_executive_id: "", executive_assistant_id: "",
     due_date: "", next_action: "",
   });
   const [extraMembers, setExtraMembers] = useState([]);
+  const [sameEmployeeError, setSameEmployeeError] = useState(false);
 
   const canCreate = profile && ["director", "head", "pm"].includes(profile.role);
 
@@ -31,7 +34,7 @@ export default function InteriorProjectCreate({ lang }) {
     setLoading(true);
     setError(false);
     const [peopleRes, codesRes] = await Promise.all([
-      supabase.from("profiles").select("id, name, role").eq("active", true).order("name"),
+      listActiveInteriorEmployees(),
       supabase.from("projects").select("project_code"),
     ]);
     if (peopleRes.error || codesRes.error) { setError(true); setLoading(false); return; }
@@ -46,20 +49,54 @@ export default function InteriorProjectCreate({ lang }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const pms = useMemo(() => people.filter((p) => ["pm", "head", "director"].includes(p.role)), [people]);
-  const designers = useMemo(() => people.filter((p) => p.role === "designer"), [people]);
+  // Realtime: the same live active-employee source everywhere else uses —
+  // a newly created Interior employee (synced automatically the moment
+  // their account is created, no login required) shows up in this
+  // already-open form without a refresh.
+  useEffect(() => {
+    const channel = supabase
+      .channel("interior_project_create_people")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
+
+  const employeeLabel = useCallback((p) => `${p.name} — ${p.employee_code || "—"} — ${lang === "gu" ? p.role_label_gu : p.role_label_en}`, [lang]);
+
+  // Executive Assistant candidates exclude whoever is currently the Lead
+  // Executive — the two can never be the same person.
+  const executiveAssistantCandidates = useMemo(
+    () => people.filter((p) => p.id !== form.lead_executive_id),
+    [people, form.lead_executive_id],
+  );
+
+  function selectLeadExecutive(id) {
+    setForm((f) => ({ ...f, lead_executive_id: id, executive_assistant_id: f.executive_assistant_id === id ? "" : f.executive_assistant_id }));
+    setSameEmployeeError(false);
+  }
+
+  // Additional Team Members must never include whoever is currently Lead
+  // Executive or Executive Assistant — prune immediately when either
+  // selection changes, not just filter them out of the visible checklist.
+  useEffect(() => {
+    setExtraMembers((cur) => cur.filter((id) => id !== form.lead_executive_id && id !== form.executive_assistant_id));
+  }, [form.lead_executive_id, form.executive_assistant_id]);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.customer || !form.project_manager_id || !form.designer_id || !form.due_date || !form.next_action) return;
+    if (!form.customer || !form.lead_executive_id || !form.due_date || !form.next_action) return;
+    if (form.executive_assistant_id && form.executive_assistant_id === form.lead_executive_id) {
+      setSameEmployeeError(true);
+      return;
+    }
     setSaving(true);
     const { data, error: err } = await supabase.from("projects").insert({
       project_code: nextCode,
       customer: form.customer,
       location: form.location || null,
       project_value: form.project_value ? Number(form.project_value) : 0,
-      project_manager_id: form.project_manager_id,
-      designer_id: form.designer_id,
+      lead_executive_id: form.lead_executive_id,
+      executive_assistant_id: form.executive_assistant_id || null,
       due_date: form.due_date,
       next_action: form.next_action,
       stage: "Quotation",
@@ -68,13 +105,13 @@ export default function InteriorProjectCreate({ lang }) {
     setSaving(false);
     if (err) { setError(true); return; }
 
-    // PM = project owner with full access to this project; designer plus
-    // any hand-picked extras join project_members so InteriorTimeline's
+    // Lead Executive = project owner with full access; Executive Assistant
+    // plus any hand-picked extras join project_members so InteriorTimeline's
     // team panel and InteriorTasks' assignee picker both see them from the
     // start. Every one of them gets an assignment notification.
-    const teamIds = Array.from(new Set([form.designer_id, ...extraMembers].filter(Boolean)));
+    const teamIds = Array.from(new Set([form.executive_assistant_id, ...extraMembers].filter(Boolean)));
     await Promise.all(teamIds.map((pid) => addProjectMember(data.id, pid)));
-    const notifyIds = Array.from(new Set([form.project_manager_id, ...teamIds]));
+    const notifyIds = Array.from(new Set([form.lead_executive_id, ...teamIds]));
     notifyIds.forEach((pid) => {
       notifyInteriorAssignment(pid, "project", data.id, `New project assigned: ${data.customer} (${data.project_code})`, `નવો પ્રોજેક્ટ સોંપાયેલ: ${data.customer} (${data.project_code})`);
     });
@@ -130,19 +167,24 @@ export default function InteriorProjectCreate({ lang }) {
             <label>{t("projectValueLabel", lang)}</label>
             <input type="number" min="0" value={form.project_value} onChange={(e) => setForm((f) => ({ ...f, project_value: e.target.value }))} />
           </div>
-          <div className="field">
-            <label>{t("interiorRole_pm", lang)} ({t("projectOwnerBadge", lang)}) *</label>
-            <select value={form.project_manager_id} onChange={(e) => setForm((f) => ({ ...f, project_manager_id: e.target.value }))} required>
-              <option value="" disabled>—</option>
-              {pms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <div className="field full">
+            <label>{t("leadExecutiveLabel", lang)} *</label>
+            <select value={form.lead_executive_id} onChange={(e) => selectLeadExecutive(e.target.value)} required>
+              <option value="" disabled>{t("selectLeadExecutivePlaceholder", lang)}</option>
+              {people.map((p) => <option key={p.id} value={p.id}>{employeeLabel(p)}</option>)}
             </select>
+            {people.length === 0 && <div className="msg info" style={{ marginTop: 6 }}>{t("noActiveEmployeeFoundMsg", lang)}</div>}
           </div>
-          <div className="field">
-            <label>{t("interiorRole_designer", lang)} *</label>
-            <select value={form.designer_id} onChange={(e) => setForm((f) => ({ ...f, designer_id: e.target.value }))} required>
-              <option value="" disabled>—</option>
-              {designers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <div className="field full">
+            <label>{t("executiveAssistantLabel", lang)}</label>
+            <select
+              value={form.executive_assistant_id}
+              onChange={(e) => { setForm((f) => ({ ...f, executive_assistant_id: e.target.value })); setSameEmployeeError(false); }}
+            >
+              <option value="">{t("selectExecutiveAssistantPlaceholder", lang)}</option>
+              {executiveAssistantCandidates.map((p) => <option key={p.id} value={p.id}>{employeeLabel(p)}</option>)}
             </select>
+            {sameEmployeeError && <div className="msg error" style={{ marginTop: 6 }}>{t("leadExecutiveAssistantSamePersonMsg", lang)}</div>}
           </div>
           <div className="field">
             <label>{t("dueDateLabel", lang)} *</label>
@@ -156,7 +198,7 @@ export default function InteriorProjectCreate({ lang }) {
             <label>{t("extraTeamMembersLabel", lang)}</label>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {people
-                .filter((p) => p.id !== form.project_manager_id && p.id !== form.designer_id)
+                .filter((p) => p.id !== form.lead_executive_id && p.id !== form.executive_assistant_id)
                 .map((p) => (
                   <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <input
@@ -164,7 +206,7 @@ export default function InteriorProjectCreate({ lang }) {
                       checked={extraMembers.includes(p.id)}
                       onChange={(e) => setExtraMembers((cur) => (e.target.checked ? [...cur, p.id] : cur.filter((id) => id !== p.id)))}
                     />
-                    <span>{p.name} <span className="sub">({p.role})</span></span>
+                    <span>{employeeLabel(p)}</span>
                   </label>
                 ))}
             </div>

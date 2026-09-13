@@ -50,20 +50,20 @@ export default function InteriorMasterReportSelect({ lang }) {
   const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
 
   const pmOptions = useMemo(() => {
-    const ids = new Set(projects.map((p) => p.project_manager_id).filter(Boolean));
+    const ids = new Set(projects.map((p) => p.lead_executive_id).filter(Boolean));
     return people.filter((p) => ids.has(p.id));
   }, [projects, people]);
 
   const filtered = useMemo(() => projects.filter((p) => {
     if (stageFilter && p.stage !== stageFilter) return false;
-    if (pmFilter && p.project_manager_id !== pmFilter) return false;
+    if (pmFilter && p.lead_executive_id !== pmFilter) return false;
     if (startFrom && (!p.start_date || p.start_date < startFrom)) return false;
     if (startTo && (!p.start_date || p.start_date > startTo)) return false;
     if (dueFrom && (!p.due_date || p.due_date < dueFrom)) return false;
     if (dueTo && (!p.due_date || p.due_date > dueTo)) return false;
     if (q) {
       const needle = q.toLowerCase();
-      const haystack = [p.project_code, p.customer, p.location, p.stage, personName(p.project_manager_id)].join(" ").toLowerCase();
+      const haystack = [p.project_code, p.customer, p.location, p.stage, personName(p.lead_executive_id)].join(" ").toLowerCase();
       if (!haystack.includes(needle)) return false;
     }
     return true;
@@ -97,7 +97,7 @@ export default function InteriorMasterReportSelect({ lang }) {
             {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <select value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}>
-            <option value="">{t("filterByPmLabel", lang)}</option>
+            <option value="">{t("leadExecutiveLabel", lang)}</option>
             {pmOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -115,7 +115,7 @@ export default function InteriorMasterReportSelect({ lang }) {
         const stageIndex = STAGES.indexOf(p.stage);
         const progressPct = stageIndex >= 0 ? Math.round(((stageIndex + 1) / STAGES.length) * 100) : 0;
         const team = teamByProject[p.id] || [];
-        const teamNames = Array.from(new Set([p.designer_id, p.execution_id, ...team.map((m) => m.profile_id)].filter(Boolean))).map(personName);
+        const teamNames = Array.from(new Set([p.executive_assistant_id, p.execution_id, ...team.map((m) => m.profile_id)].filter(Boolean))).map(personName);
         return (
           <div key={p.id} className="card">
             <div className="task-meta" style={{ marginTop: 0, justifyContent: "space-between" }}>
@@ -126,7 +126,7 @@ export default function InteriorMasterReportSelect({ lang }) {
               <span className="badge ASSIGNED">{p.stage}</span>
             </div>
             <div className="dept-meta-grid" style={{ marginTop: 10 }}>
-              <div className="card dept-meta-tile"><div className="label">{t("interiorRole_pm", lang)}</div><div className="value">{personName(p.project_manager_id)}</div></div>
+              <div className="card dept-meta-tile"><div className="label">{t("leadExecutiveLabel", lang)}</div><div className="value">{personName(p.lead_executive_id)}</div></div>
               <div className="card dept-meta-tile"><div className="label">{t("dueDateLabel", lang)}</div><div className="value">{p.due_date || "—"}</div></div>
               <div className="card dept-meta-tile"><div className="label">{t("projectValueLabel", lang)}</div><div className="value">{formatCurrency(p.project_value)}</div></div>
               <div className="card dept-meta-tile"><div className="label">{t("progressLabel", lang)}</div><div className="value">{progressPct}%</div></div>

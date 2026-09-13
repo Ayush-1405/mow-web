@@ -129,7 +129,8 @@ export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
 
       <div className="dept-meta-grid">
         <div className="card dept-meta-tile"><div className="label">{t("stageLabel", lang)}</div><div className="value">{project.stage}</div></div>
-        <div className="card dept-meta-tile"><div className="label">{t("interiorRole_pm", lang)}</div><div className="value">{personName(project.project_manager_id)}</div></div>
+        <div className="card dept-meta-tile"><div className="label">{t("leadExecutiveLabel", lang)}</div><div className="value">{personName(project.lead_executive_id)}</div></div>
+        <div className="card dept-meta-tile"><div className="label">{t("executiveAssistantLabel", lang)}</div><div className="value">{project.executive_assistant_id ? personName(project.executive_assistant_id) : "—"}</div></div>
         <div className="card dept-meta-tile"><div className="label">{t("startDateLabel", lang)}</div><div className="value">{project.start_date || "—"}</div></div>
         <div className="card dept-meta-tile"><div className="label">{t("dueDateLabel", lang)}</div><div className="value">{project.due_date || "—"}</div></div>
         <div className="card dept-meta-tile"><div className="label">{t("projectValueLabel", lang)}</div><div className="value">{formatCurrency(project.project_value)}</div></div>
@@ -154,7 +155,6 @@ export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
       {activeTab === "overview" ? (
         <div className="card">
           <h2>{t("tabOverview", lang)}</h2>
-          <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("interiorRole_designer", lang)}</span><span className="sub">{personName(project.designer_id)}</span></div>
           <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("interiorRole_execution", lang)}</span><span className="sub">{project.execution_id ? personName(project.execution_id) : "—"}</span></div>
           <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("interiorLocationLabel", lang)}</span><span className="sub">{project.location || "—"}</span></div>
           <div className="task-meta" style={{ padding: "6px 0" }}><span>{t("nextActionLabel", lang)}</span><span className="sub">{project.next_action || "—"}</span></div>
