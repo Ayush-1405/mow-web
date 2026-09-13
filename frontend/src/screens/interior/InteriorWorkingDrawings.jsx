@@ -5,8 +5,45 @@ import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import {
   listProjects, listInteriorPeople, getAttachmentUrl,
   uploadWorkingDrawingFile, listWorkingDrawingFiles, updateWorkingDrawingFileCategory,
-  createWorkingDrawingTask,
+  createWorkingDrawingTask, deleteWorkingDrawingFile,
 } from "../../lib/interiorApi";
+
+// Fixed allow-list, mirrored exactly by delete_project_attachment()'s own
+// server-side check (mvp_pilot_working_drawing_delete_v2_39.sql) -- the
+// codes here are literal, not translated, since they're stored as-is.
+export const DELETION_REASONS = [
+  ["WRONG_FILE", "reasonWrongFile"], ["WRONG_PROJECT", "reasonWrongProject"], ["DUPLICATE", "reasonDuplicate"],
+  ["WRONG_VERSION", "reasonWrongVersion"], ["REPLACED", "reasonReplaced"], ["WRONG_CATEGORY", "reasonWrongCategory"],
+  ["CORRUPTED", "reasonCorrupted"], ["CLIENT_REJECTED", "reasonClientRejected"], ["NOT_REQUIRED", "reasonNotRequired"],
+  ["OTHER", "reasonOther"],
+];
+
+// Shared by the delete-confirmation modal here and the permanent-delete
+// modal in InteriorDeletedFiles.jsx, so both stay in sync with the RPC's
+// own validation (reason mandatory, note >= 10 meaningful characters).
+export function DeletionReasonFields({ lang, reasonCode, setReasonCode, reasonNote, setReasonNote }) {
+  const noteTooShort = reasonNote.trim().length < 10;
+  return (
+    <>
+      <div className="field">
+        <label>{t("deletionReasonLabel", lang)} *</label>
+        <select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} required>
+          <option value="" disabled>{t("selectReasonPlaceholder", lang)}</option>
+          {DELETION_REASONS.map(([code, labelKey]) => <option key={code} value={code}>{t(labelKey, lang)}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>{t("detailedReasonLabel", lang)} *</label>
+        <textarea rows={3} value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} required />
+        {reasonNote.length > 0 && noteTooShort && <div className="msg error" style={{ marginTop: 4 }}>{t("detailedReasonTooShortMsg", lang)}</div>}
+      </div>
+    </>
+  );
+}
+
+export function isDeletionReasonValid(reasonCode, reasonNote) {
+  return !!reasonCode && reasonNote.trim().length >= 10;
+}
 
 // Working Drawings — simplified per explicit request: a plain project-wise
 // file register (title + mandatory category + optional note), not the
@@ -162,6 +199,58 @@ export function ViewDownloadButton({ lang, storagePath, fileName }) {
   );
 }
 
+// Delete is offered to any authenticated project member (per spec: "Any
+// authorised member of that project may request deletion") -- the real
+// gate is delete_project_attachment()'s own interior_is_project_member()
+// check server-side, exactly like the upload/category-assign actions on
+// this same screen already have no frontend role check either.
+export function DeleteFileModal({ lang, file, project, uploaderName, onCancel, onConfirm }) {
+  const [reasonCode, setReasonCode] = useState("");
+  const [reasonNote, setReasonNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const valid = isDeletionReasonValid(reasonCode, reasonNote);
+
+  async function handleConfirm() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError("");
+    const { error: err } = await onConfirm(reasonCode, reasonNote.trim());
+    if (err) {
+      setBusy(false);
+      setError(err.message || String(err));
+    }
+    // on success the caller closes this modal itself (unmounting this component)
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={busy ? undefined : onCancel}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="modal-card-title">{t("deleteFileAction", lang)}</div>
+        <div className="task-meta" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4, marginTop: 8 }}>
+          <span><strong>{t("titleLabel", lang)}:</strong> {file.title}</span>
+          <span className="sub">{file.original_file_name}</span>
+          <span className="sub">{t("fileCategoryLabel", lang)}: {file.file_category === "Other" ? file.custom_category : file.file_category || "—"}</span>
+          <span className="sub">{project ? `${project.project_code} — ${project.customer}` : "—"}</span>
+          <span className="sub">{t("uploadedByLabel", lang)}: {uploaderName} · {file.uploaded_at ? new Date(file.uploaded_at).toLocaleString() : "—"}</span>
+        </div>
+        <p className="msg error" style={{ marginTop: 10 }}>{t("deleteConfirmWarningMsg", lang)}</p>
+        <div className="form-grid">
+          <DeletionReasonFields lang={lang} reasonCode={reasonCode} setReasonCode={setReasonCode} reasonNote={reasonNote} setReasonNote={setReasonNote} />
+        </div>
+        {error && <div className="msg error" style={{ marginTop: 6 }}>{error}</div>}
+        <div className="btn-row" style={{ marginTop: 10 }}>
+          <button className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={onCancel}>{t("cancel", lang)}</button>
+          <button className="btn btn-danger" style={{ width: "auto" }} disabled={!valid || busy} onClick={handleConfirm}>
+            {busy ? t("removingFileMsg", lang) : t("confirmDeleteAction", lang)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // staffProfile is still accepted (App.jsx / InteriorProjectDetail.jsx both
 // pass it, matching every other Interior screen's call signature) but this
 // simplified page has no role-gated action left that needs it.
@@ -194,6 +283,9 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
   const [typeFilter, setTypeFilter] = useState("");
 
   const [categoryDrafts, setCategoryDrafts] = useState({});
+
+  const [deletingFile, setDeletingFile] = useState(null);
+  const [deleteSuccessMsg, setDeleteSuccessMsg] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -253,6 +345,17 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
     await updateWorkingDrawingFileCategory(row.source, projectId, row.id, draft.file_category, draft.custom_category || null);
     setCategoryDrafts((d) => ({ ...d, [row.id]: null }));
     loadFiles();
+  }
+
+  async function handleConfirmDelete(reasonCode, reasonNote) {
+    const { error: err } = await deleteWorkingDrawingFile({
+      source: deletingFile.source, id: deletingFile.id, projectId, reasonCode, reasonNote,
+    });
+    if (err) return { error: err };
+    setDeletingFile(null);
+    setDeleteSuccessMsg(t("fileRemovedMsg", lang));
+    loadFiles();
+    return { error: null };
   }
 
   const uploaders = useMemo(() => Array.from(new Set(files.map((f) => f.uploaded_by).filter(Boolean))), [files]);
@@ -416,12 +519,27 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
                   <span className="sub">{personName(people, f.uploaded_by)} · {f.uploaded_at ? new Date(f.uploaded_at).toLocaleString() : "—"}</span>
                   <span className="sub">{formatFileSize(f.file_size)}</span>
                   <ViewDownloadButton lang={lang} storagePath={f.storage_path} fileName={f.original_file_name} />
+                  <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => { setDeletingFile(f); setDeleteSuccessMsg(""); }}>
+                    {t("deleteFileAction", lang)}
+                  </button>
                 </div>
               );
             })}
           </>
         )}
+        {deleteSuccessMsg && <div className="msg success" style={{ marginTop: 8 }}>{deleteSuccessMsg}</div>}
       </div>
+
+      {deletingFile && (
+        <DeleteFileModal
+          lang={lang}
+          file={deletingFile}
+          project={project}
+          uploaderName={personName(people, deletingFile.uploaded_by)}
+          onCancel={() => setDeletingFile(null)}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
     </div>
   );
 }

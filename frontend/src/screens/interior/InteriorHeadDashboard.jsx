@@ -272,6 +272,11 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
               <span className="function-card-label">{l.icon} {lang === "gu" ? l.gu : l.en}</span>
             </button>
           ))}
+          {(!!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead) && (
+            <button className="function-card" onClick={() => navigate("/interior-projects/deleted-files")}>
+              <span className="function-card-label">🗑️ {t("deletedFilesTitle", lang)}</span>
+            </button>
+          )}
         </div>
       </div>
 

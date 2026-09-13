@@ -185,7 +185,7 @@ export async function updateProjectDetails(id, { location, start_date, next_upda
 }
 
 export async function listAttachments(projectId, stage) {
-  let q = supabase.from("attachments").select("*").eq("project_id", projectId).order("created_at", { ascending: false });
+  let q = supabase.from("attachments").select("*").eq("project_id", projectId).eq("is_deleted", false).order("created_at", { ascending: false });
   if (stage) q = q.eq("stage", stage);
   return q;
 }
@@ -251,8 +251,8 @@ export async function uploadWorkingDrawingFile({ projectId, title, fileCategory,
 // the right place.
 export async function listWorkingDrawingFiles(projectId) {
   const [attRes, wdaRes] = await Promise.all([
-    supabase.from("attachments").select("*").eq("project_id", projectId).in("stage", ["Working Drawings", "Drawings"]).order("created_at", { ascending: false }),
-    supabase.from("working_drawing_attachments").select("*").eq("project_id", projectId).order("uploaded_at", { ascending: false }),
+    supabase.from("attachments").select("*").eq("project_id", projectId).eq("is_deleted", false).in("stage", ["Working Drawings", "Drawings"]).order("created_at", { ascending: false }),
+    supabase.from("working_drawing_attachments").select("*").eq("project_id", projectId).eq("is_deleted", false).order("uploaded_at", { ascending: false }),
   ]);
   if (attRes.error) return { data: null, error: attRes.error };
   const fromAttachments = (attRes.data || []).map((r) => ({
@@ -277,6 +277,65 @@ export async function updateWorkingDrawingFileCategory(source, projectId, id, fi
   const { data, error } = await supabase.from(table).update(patch).eq("id", id).eq("project_id", projectId).select().single();
   if (!error) await logAudit(table, id, "assign_category", { file_category: fileCategory }, projectId);
   return { data, error };
+}
+
+// ---------- Working Drawings: secure soft-delete / recycle bin / permanent delete ----------
+// See mvp_pilot_working_drawing_delete_v2_39.sql. Deletion state (is_deleted,
+// deleted_by, etc.) can only be written by these RPCs -- REVOKE UPDATE/DELETE
+// on `attachments`/`working_drawing_attachments` blocks any direct client
+// write to those columns regardless of RLS, so this is real server-side
+// enforcement, not a frontend convention.
+export async function deleteWorkingDrawingFile({ source, id, projectId, reasonCode, reasonNote }) {
+  return supabase.rpc("delete_project_attachment", {
+    p_source: source, p_attachment_id: id, p_project_id: projectId,
+    p_reason_code: reasonCode, p_reason_note: reasonNote,
+  });
+}
+
+export async function restoreWorkingDrawingFile({ source, id, projectId }) {
+  return supabase.rpc("restore_project_attachment", { p_source: source, p_attachment_id: id, p_project_id: projectId });
+}
+
+// Same two-table union/normalization as listWorkingDrawingFiles(), but for
+// the recycle bin (is_deleted = true) -- only visible to elevated roles per
+// the attachments_select_scoped / working_drawing_attachments_select_scoped
+// RLS policies, so a non-elevated caller simply gets an empty list back.
+export async function listDeletedWorkingDrawingFiles(projectId) {
+  const [attRes, wdaRes] = await Promise.all([
+    supabase.from("attachments").select("*").eq("project_id", projectId).eq("is_deleted", true).in("stage", ["Working Drawings", "Drawings"]).order("deleted_at", { ascending: false }),
+    supabase.from("working_drawing_attachments").select("*").eq("project_id", projectId).eq("is_deleted", true).order("deleted_at", { ascending: false }),
+  ]);
+  if (attRes.error) return { data: null, error: attRes.error };
+  const norm = (r, source) => ({
+    source, id: r.id, title: r.title || r.original_file_name || r.file_name, original_file_name: r.file_name,
+    file_category: r.file_category || null, custom_category: r.custom_category || null,
+    storage_path: r.storage_path, file_type: r.file_type, file_size: r.file_size,
+    uploaded_by: r.uploaded_by, uploaded_at: source === "attachments" ? r.created_at : r.uploaded_at,
+    deleted_by: r.deleted_by, deleted_at: r.deleted_at,
+    deletion_reason_code: r.deletion_reason_code, deletion_reason_note: r.deletion_reason_note,
+  });
+  const merged = [
+    ...(attRes.data || []).map((r) => norm(r, "attachments")),
+    ...(wdaRes.data || []).map((r) => norm(r, "working_drawing_attachments")),
+  ].sort((a, b) => new Date(b.deleted_at) - new Date(a.deleted_at));
+  return { data: merged, error: null };
+}
+
+// Two-step handshake: the actual Storage object can only be removed via the
+// Storage API (a Postgres RPC has no route to it), gated by the
+// interior_attachments_storage_delete_scoped policy (management/sysadmin +
+// the row must already be soft-deleted). The RPC then tombstones the DB row.
+// If the Storage removal fails, the RPC is never called, so the row is never
+// left half-purged (storage_path intact, still shows in the recycle bin).
+export async function permanentlyDeleteWorkingDrawingFile({ source, id, projectId, reasonCode, reasonNote, storagePath }) {
+  if (storagePath) {
+    const { error: storageError } = await supabase.storage.from("interior-attachments").remove([storagePath]);
+    if (storageError) return { error: storageError };
+  }
+  return supabase.rpc("finalize_permanent_delete_attachment", {
+    p_source: source, p_attachment_id: id, p_project_id: projectId,
+    p_reason_code: reasonCode, p_reason_note: reasonNote,
+  });
 }
 
 export async function lockDesignAttachment(id) {
@@ -1164,7 +1223,7 @@ export async function listWorkingDrawingAttachments(areaId, module) {
 }
 
 export async function listWorkingDrawingAttachmentsForProject(projectId) {
-  return supabase.from("working_drawing_attachments").select("*").eq("project_id", projectId).order("uploaded_at", { ascending: false });
+  return supabase.from("working_drawing_attachments").select("*").eq("project_id", projectId).eq("is_deleted", false).order("uploaded_at", { ascending: false });
 }
 
 export async function deleteWorkingDrawingAttachment(projectId, id) {

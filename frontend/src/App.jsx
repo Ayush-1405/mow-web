@@ -46,6 +46,7 @@ import InteriorProjectDetail from "./screens/interior/InteriorProjectDetail.jsx"
 import InteriorMasterReportSelect from "./screens/interior/InteriorMasterReportSelect.jsx";
 import InteriorMasterReport from "./screens/interior/InteriorMasterReport.jsx";
 import InteriorWorkingDrawings from "./screens/interior/InteriorWorkingDrawings.jsx";
+import InteriorDeletedFiles from "./screens/interior/InteriorDeletedFiles.jsx";
 import DeptShell from "./components/DeptShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import InteriorProfileGate from "./components/InteriorProfileGate.jsx";
@@ -530,6 +531,11 @@ export default function App() {
       <Route path="/interior-projects/material-selection/:projectId" element={<RedirectToWorkingDrawings />} />
       <Route path="/interior-projects/working-drawings" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorWorkingDrawings lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/working-drawings/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorWorkingDrawings lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/deleted-files" element={deptModulePage("INTERIOR",
+        <ProtectedRoute allowed={!!(profile.isManagement || profile.isSuperAdmin || profile.isDeptHead)} lang={lang}>
+          <InteriorProfileGate lang={lang}><InteriorDeletedFiles lang={lang} staffProfile={profile} /></InteriorProfileGate>
+        </ProtectedRoute>
+      )} />
       <Route path="/b2b-b2g" element={deptPage("B2B_B2G")} />
       <Route path="/procurement" element={deptPage("PROCUREMENT")} />
       <Route path="/inventory" element={deptPage("GODOWN_INV")} />
