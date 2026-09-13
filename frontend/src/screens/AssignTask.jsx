@@ -65,6 +65,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     from_department_id: profile.department_id || "",
     to_department_id: "",
     assigned_to: "",
+    second_assignee: "",
     verifier_id: "",
     due_date: "",
     due_time: "",
@@ -138,6 +139,14 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     return matches.slice().sort((a, b) => a.full_name.localeCompare(b.full_name));
   }, [usersInToDepartment, assigneeSearch, roleLabel]);
 
+  // Second Assignee candidates: same pool as Primary, minus whoever is
+  // currently selected as Primary (a person can't be both — hidden here
+  // rather than merely validated at submit, per the request).
+  const secondAssigneeCandidates = useMemo(
+    () => assigneeCandidates.filter((u) => u.id !== form.assigned_to),
+    [assigneeCandidates, form.assigned_to],
+  );
+
   // Verifier candidates are simply every authorized user in the selected
   // destination department — no second RPC call needed.
   const verifierCandidates = useMemo(
@@ -153,20 +162,26 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // department: the chosen assignee, the chosen verifier, and the assignee
   // search text.
   function selectToDepartment(deptId) {
-    setForm((f) => ({ ...f, to_department_id: deptId, assigned_to: "", verifier_id: "" }));
+    setForm((f) => ({ ...f, to_department_id: deptId, assigned_to: "", second_assignee: "", verifier_id: "" }));
     setAssigneeSearch("");
   }
 
   // Selecting an assignee sets only assigned_to — it must never overwrite
   // to_department_id, which the caller already chose explicitly above.
+  // Clears second_assignee if it now equals the newly chosen Primary,
+  // since the two can never be the same person.
   function selectAssignee(userId) {
-    setForm((f) => ({ ...f, assigned_to: userId }));
+    setForm((f) => ({ ...f, assigned_to: userId, second_assignee: f.second_assignee === userId ? "" : f.second_assignee }));
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.from_department_id || !form.title || !form.to_department_id || !form.assigned_to || !form.due_date) {
       showToast("error", "Please fill in the required fields. / કૃપા કરીને જરૂરી ફીલ્ડ ભરો.");
+      return;
+    }
+    if (form.second_assignee && form.second_assignee === form.assigned_to) {
+      showToast("error", t("samePersonErrorMsg", lang));
       return;
     }
     setBusy(true);
@@ -187,6 +202,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         p_reference_number: form.reference_number || null,
         p_requirement_text: form.requirement_text || null,
         p_quantity: form.quantity || null,
+        p_second_assignee: form.second_assignee || null,
       });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
@@ -227,6 +243,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         description: "",
         to_department_id: "",
         assigned_to: "",
+        second_assignee: "",
         verifier_id: "",
         reference_number: "",
         requirement_text: "",
@@ -350,7 +367,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
           </div>
 
           <div className="field full">
-            <label>{t("assignedTo", lang)} *</label>
+            <label>{t("primaryAssigneeLabel", lang)} *</label>
             {noActiveStaffInSelectedDept && (
               <div className="msg info">
                 {NO_ACTIVE_STAFF_MESSAGE.en} / {NO_ACTIVE_STAFF_MESSAGE.gu}
@@ -379,6 +396,27 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
                   ))}
                 </select>
               </>
+            )}
+          </div>
+
+          <div className="field full">
+            <label>{t("secondAssigneeLabel", lang)}</label>
+            {!directoryLoading && !directoryError && (
+              <select
+                value={form.second_assignee}
+                onChange={(e) => set("second_assignee", e.target.value)}
+                disabled={!form.to_department_id || !form.assigned_to || noActiveStaffInSelectedDept}
+              >
+                <option value="">—</option>
+                {secondAssigneeCandidates.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name} — {roleLabel(u)} — {u.employee_code}
+                  </option>
+                ))}
+              </select>
+            )}
+            {form.second_assignee && form.second_assignee === form.assigned_to && (
+              <div className="msg error" style={{ marginTop: 6 }}>{t("samePersonErrorMsg", lang)}</div>
             )}
           </div>
 

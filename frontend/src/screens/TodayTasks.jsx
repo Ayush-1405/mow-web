@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof, resolveMimeType } from "../lib/api";
 import { t } from "../lib/i18n";
-import { TaskTimeline, ReassignPanel, AttachmentsList, detectFileType } from "./TaskDetail.jsx";
+import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, detectFileType } from "./TaskDetail.jsx";
 import { getMyInteriorProfile } from "../lib/interiorApi";
 import { subscribeTable, upsertById, removeById } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
@@ -26,6 +26,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [searchParams] = useSearchParams();
   const focusedRef = useRef(null);
   const [tasks, setTasks] = useState([]);
+  const [assigneesByTask, setAssigneesByTask] = useState({});
   const [projectsById, setProjectsById] = useState({});
   const [usersById, setUsersById] = useState({});
   const [directory, setDirectory] = useState([]);
@@ -104,6 +105,20 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     } else {
       setProjectsById({});
     }
+    // Second Assignee: staff_task_assignees rows for every visible task
+    // (RLS-scoped the same as staff_tasks itself) -- lets a task show
+    // "Working With" plus each person's own acceptance/individual status,
+    // and lets action-button gating check the caller's own row instead of
+    // only the shared assigned_to/current_owner_id scalar columns.
+    const taskIds = (data || []).map((tsk) => tsk.id);
+    if (taskIds.length) {
+      const { data: assigneeRows } = await supabase.from("staff_task_assignees").select("*").in("task_id", taskIds).eq("is_active", true);
+      const grouped = {};
+      (assigneeRows || []).forEach((r) => { (grouped[r.task_id] ||= []).push(r); });
+      setAssigneesByTask(grouped);
+    } else {
+      setAssigneesByTask({});
+    }
     setLoading(false);
   }, [showToast]);
 
@@ -152,6 +167,30 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           return cur;
         });
       }
+    });
+  }, []);
+
+  // Second Assignee: merge INSERT/UPDATE/DELETE straight into
+  // assigneesByTask instead of a full refetch -- when someone is newly
+  // added as a second assignee, this arrives here immediately and the task
+  // itself arrives via the staff_tasks channel above (RLS now allows it),
+  // so the two together are what makes the task show up in Today's Tasks
+  // live with no duplicate card (one INSERT event per table, merged into
+  // two different pieces of state, never two task cards).
+  useEffect(() => {
+    return subscribeTable("staff_task_assignees_today", "staff_task_assignees", null, (payload) => {
+      const row = payload.new || payload.old;
+      if (!row) return;
+      setAssigneesByTask((cur) => {
+        const list = cur[row.task_id] || [];
+        let nextList;
+        if (payload.eventType === "DELETE" || row.is_active === false) {
+          nextList = list.filter((r) => r.id !== row.id);
+        } else {
+          nextList = list.some((r) => r.id === row.id) ? list.map((r) => (r.id === row.id ? row : r)) : [...list, row];
+        }
+        return { ...cur, [row.task_id]: nextList };
+      });
     });
   }, []);
 
@@ -353,6 +392,26 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         const proofTypeCode = lookups.proofTypes?.find((pt) => pt.id === task.proof_type_id)?.code;
         const taskProject = task.project_id ? projectsById[task.project_id] : null;
 
+        // Second Assignee: staff_task_assignees rows for this task (RLS-
+        // scoped, same as the task itself). isMulti === false means this is
+        // an ordinary single-assignee task -- mine/isAssignee above (the
+        // shared scalar columns) remain the ENTIRE gating story for it,
+        // completely unchanged from before this feature existed. Only when
+        // isMulti is true do the *Mine booleans below take over, driven by
+        // the caller's own row instead of the shared columns (which, once
+        // there's a second person, are ambiguous as to whose "part" is done).
+        const assignees = assigneesByTask[task.id] || [];
+        const isMulti = assignees.length > 1;
+        const myRow = assignees.find((a) => a.user_id === profile.id);
+        const canAcceptMine = !!myRow && myRow.acceptance_status !== "ACCEPTED" && myRow.individual_status !== "REJECTED";
+        const canStartMine = !!myRow && myRow.individual_status === "ACCEPTED";
+        const canCompleteMine = !!myRow && myRow.individual_status === "IN_PROGRESS";
+        const canReturnMine = !!myRow && !["COMPLETED", "REJECTED"].includes(myRow.individual_status);
+        const iAmBlockedMulti = myRow?.individual_status === "BLOCKED";
+        const canToggleBlockedMulti = !!myRow && ["IN_PROGRESS", "BLOCKED"].includes(myRow.individual_status);
+        const acceptanceLabel = (row) => (row.acceptance_status === "ACCEPTED" ? t("accept", lang) : row.acceptance_status === "REJECTED" ? t("rejectedStatusLabel", lang) : t("pendingAcceptanceLabel", lang));
+        const individualLabel = (row) => (row.individual_status === "BLOCKED" ? t("blockedStatusLabel", lang) : row.individual_status === "REJECTED" ? t("rejectedStatusLabel", lang) : row.individual_status);
+
         return (
           <React.Fragment key={task.id}>
           {index === firstUpcomingIndex && <div className="section-title" style={{ marginTop: 16 }}>{t("upcomingLabel", lang)}</div>}
@@ -369,6 +428,16 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                 <span style={{ fontWeight: 700 }}>{taskProject.project_code} — {taskProject.customer}</span>
                 {taskProject.location && <span className="sub">{taskProject.location}</span>}
                 {task.source_module === "daily_site_update" && <span className="badge ASSIGNED">{t("sourceDailySiteUpdateLabel", lang)}</span>}
+              </div>
+            )}
+            {isMulti && (
+              <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 700 }}>{t("workingWithLabel", lang)}:</span>
+                {assignees.map((a) => (
+                  <span key={a.id} className="sub">
+                    {usersById[a.user_id]?.full_name || "—"} — {acceptanceLabel(a)}{a.individual_status !== "ASSIGNED" ? ` · ${individualLabel(a)}` : ""}
+                  </span>
+                ))}
               </div>
             )}
             {task.description && <div style={{ fontSize: 13, marginTop: 6 }}>{task.description}</div>}
@@ -396,7 +465,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
             )}
 
             <div className="btn-row">
-              {statusCode === "ASSIGNED" && isAssignee && (
+              {!isMulti && statusCode === "ASSIGNED" && isAssignee && (
                 <>
                   <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
                     {t("accept", lang)}
@@ -406,12 +475,12 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                   </button>
                 </>
               )}
-              {statusCode === "RETURNED" && isAssignee && (
+              {!isMulti && statusCode === "RETURNED" && isAssignee && (
                 <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
                   {t("accept", lang)}
                 </button>
               )}
-              {statusCode === "ACCEPTED" && mine && (
+              {!isMulti && statusCode === "ACCEPTED" && mine && (
                 <>
                   <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
                     {t("start", lang)}
@@ -421,13 +490,42 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                   </button>
                 </>
               )}
-              {statusCode === "IN_PROGRESS" && mine && (
+              {!isMulti && statusCode === "IN_PROGRESS" && mine && (
                 <button
                   className="btn btn-gold"
                   disabled={busy}
                   onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
                 >
                   {t("complete", lang)}
+                </button>
+              )}
+              {/* Second Assignee: each person's own buttons are gated on
+                  THEIR OWN staff_task_assignees row, never on the other
+                  assignee's — Employee A can never flip Employee B's status
+                  from here since these RPCs only ever touch auth.uid()'s
+                  own row (server-enforced, this is just the matching UI gate). */}
+              {isMulti && canAcceptMine && (
+                <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
+                  {t("accept", lang)}
+                </button>
+              )}
+              {isMulti && canStartMine && (
+                <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
+                  {t("start", lang)}
+                </button>
+              )}
+              {isMulti && canCompleteMine && (
+                <button
+                  className="btn btn-gold"
+                  disabled={busy}
+                  onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
+                >
+                  {t("complete", lang)}
+                </button>
+              )}
+              {isMulti && canReturnMine && (
+                <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
+                  {t("returnTask", lang)}
                 </button>
               )}
               {statusCode === "COMPLETED" && iAmVerifier && (
@@ -440,7 +538,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                   {t("close", lang)}
                 </button>
               )}
-              {!task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && mine && (
+              {!isMulti && !task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && mine && (
                 <button
                   className="btn btn-outline"
                   disabled={busy}
@@ -449,7 +547,16 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                   {t("requestHelp", lang)}
                 </button>
               )}
-              {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS"].includes(statusCode) && (
+              {isMulti && canToggleBlockedMulti && (
+                <button
+                  className="btn btn-outline"
+                  disabled={busy}
+                  onClick={() => runAction("staff_set_task_blocked", task.id, { p_blocked: !iAmBlockedMulti, p_note: "" })}
+                >
+                  {iAmBlockedMulti ? t("start", lang) : t("requestHelp", lang)}
+                </button>
+              )}
+              {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "PARTIALLY_ACCEPTED", "PARTIALLY_COMPLETED"].includes(statusCode) && (
                 <button
                   className="btn btn-outline"
                   disabled={busy}
@@ -539,7 +646,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
 
             {detailsFor === task.id && (
               <>
-                <TaskTimeline task={task} usersById={usersById} lang={lang} />
+                {isMulti && <AssignedTeamSection assignees={assignees} usersById={usersById} lang={lang} />}
+                <TaskTimeline task={task} usersById={usersById} lang={lang} assignees={assignees} />
                 <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
               </>
             )}

@@ -16,9 +16,19 @@ function userLabel(usersById, id) {
   return u ? `${u.full_name} (${u.employee_code})` : "—";
 }
 
-export function TaskTimeline({ task, usersById, lang }) {
+export function TaskTimeline({ task, usersById, lang, assignees }) {
+  // Second Assignee: one extra row per active assignee, sourced from their
+  // own staff_task_assignees.assigned_at — purely additive alongside the
+  // existing created_at/accepted_at/.../closed_at rows below, never
+  // replacing them (assigned_by/verified_by/closed_by stay whole-task facts).
+  const assigneeRows = (assignees || []).map((a) => ({
+    label: a.assignment_role === "primary" ? t("primaryAssigneeLabel", lang) : t("secondAssigneeShortLabel", lang),
+    value: userLabel(usersById, a.user_id),
+    time: a.assigned_at,
+  }));
   const rows = [
     { label: t("createdBy", lang), value: userLabel(usersById, task.assigned_by), time: task.created_at },
+    ...assigneeRows,
     { label: t("acceptedAt", lang), value: null, time: task.accepted_at },
     { label: t("startedAt", lang), value: null, time: task.started_at },
     { label: t("completedAt", lang), value: null, time: task.completed_at },
@@ -52,6 +62,33 @@ export function TaskTimeline({ task, usersById, lang }) {
           <span className="timeline-value">—</span>
         </div>
       )}
+    </div>
+  );
+}
+
+// Second Assignee: "Assigned Team" section (spec §9) -- role, acceptance
+// status, individual work status, and timestamps per person, read straight
+// from their own staff_task_assignees row. Read-only display; status
+// changes happen via each person's own action buttons on the task card
+// (TodayTasks.jsx), never from here.
+export function AssignedTeamSection({ assignees, usersById, lang }) {
+  if (!assignees || assignees.length === 0) return null;
+  const acceptanceLabel = (row) => (row.acceptance_status === "ACCEPTED" ? t("accept", lang) : row.acceptance_status === "REJECTED" ? t("rejectedStatusLabel", lang) : t("pendingAcceptanceLabel", lang));
+  const individualLabel = (row) => (row.individual_status === "BLOCKED" ? t("blockedStatusLabel", lang) : row.individual_status === "REJECTED" ? t("rejectedStatusLabel", lang) : row.individual_status);
+  return (
+    <div className="card" style={{ marginTop: 10 }}>
+      <div className="section-title" style={{ fontSize: 14 }}>{t("assignedTeamLabel", lang)}</div>
+      {assignees.map((a) => (
+        <div key={a.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 700 }}>{userLabel(usersById, a.user_id)}</span>
+          <span className="sub">{a.assignment_role === "primary" ? t("primaryAssigneeLabel", lang) : t("secondAssigneeShortLabel", lang)}</span>
+          <span className="sub">{t("acceptanceStatusLabel", lang)}: {acceptanceLabel(a)}</span>
+          <span className="sub">{t("individualStatusLabel", lang)}: {individualLabel(a)}</span>
+          {a.accepted_at && <span className="sub">{t("acceptedOnLabel", lang)}: {new Date(a.accepted_at).toLocaleString()}</span>}
+          {a.completed_at && <span className="sub">{t("completedOnLabel", lang)}: {new Date(a.completed_at).toLocaleString()}</span>}
+          {a.completion_note && <span className="sub">{t("completionNoteLabel", lang)}: {a.completion_note}</span>}
+        </div>
+      ))}
     </div>
   );
 }

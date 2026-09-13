@@ -384,6 +384,11 @@ textarea { min-height: 84px; resize: vertical; }
 .badge.COMPLETED { background: #ece2fa; color: #6640a3; }
 .badge.VERIFIED { background: #ddf5ec; color: #1a7a5a; }
 .badge.CLOSED { background: #eceae6; color: #5c5347; }
+/* Second Assignee: overall status for a two-person task while the two are
+   not yet in the same acceptance/completion state — same hue family as
+   their ACCEPTED/COMPLETED "destination" state, just lighter/unfinished. */
+.badge.PARTIALLY_ACCEPTED { background: #f0f6fc; color: #3d76ab; }
+.badge.PARTIALLY_COMPLETED { background: #f4eefb; color: #7d5bb5; }
 /* Orange, reserved for "Revision Required" (Material Selection module) —
    the theme's own accent-dark, distinct from the ASSIGNED gold above. */
 .badge.REVISION { background: #fdead2; color: var(--accent-dark); }
