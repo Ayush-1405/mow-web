@@ -4,12 +4,11 @@ import { t } from "../../lib/i18n";
 import { formatCurrency } from "../../lib/retailModules";
 import { listProjects, listInteriorPeople } from "../../lib/interiorApi";
 import InteriorAttachments from "./InteriorAttachments.jsx";
-import InteriorDesignApproval from "./InteriorDesignApproval.jsx";
-import InteriorDesignLock from "./InteriorDesignLock.jsx";
+import InteriorWorkingDrawings from "./InteriorWorkingDrawings.jsx";
 import InteriorSiteExecution from "./InteriorSiteExecution.jsx";
 import InteriorDailyUpdates from "./InteriorDailyUpdates.jsx";
 import InteriorMaterials from "./InteriorMaterials.jsx";
-import InteriorPurchaseBoard from "./InteriorPurchaseBoard.jsx";
+import InteriorPurchaseManagement from "./InteriorPurchaseManagement.jsx";
 import InteriorTimeline from "./InteriorTimeline.jsx";
 import InteriorClientComm from "./InteriorClientComm.jsx";
 import InteriorPayments from "./InteriorPayments.jsx";
@@ -31,22 +30,18 @@ const STAGES = [
 // staffProfile, lookups) — every tab reuses the EXISTING screen component
 // unchanged except for the one new lockedProjectId prop (see each
 // screen's own lockedProjectId handling), so this page adds zero
-// duplicate business logic. purchaseBoard is deliberately NOT locked —
-// it's an org-wide cross-project board by design (md/MOOD-OF-WOOD-
-// SYSTEM.md §6), reachable from here but not scoped to one project.
+// duplicate business logic. purchaseManagement's own Board sub-view stays
+// org-wide/cross-project by design (md/MOOD-OF-WOOD-SYSTEM.md §6) even
+// though the tab itself opens locked to this project.
 const TABS = [
   { key: "overview", labelKey: "tabOverview", render: null },
   { key: "quotation", labelKey: "tabQuotation", render: (pid, c) => <InteriorAttachments lang={c.lang} stage="Quotation" titleKey="interiorAttachmentsTitle" lockedProjectId={pid} /> },
   { key: "dealClosure", labelKey: "tabDealClosure", render: (pid, c) => <InteriorTimeline lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
-  { key: "design", labelKey: "tabDesign", render: (pid, c) => <InteriorAttachments lang={c.lang} stage="Design" titleKey="interiorAttachmentsTitle" lockedProjectId={pid} /> },
-  { key: "designApproval", labelKey: "tabDesignApproval", render: (pid, c) => <InteriorDesignApproval lang={c.lang} lockedProjectId={pid} /> },
-  { key: "designLock", labelKey: "tabDesignLock", render: (pid, c) => <InteriorDesignLock lang={c.lang} lockedProjectId={pid} /> },
-  { key: "drawings", labelKey: "tabDrawings", render: (pid, c) => <InteriorAttachments lang={c.lang} stage="Drawings" titleKey="interiorAttachmentsTitle" lockedProjectId={pid} /> },
+  { key: "workingDrawings", labelKey: "tabWorkingDrawings", render: (pid, c) => <InteriorWorkingDrawings lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
   { key: "siteExecution", labelKey: "tabSiteExecution", render: (pid, c) => <InteriorSiteExecution lang={c.lang} lockedProjectId={pid} /> },
   { key: "dailyUpdates", labelKey: "tabDailyUpdates", render: (pid, c) => <InteriorDailyUpdates lang={c.lang} lockedProjectId={pid} /> },
   { key: "materials", labelKey: "tabMaterials", render: (pid, c) => <InteriorMaterials lang={c.lang} filterSource={null} lockedProjectId={pid} /> },
-  { key: "purchase", labelKey: "tabPurchase", render: (pid, c) => <InteriorMaterials lang={c.lang} filterSource="purchase" lockedProjectId={pid} /> },
-  { key: "purchaseBoard", labelKey: "tabPurchaseBoard", render: (pid, c) => <InteriorPurchaseBoard lang={c.lang} /> },
+  { key: "purchaseManagement", labelKey: "tabPurchaseManagement", render: (pid, c) => <InteriorPurchaseManagement lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
   { key: "timeline", labelKey: "tabTimeline", render: (pid, c) => <InteriorTimeline lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
   { key: "clientComm", labelKey: "tabClientComm", render: (pid, c) => <InteriorClientComm lang={c.lang} lockedProjectId={pid} /> },
   { key: "payments", labelKey: "tabPayments", render: (pid, c) => <InteriorPayments lang={c.lang} lookups={c.lookups} lockedProjectId={pid} /> },
@@ -111,6 +106,9 @@ export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
           <h1>{project.project_code} — {project.customer}</h1>
           <div className="sub">{t("interiorLiveDataNote", lang)}</div>
         </div>
+        <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => navigate(`/interior-projects/master-report/${projectId}`)}>
+          {t("masterReportButtonLabel", lang)}
+        </button>
       </div>
 
       <div className="dept-meta-grid">

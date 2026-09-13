@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
+import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { listProjects, listProjectChanges, decideProjectChange, notifyDeptLeadership } from "../../lib/interiorApi";
 
 // Design Approval — the external system's project_changes table doubles
@@ -7,6 +8,7 @@ import { listProjects, listProjectChanges, decideProjectChange, notifyDeptLeader
 // approval_status via the single narrow decideProjectChange() call in
 // lib/interiorApi.js (never a blanket update).
 export default function InteriorDesignApproval({ lang, lockedProjectId }) {
+  const profile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -36,7 +38,7 @@ export default function InteriorDesignApproval({ lang, lockedProjectId }) {
 
   async function decide(id, decision, description) {
     setBusyId(id);
-    const { error: err } = await decideProjectChange(id, decision);
+    const { error: err } = await decideProjectChange(id, decision, profile?.id);
     setBusyId(null);
     if (err) return;
     const project = projects.find((p) => p.id === projectId);

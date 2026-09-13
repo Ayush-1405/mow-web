@@ -14,7 +14,8 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
   const [rows, setRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ amount: "", payment_type: "advance", due_date: "" });
+  const [form, setForm] = useState({ amount: "", payment_type: "advance", due_date: "", receipt_number: "" });
+  const [receiptDrafts, setReceiptDrafts] = useState({});
 
   const interiorDept = useMemo(() => lookups.departments.find((d) => d.code === "INTERIOR"), [lookups.departments]);
 
@@ -39,7 +40,7 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
   useEffect(() => { loadPayments(); }, [loadPayments]);
 
   async function handleMarkReceived(id, amount) {
-    const { error: err } = await markPaymentReceived(id);
+    const { error: err } = await markPaymentReceived(id, receiptDrafts[id]);
     if (err) return;
     const project = projects.find((p) => p.id === projectId);
     notifyDeptLeadership(
@@ -47,6 +48,7 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
       `Payment received: ${formatCurrency(amount)} — ${project ? `${project.project_code} (${project.customer})` : ""}`,
       `ચુકવણી મળી: ${formatCurrency(amount)}`,
     );
+    setReceiptDrafts((d) => { const next = { ...d }; delete next[id]; return next; });
     loadPayments();
   }
 
@@ -57,6 +59,7 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
     const { error: err } = await addPaymentRecord({
       department_id: interiorDept.id, project_id: projectId, amount: Number(form.amount),
       payment_type: form.payment_type, due_date: form.due_date || null,
+      receipt_number: form.receipt_number || null,
     });
     setSaving(false);
     if (err) { setError(true); return; }
@@ -66,7 +69,7 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
       `Payment follow-up added: ${formatCurrency(Number(form.amount))} (${form.payment_type}) — ${project ? `${project.project_code} (${project.customer})` : ""}`,
       `ચુકવણી ફોલો-અપ ઉમેરાયું: ${formatCurrency(Number(form.amount))}`,
     );
-    setForm({ amount: "", payment_type: "advance", due_date: "" });
+    setForm({ amount: "", payment_type: "advance", due_date: "", receipt_number: "" });
     setShowForm(false);
     loadPayments();
   }
@@ -126,6 +129,14 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
               <label>{t("dueDateLabel", lang)}</label>
               <input type="date" value={form.due_date} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))} />
             </div>
+            <div className="field">
+              <label>{t("receiptNumberLabel", lang)}</label>
+              <input
+                value={form.receipt_number}
+                placeholder={t("receiptNumberPlaceholder", lang)}
+                onChange={(e) => setForm((f) => ({ ...f, receipt_number: e.target.value }))}
+              />
+            </div>
             <div className="field full">
               <button className="btn btn-primary" type="submit" disabled={saving}>{t("save", lang)}</button>
             </div>
@@ -136,14 +147,23 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
       <div className="card">
         {rows.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
         {rows.map((r) => (
-          <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
+          <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", flexWrap: "wrap", gap: 8 }}>
             <span>{r.payment_type} · {t("dueDateLabel", lang)}: {r.due_date || "—"}</span>
             <span>{formatCurrency(r.amount)}</span>
             <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
+            {r.receipt_number && <span className="sub">{t("receiptNumberLabel", lang)}: {r.receipt_number}</span>}
             {r.status !== "RECEIVED" && (
-              <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => handleMarkReceived(r.id, r.amount)}>
-                {t("receivedLabel", lang)}
-              </button>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  value={receiptDrafts[r.id] || ""}
+                  placeholder={t("receiptNumberPlaceholder", lang)}
+                  style={{ width: 160 }}
+                  onChange={(e) => setReceiptDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
+                />
+                <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => handleMarkReceived(r.id, r.amount)}>
+                  {t("markReceivedAction", lang)}
+                </button>
+              </div>
             )}
           </div>
         ))}

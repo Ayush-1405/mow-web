@@ -22,18 +22,19 @@ export const MODULE_ROUTES = {
   INTERIOR: {
     "Quotation": "/interior-projects/quotation",
     "Deal Closure": "/interior-projects/timeline",
-    "Design": "/interior-projects/design",
-    "Design Approval": "/interior-projects/design-approval",
-    "Design Lock": "/interior-projects/design-lock",
-    "Drawings": "/interior-projects/drawings",
+    "Working Drawings": "/interior-projects/working-drawings",
     "Site Execution": "/interior-projects/site-execution",
     "Daily Updates": "/interior-projects/daily-updates",
     "Material Requirements": "/interior-projects/materials",
-    "Purchase Coordination": "/interior-projects/purchase",
+    "Purchase Management": "/interior-projects/purchase-management",
     "Project Timeline": "/interior-projects/timeline",
     "Client Communication": "/interior-projects/communication",
     "Payment Follow-up": "/interior-projects/payments",
     "Project Completion": "/interior-projects/completion",
+    "Project Master Report": "/interior-projects/master-report",
+  },
+  FACTORY: {
+    "Job Orders": "/factory/job-orders",
   },
 };
 

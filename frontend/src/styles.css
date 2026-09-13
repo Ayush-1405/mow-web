@@ -384,6 +384,9 @@ textarea { min-height: 84px; resize: vertical; }
 .badge.COMPLETED { background: #ece2fa; color: #6640a3; }
 .badge.VERIFIED { background: #ddf5ec; color: #1a7a5a; }
 .badge.CLOSED { background: #eceae6; color: #5c5347; }
+/* Orange, reserved for "Revision Required" (Material Selection module) —
+   the theme's own accent-dark, distinct from the ASSIGNED gold above. */
+.badge.REVISION { background: #fdead2; color: var(--accent-dark); }
 
 .task-meta {
   font-size: 12.5px;
@@ -1150,3 +1153,17 @@ textarea { min-height: 84px; resize: vertical; }
 .col-chart-fill { width: 100%; border-radius: 4px 4px 0 0; min-height: 2px; }
 .col-chart-value { font-size: 10px; color: var(--ink-soft); margin-bottom: 2px; font-variant-numeric: tabular-nums; }
 .col-chart-label { font-size: 9px; color: var(--ink-soft); margin-top: 4px; white-space: nowrap; }
+
+/* ---------- Project Master Report — print / PDF export ---------- */
+@media print {
+  .no-print, .dept-sidebar, .top-nav, .dept-shell-header, .filter-bar { display: none !important; }
+  body { background: #fff; }
+  .master-report .card { break-inside: avoid; border: 1px solid #ccc; box-shadow: none; }
+  .master-report h1 { font-size: 18px; }
+  .master-report h2 { font-size: 14px; }
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+    @bottom-center { content: "Mood of Wood — Page " counter(page) " of " counter(pages); font-size: 9px; color: #666; }
+  }
+}

@@ -18,7 +18,7 @@ const ELEVATED_ROLES = new Set(["dept_head", "supervisor", "accounts_head", "cfo
 
 const EXTRA_LINKS = [
   { en: "New Project", gu: "નવો પ્રોજેક્ટ", route: "/interior-projects/new", icon: "➕" },
-  { en: "Purchase Board", gu: "ખરીદી બોર્ડ", route: "/interior-projects/purchase", icon: "🧾" },
+  { en: "Purchase Management", gu: "ખરીદી વ્યવસ્થાપન", route: "/interior-projects/purchase-management", icon: "🧾" },
   { en: "Tasks", gu: "કાર્યો", route: "/interior-projects/tasks", icon: "✅" },
   { en: "Customer Requests & Complaints", gu: "ગ્રાહક વિનંતીઓ", route: "/interior-projects/requests", icon: "📮" },
 ];
@@ -66,7 +66,7 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [projRes, reportsRes, snagsRes, changesRes, materialsRes, tasksRes, mySnagsRes] = await Promise.all([
+    const [projRes, reportsRes, snagsRes, changesRes, materialsRes, tasksRes, mySnagsRes, designVersionsRes, purchaseRequestsRes] = await Promise.all([
       supabase.from("projects").select("*").eq("archived", false),
       supabase.from("site_reports").select("project_id, report_date"),
       supabase.from("snags").select("project_id, major, status"),
@@ -78,6 +78,14 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
       profile?.id
         ? supabase.from("snags").select("*, projects(project_code, customer)").eq("assigned_to", profile.id).neq("status", "COMPLETED")
         : Promise.resolve({ data: [] }),
+      // Working Drawings' own pending design approvals (Design/Design
+      // Approval consolidation) — counted alongside the legacy
+      // project_changes PENDING count below, not replacing it, since old
+      // change requests keep coming from project_changes too.
+      supabase.from("design_versions").select("project_id, is_current, approval_status"),
+      // Purchase Management's own pending-approval requests (Purchase
+      // Coordination/Purchase Board consolidation) — same additive treatment.
+      supabase.from("purchase_requests").select("project_id, status").is("archived_at", null),
     ]);
     if (projRes.error || reportsRes.error || snagsRes.error || changesRes.error || materialsRes.error) {
       setError(true); setLoading(false); return;
@@ -100,6 +108,16 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
     const pendingChanges = {};
     for (const c of changesRes.data || []) {
       if (c.approval_status === "PENDING") pendingChanges[c.project_id] = (pendingChanges[c.project_id] || 0) + 1;
+    }
+    for (const v of designVersionsRes.data || []) {
+      if (v.is_current && ["Submitted for Internal Review", "Submitted to Client", "Resubmitted"].includes(v.approval_status)) {
+        pendingChanges[v.project_id] = (pendingChanges[v.project_id] || 0) + 1;
+      }
+    }
+    for (const p of purchaseRequestsRes.data || []) {
+      if (["Approval Pending", "PO/WO Pending", "Vendor Comparison"].includes(p.status)) {
+        pendingChanges[p.project_id] = (pendingChanges[p.project_id] || 0) + 1;
+      }
     }
     setPendingChangeByProject(pendingChanges);
 

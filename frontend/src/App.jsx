@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { Routes, Route, useNavigate, useParams, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
 import { requestNotificationPermission, showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
@@ -30,12 +30,11 @@ import RetailTargets from "./screens/retail/RetailTargets.jsx";
 import RetailPerformance from "./screens/retail/RetailPerformance.jsx";
 import InteriorHeadDashboard from "./screens/interior/InteriorHeadDashboard.jsx";
 import InteriorAttachments from "./screens/interior/InteriorAttachments.jsx";
-import InteriorDesignApproval from "./screens/interior/InteriorDesignApproval.jsx";
-import InteriorDesignLock from "./screens/interior/InteriorDesignLock.jsx";
 import InteriorSiteExecution from "./screens/interior/InteriorSiteExecution.jsx";
 import InteriorDailyUpdates from "./screens/interior/InteriorDailyUpdates.jsx";
 import InteriorMaterials from "./screens/interior/InteriorMaterials.jsx";
-import InteriorPurchaseBoard from "./screens/interior/InteriorPurchaseBoard.jsx";
+import InteriorPurchaseManagement from "./screens/interior/InteriorPurchaseManagement.jsx";
+import FactoryJobOrders from "./screens/factory/FactoryJobOrders.jsx";
 import InteriorTasks from "./screens/interior/InteriorTasks.jsx";
 import InteriorRequests from "./screens/interior/InteriorRequests.jsx";
 import InteriorTimeline from "./screens/interior/InteriorTimeline.jsx";
@@ -44,6 +43,9 @@ import InteriorClientComm from "./screens/interior/InteriorClientComm.jsx";
 import InteriorPayments from "./screens/interior/InteriorPayments.jsx";
 import InteriorCompletion from "./screens/interior/InteriorCompletion.jsx";
 import InteriorProjectDetail from "./screens/interior/InteriorProjectDetail.jsx";
+import InteriorMasterReportSelect from "./screens/interior/InteriorMasterReportSelect.jsx";
+import InteriorMasterReport from "./screens/interior/InteriorMasterReport.jsx";
+import InteriorWorkingDrawings from "./screens/interior/InteriorWorkingDrawings.jsx";
 import DeptShell from "./components/DeptShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import InteriorProfileGate from "./components/InteriorProfileGate.jsx";
@@ -60,6 +62,23 @@ import { DEPARTMENT_ROUTES, buildOrderedDepartments } from "./lib/departmentConf
 // (OR'd in everywhere this set is consulted), so it is deliberately not
 // listed here.
 const ELEVATED_ROLES = new Set(["dept_head", "accounts_head", "cfo", "sysadmin"]);
+
+// Design / Design Approval / Design Lock / Drawings / Material Selection
+// were consolidated into one Working Drawings module — old bookmarked URLs
+// must keep working, per the spec's explicit "old URLs must safely
+// redirect" requirement, so they're never removed outright, just pointed
+// at the new locked route (preserving :projectId when the old URL had one).
+function RedirectToWorkingDrawings() {
+  const { projectId } = useParams();
+  return <Navigate to={projectId ? `/interior-projects/working-drawings/${projectId}` : "/interior-projects/working-drawings"} replace />;
+}
+
+// Purchase Coordination + Purchase Board consolidated into Purchase
+// Management — same "keep old URLs working" treatment as Working Drawings.
+function RedirectToPurchaseManagement() {
+  const { projectId } = useParams();
+  return <Navigate to={projectId ? `/interior-projects/purchase-management/${projectId}` : "/interior-projects/purchase-management"} replace />;
+}
 
 export default function App() {
   const navigate = useNavigate();
@@ -471,14 +490,16 @@ export default function App() {
       <Route path="/ecommerce" element={deptPage("ECOMMERCE")} />
       <Route path="/interior-projects" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorHeadDashboard lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/quotation" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorAttachments lang={lang} stage="Quotation" titleKey="interiorAttachmentsTitle" /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/design" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorAttachments lang={lang} stage="Design" titleKey="interiorAttachmentsTitle" /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/drawings" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorAttachments lang={lang} stage="Drawings" titleKey="interiorAttachmentsTitle" /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/design-approval" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorDesignApproval lang={lang} /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/design-lock" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorDesignLock lang={lang} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/design" element={<RedirectToWorkingDrawings />} />
+      <Route path="/interior-projects/drawings" element={<RedirectToWorkingDrawings />} />
+      <Route path="/interior-projects/design-approval" element={<RedirectToWorkingDrawings />} />
+      <Route path="/interior-projects/design-lock" element={<RedirectToWorkingDrawings />} />
       <Route path="/interior-projects/site-execution" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorSiteExecution lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/daily-updates" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorDailyUpdates lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/materials" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorMaterials lang={lang} filterSource={null} /></InteriorProfileGate>)} />
-      <Route path="/interior-projects/purchase" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseBoard lang={lang} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/purchase" element={<RedirectToPurchaseManagement />} />
+      <Route path="/interior-projects/purchase-management" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseManagement lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/purchase-management/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPurchaseManagement lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/tasks" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTasks lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/requests" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorRequests lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/timeline" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorTimeline lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
@@ -487,11 +508,18 @@ export default function App() {
       <Route path="/interior-projects/payments" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorPayments lang={lang} lookups={lookups} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/completion" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorCompletion lang={lang} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/detail/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorProjectDetail lang={lang} staffProfile={profile} lookups={lookups} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/master-report" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorMasterReportSelect lang={lang} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/master-report/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorMasterReport lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/material-selection" element={<RedirectToWorkingDrawings />} />
+      <Route path="/interior-projects/material-selection/:projectId" element={<RedirectToWorkingDrawings />} />
+      <Route path="/interior-projects/working-drawings" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorWorkingDrawings lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
+      <Route path="/interior-projects/working-drawings/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorWorkingDrawings lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/b2b-b2g" element={deptPage("B2B_B2G")} />
       <Route path="/procurement" element={deptPage("PROCUREMENT")} />
       <Route path="/inventory" element={deptPage("GODOWN_INV")} />
       <Route path="/dispatch" element={deptPage("DISPATCH")} />
       <Route path="/factory" element={deptPage("FACTORY")} />
+      <Route path="/factory/job-orders" element={deptModulePage("FACTORY", <FactoryJobOrders lang={lang} />)} />
       <Route path="/product-rnd" element={deptPage("RND")} />
       <Route path="/hr-admin" element={deptPage("HR_ADMIN")} />
       <Route path="/accounts-finance" element={deptPage("ACCOUNTS")} />

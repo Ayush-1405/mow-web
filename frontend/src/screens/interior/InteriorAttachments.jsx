@@ -133,10 +133,11 @@ export default function InteriorAttachments({ lang, stage, titleKey, lockedProje
         {rows.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
         {rows.map((r) => (
           <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
-            {r.storage_path
-              ? <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => openFile(r.storage_path)}>{r.title || r.file_name} {r.version ? `(${r.version})` : ""}</button>
-              : <span>{r.title || r.file_name} {r.version ? `(${r.version})` : ""}</span>}
+            <span>{r.title || r.file_name} {r.version ? `(${r.version})` : ""}</span>
             {r.frozen && <span className="badge CLOSED">{t("frozenLabel", lang)}</span>}
+            {r.storage_path
+              ? <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => openFile(r.storage_path)}>{t("download", lang)}</button>
+              : <span className="sub">{t("noFileAttachedLabel", lang)}</span>}
           </div>
         ))}
       </div>

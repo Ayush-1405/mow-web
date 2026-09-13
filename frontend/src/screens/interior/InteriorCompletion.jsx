@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
+import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { listProjects, getHandover, setHandoverFlag, submitFeedback, notifyDeptLeadership } from "../../lib/interiorApi";
 
 const HANDOVER_FLAGS = [
@@ -19,6 +20,7 @@ const SCORE_LABELS = ["designScoreLabel", "communicationScoreLabel", "qualitySco
 // boolean field via setHandoverFlag() (never the whole row), since another
 // system may also be reading/writing this same record.
 export default function InteriorCompletion({ lang, lockedProjectId }) {
+  const profile = useInteriorProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -54,7 +56,7 @@ export default function InteriorCompletion({ lang, lockedProjectId }) {
   async function toggleFlag(field, labelKey) {
     setBusyField(field);
     const nextValue = !handover?.[field];
-    const { error: err } = await setHandoverFlag(projectId, field, nextValue);
+    const { error: err } = await setHandoverFlag(projectId, field, nextValue, profile?.id);
     setBusyField(null);
     setConfirmField(null);
     if (err) return;
@@ -70,7 +72,7 @@ export default function InteriorCompletion({ lang, lockedProjectId }) {
   async function handleFeedback(e) {
     e.preventDefault();
     setSavingFeedback(true);
-    const { error: err } = await submitFeedback({ project_id: projectId, ...feedback });
+    const { error: err } = await submitFeedback({ project_id: projectId, created_by: profile?.id || null, ...feedback });
     setSavingFeedback(false);
     if (err) return;
     const project = projects.find((p) => p.id === projectId);

@@ -41,6 +41,7 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
   const [projectId, setProjectId] = useState("");
   const [details, setDetails] = useState(emptyDetails);
   const [saving, setSaving] = useState(false);
+  const [detailsMsg, setDetailsMsg] = useState(null);
   const [stageMsg, setStageMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [people, setPeople] = useState([]);
@@ -103,8 +104,16 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
       next_action: project?.next_action || "",
       remarks: project?.remarks || "",
     });
-    setStageMsg("");
   }, [project]);
+
+  // Only reset messages when the SELECTED project changes, not every time
+  // `project` gets a new object reference from a save's own refreshProject()
+  // — otherwise the just-set "Saved." confirmation would be wiped out by
+  // this same effect firing right after the save that produced it.
+  useEffect(() => {
+    setStageMsg("");
+    setDetailsMsg(null);
+  }, [projectId]);
 
   function refreshProject(data) {
     setProjects((ps) => ps.map((p) => (p.id === projectId ? data : p)));
@@ -114,6 +123,7 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
     e.preventDefault();
     if (!projectId) return;
     setSaving(true);
+    setDetailsMsg(null);
     const { data, error: err } = await updateProjectDetails(projectId, {
       location: details.location || null,
       start_date: details.start_date || null,
@@ -123,7 +133,9 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
       remarks: details.remarks || null,
     });
     setSaving(false);
-    if (!err) refreshProject(data);
+    if (err) { setDetailsMsg({ type: "error", text: err.message || t("detailsSaveErrorMsg", lang) }); return; }
+    refreshProject(data);
+    setDetailsMsg({ type: "ok", text: t("detailsSavedMsg", lang) });
   }
 
   async function toggleFreezeCheck(field, value) {
@@ -394,8 +406,11 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
               <label>{t("remarksLabel", lang)}</label>
               <textarea value={details.remarks} onChange={(e) => setDetails((d) => ({ ...d, remarks: e.target.value }))} />
             </div>
+            {detailsMsg && (
+              <div className={`msg ${detailsMsg.type === "ok" ? "success" : "error"} field full`}>{detailsMsg.text}</div>
+            )}
             <div className="field full">
-              <button className="btn btn-primary" type="submit" disabled={saving}>{t("save", lang)}</button>
+              <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? t("saving", lang) : t("save", lang)}</button>
             </div>
           </form>
         </div>
