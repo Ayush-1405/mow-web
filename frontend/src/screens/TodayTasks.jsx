@@ -5,6 +5,8 @@ import { uploadTaskProof, resolveMimeType } from "../lib/api";
 import { t } from "../lib/i18n";
 import { TaskTimeline, ReassignPanel, AttachmentsList, detectFileType } from "./TaskDetail.jsx";
 import { getMyInteriorProfile } from "../lib/interiorApi";
+import { subscribeTable, upsertById, removeById } from "../lib/realtime";
+import { useForegroundRefresh } from "../lib/useForegroundRefresh";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 
 // Today's Tasks. Reads public.staff_tasks through the normal RLS-scoped
@@ -122,15 +124,41 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     loadAssignedItems();
   }, [load, loadDirectory, loadAssignedItems]);
 
-  // Live updates: any INSERT/UPDATE/DELETE on staff_tasks reloads the list.
-  // RLS still decides which rows this subscriber actually receives.
+  // Live updates: merge INSERT/UPDATE straight into `tasks` instead of a
+  // full refetch (spec'd "person-wise Today's Tasks realtime" pattern) --
+  // RLS still decides which rows this subscriber actually receives, so a
+  // task reassigned away from this user (assigned_to/current_owner_id
+  // changed to someone else) simply stops arriving as an event for them;
+  // staff_delete_task soft-deletes (is_active=false), which arrives as an
+  // UPDATE, so that case is handled the same way as a real DELETE below.
   useEffect(() => {
-    const channel = supabase
-      .channel("staff_tasks_today")
-      .on("postgres_changes", { event: "*", schema: "public", table: "staff_tasks" }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [load]);
+    return subscribeTable("staff_tasks_today", "staff_tasks", null, (payload) => {
+      if (payload.eventType === "DELETE") {
+        setTasks((cur) => removeById(cur, payload.old.id));
+        return;
+      }
+      const row = payload.new;
+      if (!row) return;
+      if (row.is_active === false) {
+        setTasks((cur) => removeById(cur, row.id));
+        return;
+      }
+      setTasks((cur) => upsertById(cur, row));
+      if (row.project_id) {
+        setProjectsById((cur) => {
+          if (cur[row.project_id]) return cur;
+          supabase.from("projects").select("id, project_code, customer, location").eq("id", row.project_id).maybeSingle()
+            .then(({ data }) => { if (data) setProjectsById((c) => ({ ...c, [data.id]: data })); });
+          return cur;
+        });
+      }
+    });
+  }, []);
+
+  // Catches anything a dropped websocket might have missed (phone locked,
+  // brief network drop) -- a silent background refetch, never a forced
+  // logout or page reload.
+  useForegroundRefresh(load);
 
   // Arriving here via a notification click (?focus=<task id>) or a
   // Control Tower KPI tile — open that task's Details panel and scroll it

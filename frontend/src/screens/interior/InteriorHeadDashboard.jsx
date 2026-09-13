@@ -6,6 +6,8 @@ import { formatCurrency } from "../../lib/retailModules";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { getDepartmentCards } from "../../lib/departmentConfig";
 import { getModuleRoute } from "../../lib/moduleRegistry";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Who gets the team-wide KPI/Needs-Attention/Control-Tower tracking view,
 // vs. just their own My Today + the function-card grid to reach their own
@@ -135,6 +137,15 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
   }, [profile?.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Org-wide dashboard -- no single project_id to filter by, same
+  // RLS-scoped-with-no-client-filter precedent as the existing
+  // staff_tasks channels (DepartmentDashboard.jsx, ManagementDashboard.jsx).
+  useEffect(() => {
+    return subscribeTable("interior_head_dashboard_projects", "projects", null, () => load());
+  }, [load]);
+
+  useForegroundRefresh(load);
 
   const scopedProjects = useMemo(() => {
     if (!profile) return projects;

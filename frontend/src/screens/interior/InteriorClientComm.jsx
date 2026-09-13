@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { listProjects, listInteriorPeople, listActivity, logActivity, notifyDeptLeadership } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Client Communication — the external system's `activity_logs` table, per
 // project.
@@ -41,6 +43,13 @@ export default function InteriorClientComm({ lang, lockedProjectId }) {
   // manually after a save — so clearing saveMsg here only happens on an
   // actual project switch, not on the very save that just set the message.
   useEffect(() => { loadActivity(); setSaveMsg(""); }, [loadActivity]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-activity_logs`, "activity_logs", `project_id=eq.${projectId}`, () => loadActivity());
+  }, [projectId, loadActivity]);
+
+  useForegroundRefresh(loadActivity);
 
   const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
 

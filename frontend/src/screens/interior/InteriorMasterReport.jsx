@@ -5,6 +5,8 @@ import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { t } from "../../lib/i18n";
 import { formatCurrency } from "../../lib/retailModules";
 import { loadMasterReport, reconcileMasterReportCounts, getAttachmentUrl, computeDesignChangeCounts } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 import InteriorAllFiles from "./InteriorAllFiles.jsx";
 import InteriorActivityHistory from "./InteriorActivityHistory.jsx";
 import { AREA_TYPES } from "./InteriorMaterialSelection.jsx";
@@ -98,6 +100,21 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
   }, [projectId, isOrgWide]);
 
   useEffect(() => { load(); }, [load]);
+
+  // This screen aggregates 40+ parallel queries into one derived report
+  // shape, not a simple list -- fine-grained per-row merging isn't
+  // practical here, so this is a deliberate "something changed, refetch
+  // the whole report in the background" signal rather than a merge, on
+  // the handful of tables most likely to change while this report is open.
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubC = subscribeTable(`project-${projectId}-project_changes`, "project_changes", `project_id=eq.${projectId}`, () => load());
+    const unsubS = subscribeTable(`project-${projectId}-staff_tasks`, "staff_tasks", `project_id=eq.${projectId}`, () => load());
+    const unsubA = subscribeTable(`project-${projectId}-attachments`, "attachments", `project_id=eq.${projectId}`, () => load());
+    return () => { unsubC(); unsubS(); unsubA(); };
+  }, [projectId, load]);
+
+  useForegroundRefresh(load);
 
   const personName = useCallback((id) => report?.people.find((p) => p.id === id)?.name || "—", [report]);
   const staffUserName = useCallback((id) => (id ? staffUsersById[id] || "—" : "—"), [staffUsersById]);

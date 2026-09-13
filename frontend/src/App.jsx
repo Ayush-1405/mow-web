@@ -3,6 +3,8 @@ import { Routes, Route, useNavigate, useParams, Navigate } from "react-router-do
 import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
 import { requestNotificationPermission, showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
+import { useForegroundRefresh } from "./lib/useForegroundRefresh";
+import UpdateBanner from "./components/UpdateBanner.jsx";
 import Login from "./screens/Login.jsx";
 import ChangePassword from "./screens/ChangePassword.jsx";
 import TodayTasks from "./screens/TodayTasks.jsx";
@@ -251,6 +253,12 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, [session, profile, loadUnread, lang]);
 
+  // Belt-and-suspenders on top of the realtime badge channel above: if a
+  // websocket was dropped while the tab was backgrounded/offline, silently
+  // catch up on unread notifications once the tab/device is usable again
+  // -- never a forced logout, never a page reload.
+  useForegroundRefresh(session ? loadUnread : undefined);
+
   async function handleLoggedIn({ mustChangePassword: mcp }) {
     setBootError(null);
     const { data } = await supabase.auth.getSession();
@@ -439,6 +447,8 @@ export default function App() {
   const controlTowerAllowed = access.canAccessManagement();
 
   return (
+    <>
+    <UpdateBanner lang={lang} />
     <Routes>
       <Route path="/management" element={
         <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
@@ -607,5 +617,6 @@ export default function App() {
     </div>
       } />
     </Routes>
+    </>
   );
 }

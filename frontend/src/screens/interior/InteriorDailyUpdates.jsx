@@ -7,6 +7,8 @@ import {
   listProjects, listSiteReports, createSiteReport, notifyDeptLeadership,
   listAssignableInteriorPeople, listProjectTeamIds, createProjectTask, listProjectStaffTasks,
 } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Daily Site Update — md/MOOD-OF-WOOD-SYSTEM.md §5. Today's Work and
 // Tomorrow's Plan are now structured, person-wise work items (title +
@@ -169,6 +171,15 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   }, [projectId]);
 
   useEffect(() => { loadReports(); setSaveMsg(""); }, [loadReports]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubR = subscribeTable(`project-${projectId}-site_reports`, "site_reports", `project_id=eq.${projectId}`, () => loadReports());
+    const unsubT = subscribeTable(`project-${projectId}-staff_tasks`, "staff_tasks", `project_id=eq.${projectId}`, () => loadReports());
+    return () => { unsubR(); unsubT(); };
+  }, [projectId, loadReports]);
+
+  useForegroundRefresh(loadReports);
 
   function updateItem(list, setList, id, next) {
     setList(list.map((it) => (it.id === id ? next : it)));

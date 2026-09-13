@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { listProjects, listMaterials, listProjectMaterials, updateMaterialStatus, updateMaterialField, notifyDeptLeadership } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Material Requirements / Purchase Coordination — both read the external
 // system's `materials` + `project_materials` tables; Purchase Coordination
@@ -37,6 +39,13 @@ export default function InteriorMaterials({ lang, filterSource, lockedProjectId 
   }, [projectId, filterSource]);
 
   useEffect(() => { loadMaterials(); }, [loadMaterials]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-project_materials`, "project_materials", `project_id=eq.${projectId}`, () => loadMaterials());
+  }, [projectId, loadMaterials]);
+
+  useForegroundRefresh(loadMaterials);
 
   async function updateStatus(table, id, status, material) {
     const { error: err } = await updateMaterialStatus(table, id, status);

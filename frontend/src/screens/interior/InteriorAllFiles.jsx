@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { listAttachments, listInteriorPeople, getAttachmentUrl, listMaterialSelectionAttachmentsForProject, listWorkingDrawingAttachmentsForProject } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // "All Files" — every file uploaded for THIS project across every module,
 // in one place. Reuses listAttachments(projectId) with no stage filter
@@ -49,6 +51,16 @@ export default function InteriorAllFiles({ lang, projectId }) {
   }, [projectId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubA = subscribeTable(`project-${projectId}-attachments`, "attachments", `project_id=eq.${projectId}`, () => load());
+    const unsubM = subscribeTable(`project-${projectId}-material_selection_attachments`, "material_selection_attachments", `project_id=eq.${projectId}`, () => load());
+    const unsubW = subscribeTable(`project-${projectId}-working_drawing_attachments`, "working_drawing_attachments", `project_id=eq.${projectId}`, () => load());
+    return () => { unsubA(); unsubM(); unsubW(); };
+  }, [projectId, load]);
+
+  useForegroundRefresh(load);
 
   const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
 

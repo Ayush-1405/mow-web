@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { listProjects, listSnags, createSnag, resolveSnag, listInteriorPeople, notifyInteriorAssignment, notifyDeptLeadership } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Site Execution — the external system's `snags` table (real punch-list
 // data per project).
@@ -40,6 +42,13 @@ export default function InteriorSiteExecution({ lang, lockedProjectId }) {
   }, [projectId]);
 
   useEffect(() => { loadSnags(); }, [loadSnags]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-snags`, "snags", `project_id=eq.${projectId}`, () => loadSnags());
+  }, [projectId, loadSnags]);
+
+  useForegroundRefresh(loadSnags);
 
   const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
   const visibleRows = useMemo(

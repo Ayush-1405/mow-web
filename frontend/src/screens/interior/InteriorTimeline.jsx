@@ -8,6 +8,8 @@ import {
   setFreezeCheck, freezeProject, hasOpenMajorSnag, deleteProject, notifyDeptLeadership,
   listInteriorPeople, listProjectMembers, addProjectMember, removeProjectMember, notifyInteriorAssignment,
 } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 const emptyDetails = { location: "", start_date: "", next_update: "", on_time: null, next_action: "", remarks: "" };
 
@@ -91,6 +93,24 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
   }, [projectId]);
 
   useEffect(() => { loadTeam(); }, [loadTeam]);
+
+  // Realtime: another user changing this same project's stage/details
+  // merges straight into `projects` via the same refreshProject() a local
+  // save already uses (see saveDetails/stage actions below) -- a real
+  // merge, not a refetch, since it's a single known row.
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-projects`, "projects", `id=eq.${projectId}`, (payload) => {
+      if (payload.new) setProjects((ps) => ps.map((p) => (p.id === payload.new.id ? payload.new : p)));
+    });
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-project_members`, "project_members", `project_id=eq.${projectId}`, () => loadTeam());
+  }, [projectId, loadTeam]);
+
+  useForegroundRefresh(load);
 
   const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
 

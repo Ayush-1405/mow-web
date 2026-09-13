@@ -7,6 +7,8 @@ import {
   uploadWorkingDrawingFile, listWorkingDrawingFiles, updateWorkingDrawingFileCategory,
   createWorkingDrawingTask, deleteWorkingDrawingFile,
 } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Fixed allow-list, mirrored exactly by delete_project_attachment()'s own
 // server-side check (mvp_pilot_working_drawing_delete_v2_39.sql) -- the
@@ -309,6 +311,19 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
   }, [projectId]);
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
+
+  // Live updates: another user (or another tab) uploading/categorising/
+  // deleting/restoring a file on this same project refetches the list --
+  // both source tables this screen merges (attachments AND the legacy
+  // working_drawing_attachments) are covered, both scoped to this project.
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubA = subscribeTable(`project-${projectId}-attachments`, "attachments", `project_id=eq.${projectId}`, () => loadFiles());
+    const unsubW = subscribeTable(`project-${projectId}-working_drawing_attachments`, "working_drawing_attachments", `project_id=eq.${projectId}`, () => loadFiles());
+    return () => { unsubA(); unsubW(); };
+  }, [projectId, loadFiles]);
+
+  useForegroundRefresh(loadFiles);
 
   function handleFileSelect(e) {
     const f = e.target.files?.[0] || null;

@@ -7,6 +7,8 @@ import {
   listProjects, listTasks, createTask, updateTaskStatus,
   listInteriorPeople, listProjectTeamIds, notifyInteriorAssignment, listProjectStaffTasks,
 } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Tasks board — the external system's `tasks` table, per project, PLUS
 // (since mvp_pilot_daily_update_tasks_v2_38.sql) every staff_tasks row
@@ -89,6 +91,15 @@ export default function InteriorTasks({ lang, lockedProjectId }) {
   }, [projectId]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubT = subscribeTable(`project-${projectId}-tasks`, "tasks", `project_id=eq.${projectId}`, () => loadTasks());
+    const unsubS = subscribeTable(`project-${projectId}-staff_tasks`, "staff_tasks", `project_id=eq.${projectId}`, () => loadTasks());
+    return () => { unsubT(); unsubS(); };
+  }, [projectId, loadTasks]);
+
+  useForegroundRefresh(loadTasks);
 
   async function handleAdd(e) {
     e.preventDefault();

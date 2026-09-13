@@ -18,6 +18,13 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
+        // Default "auto" injects a script whose autoUpdate behavior is a
+        // silent window.location.reload() the instant a new SW activates --
+        // no user-facing prompt, and the reload can land mid-form-entry.
+        // Registered manually in main.jsx instead, with an onNeedReload
+        // callback that shows an "Update App" banner (components/UpdateBanner.jsx)
+        // so nothing reloads until the user chooses to.
+        injectRegister: null,
         strategies: "injectManifest",
         srcDir: "src",
         filename: "sw.js",

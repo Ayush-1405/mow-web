@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { listProjectActivity, listUnassignedActivity, assignActivityToProject } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Project-scoped Activity History — reads interior_pilot_audit_log, the
 // pilot's own audit table that logAudit() (interiorApi.js) already writes
@@ -32,6 +34,13 @@ export default function InteriorActivityHistory({ lang, projectId, isElevated })
   }, [projectId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-interior_pilot_audit_log`, "interior_pilot_audit_log", `project_id=eq.${projectId}`, () => load());
+  }, [projectId, load]);
+
+  useForegroundRefresh(load);
 
   const loadUnassigned = useCallback(async () => {
     const { data } = await listUnassignedActivity();

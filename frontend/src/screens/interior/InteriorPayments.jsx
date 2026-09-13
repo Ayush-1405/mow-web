@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
 import { listProjects, listPaymentRecords, addPaymentRecord, markPaymentReceived, notifyDeptLeadership } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Payment Follow-up — the ONE Interior card backed by a genuinely new,
 // pilot-owned table (interior_payment_records), since the external
@@ -38,6 +40,13 @@ export default function InteriorPayments({ lang, lookups, lockedProjectId }) {
   }, [projectId]);
 
   useEffect(() => { loadPayments(); }, [loadPayments]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-interior_payment_records`, "interior_payment_records", `project_id=eq.${projectId}`, () => loadPayments());
+  }, [projectId, loadPayments]);
+
+  useForegroundRefresh(loadPayments);
 
   async function handleMarkReceived(id, amount) {
     const { error: err } = await markPaymentReceived(id, receiptDrafts[id]);

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { listProjects, getHandover, setHandoverFlag, submitFeedback, notifyDeptLeadership } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 const HANDOVER_FLAGS = [
   ["qc_complete", "qcCompleteLabel"],
@@ -52,6 +54,15 @@ export default function InteriorCompletion({ lang, lockedProjectId }) {
   }, [projectId]);
 
   useEffect(() => { loadHandover(); }, [loadHandover]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubH = subscribeTable(`project-${projectId}-handovers`, "handovers", `project_id=eq.${projectId}`, () => loadHandover());
+    const unsubF = subscribeTable(`project-${projectId}-customer_feedback`, "customer_feedback", `project_id=eq.${projectId}`, () => loadHandover());
+    return () => { unsubH(); unsubF(); };
+  }, [projectId, loadHandover]);
+
+  useForegroundRefresh(loadHandover);
 
   async function toggleFlag(field, labelKey) {
     setBusyField(field);

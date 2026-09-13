@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { formatCurrency } from "../../lib/retailModules";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 import {
   listProjects, listInteriorPeople,
   listFactoryLocations, createFactoryLocation, listVendors, createVendor,
@@ -166,6 +168,15 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
 
   const refreshDetail = useCallback(() => { loadDetail(); }, [loadDetail]);
   const refreshAll = useCallback(() => { loadRequests(); loadDetail(); }, [loadRequests, loadDetail]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubR = subscribeTable(`project-${projectId}-purchase_requests`, "purchase_requests", `project_id=eq.${projectId}`, () => refreshAll());
+    const unsubA = subscribeTable(`project-${projectId}-purchase_attachments`, "purchase_attachments", `project_id=eq.${projectId}`, () => refreshDetail());
+    return () => { unsubR(); unsubA(); };
+  }, [projectId, refreshAll, refreshDetail]);
+
+  useForegroundRefresh(refreshAll);
 
   const currentRequest = requests.find((r) => r.id === requestId) || boardRequests.find((r) => r.id === requestId) || null;
 

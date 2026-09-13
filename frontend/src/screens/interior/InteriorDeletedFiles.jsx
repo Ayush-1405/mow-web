@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { listProjects, listInteriorPeople, listDeletedWorkingDrawingFiles, restoreWorkingDrawingFile, permanentlyDeleteWorkingDrawingFile } from "../../lib/interiorApi";
 import { DeletionReasonFields, isDeletionReasonValid } from "./InteriorWorkingDrawings";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 function personName(people, id) {
   return people.find((p) => p.id === id)?.name || "—";
@@ -99,6 +101,15 @@ export default function InteriorDeletedFiles({ lang, staffProfile }) {
   }, [projectId]);
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const unsubA = subscribeTable(`project-${projectId}-attachments`, "attachments", `project_id=eq.${projectId}`, () => loadFiles());
+    const unsubW = subscribeTable(`project-${projectId}-working_drawing_attachments`, "working_drawing_attachments", `project_id=eq.${projectId}`, () => loadFiles());
+    return () => { unsubA(); unsubW(); };
+  }, [projectId, loadFiles]);
+
+  useForegroundRefresh(loadFiles);
 
   async function handleRestore(f) {
     setRowMsg((m) => ({ ...m, [f.id]: "" }));

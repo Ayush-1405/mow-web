@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { listProjects, listRequests, createRequest, updateRequestStatus, notifyDeptLeadership } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Customer Requests & Complaints — the external system's `project_requests`
 // table, per project.
@@ -35,6 +37,13 @@ export default function InteriorRequests({ lang, lockedProjectId }) {
   }, [projectId]);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-project_requests`, "project_requests", `project_id=eq.${projectId}`, () => loadRequests());
+  }, [projectId, loadRequests]);
+
+  useForegroundRefresh(loadRequests);
 
   async function handleAdd(e) {
     e.preventDefault();

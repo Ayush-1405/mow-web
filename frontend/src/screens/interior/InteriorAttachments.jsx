@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { listProjects, listAttachments, addAttachmentRecord, uploadAttachmentFile, getAttachmentUrl, notifyDeptLeadership } from "../../lib/interiorApi";
+import { subscribeTable } from "../../lib/realtime";
+import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 // Shared by the Quotation / Design / Drawings cards — each is just a
 // different `stage` filter over the external system's own `attachments`
@@ -42,6 +44,13 @@ export default function InteriorAttachments({ lang, stage, titleKey, lockedProje
   }, [projectId, stage]);
 
   useEffect(() => { loadAttachments(); }, [loadAttachments]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribeTable(`project-${projectId}-attachments-${stage}`, "attachments", `project_id=eq.${projectId}`, () => loadAttachments());
+  }, [projectId, stage, loadAttachments]);
+
+  useForegroundRefresh(loadAttachments);
 
   const currentProject = useMemo(() => projects.find((p) => p.id === projectId), [projects, projectId]);
 
