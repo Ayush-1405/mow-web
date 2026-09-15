@@ -948,6 +948,24 @@ export const STRINGS = {
   siteTaskStatsOverdue: { en: "Overdue", gu: "મુદત વીતેલ" },
   siteTaskStatsBlocked: { en: "Blocked", gu: "અટકેલ" },
   siteTaskStatsAwaitingVerification: { en: "Awaiting Verification", gu: "ચકાસણીની રાહમાં" },
+
+  // Delete User / duplicate merge
+  deleteUserAction: { en: "Delete User", gu: "યુઝર કાઢો" },
+  userDeletedMsg: { en: "User deleted", gu: "યુઝર કાઢી નાખ્યો" },
+  userRestoredMsg: { en: "User restored", gu: "યુઝર પુનઃસ્થાપિત થયો" },
+  activeProjectCountLabel: { en: "Active Project Count", gu: "સક્રિય પ્રોજેક્ટ ગણતરી" },
+  assignedProjectCountLabel: { en: "Assigned Project Count", gu: "સોંપાયેલ પ્રોજેક્ટ ગણતરી" },
+  createdDataCountLabel: { en: "User-created Data Count", gu: "યુઝર દ્વારા બનાવેલ ડેટા ગણતરી" },
+  deleteUserWarningMsg: {
+    en: "This user may be linked to projects, tasks, files and audit history. Active responsibilities must be reassigned before deletion.",
+    gu: "આ યુઝર પ્રોજેક્ટ, કામ, ફાઇલ અને ઓડિટ હિસ્ટ્રી સાથે જોડાયેલ હોઈ શકે છે. કાઢતા પહેલાં સક્રિય જવાબદારીઓ ફરી સોંપવી જરૂરી છે.",
+  },
+  userDeletionReasonLabel: { en: "Reason for Deletion", gu: "યુઝર કાઢવાનું કારણ" },
+  replacementEmployeeLabel: { en: "Replacement Employee", gu: "બદલી કર્મચારી" },
+  deletedUsersLabel: { en: "Deleted Users", gu: "કાઢેલા યુઝર્સ" },
+  restoreUserAction: { en: "Restore", gu: "પુનઃસ્થાપિત કરો" },
+  restoreReasonLabel: { en: "Reason for Restoring", gu: "પુનઃસ્થાપિત કરવાનું કારણ" },
+  mergedIntoLabel: { en: "Merged Into", gu: "આમાં મર્જ કરાયું" },
 };
 
 export function t(key, lang) {

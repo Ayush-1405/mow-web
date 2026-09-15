@@ -2,6 +2,19 @@ import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { staffCreateUser, staffResetPassword } from "../lib/api";
 import { t } from "../lib/i18n";
+import { subscribeTable } from "../lib/realtime";
+
+// Fixed reason set for Delete User — exact bilingual options from spec.
+const DELETE_REASONS = [
+  { code: "duplicate_user", en: "Duplicate User", gu: "ડુપ્લિકેટ યુઝર" },
+  { code: "employee_left", en: "Employee Left Company", gu: "કર્મચારી કંપની છોડી ગયા" },
+  { code: "created_by_mistake", en: "User Created by Mistake", gu: "ભૂલથી યુઝર બનાવાયો" },
+  { code: "wrong_department", en: "Wrong Department", gu: "ખોટો વિભાગ" },
+  { code: "replacement_created", en: "Replacement Account Created", gu: "બદલી ખાતું બનાવાયું" },
+  { code: "temp_test_user", en: "Temporary/Test User", gu: "કામચલાઉ/ટેસ્ટ યુઝર" },
+  { code: "security_reason", en: "Security Reason", gu: "સુરક્ષા કારણ" },
+  { code: "other", en: "Other", gu: "અન્ય" },
+];
 
 // Calls staff-create-user (already deployed, already reviewed). All role/
 // department authorization happens server-side against role_creation_rules
@@ -37,6 +50,95 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
   const [roleEditValue, setRoleEditValue] = useState("");
   const [resetPasswordFor, setResetPasswordFor] = useState(null);
   const [resetPasswordValue, setResetPasswordValue] = useState("");
+
+  // Delete User — Super Admin/Management only. A confirmation block per
+  // row (matching this screen's existing inline-expand convention, not a
+  // separate modal component) with a live impact preview from
+  // staff_user_deletion_impact() before anything is submitted.
+  const canDeleteUsers = profile.isSuperAdmin || profile.isManagement;
+  const [deleteFor, setDeleteFor] = useState(null);
+  const [deleteImpact, setDeleteImpact] = useState(null);
+  const [deleteReasonCode, setDeleteReasonCode] = useState("");
+  const [deleteReasonNote, setDeleteReasonNote] = useState("");
+  const [deleteReplacementId, setDeleteReplacementId] = useState("");
+  const [deleteAllUsers, setDeleteAllUsers] = useState([]);
+
+  const [showDeletedUsers, setShowDeletedUsers] = useState(false);
+  const [deletedUsers, setDeletedUsers] = useState([]);
+  const [deletedUsersLoading, setDeletedUsersLoading] = useState(false);
+  const [restoreFor, setRestoreFor] = useState(null);
+  const [restoreReason, setRestoreReason] = useState("");
+
+  async function startDelete(u) {
+    setDeleteFor(u.id);
+    setDeleteImpact(null);
+    setDeleteReasonCode("");
+    setDeleteReasonNote("");
+    setDeleteReplacementId("");
+    const { data, error } = await supabase.rpc("staff_user_deletion_impact", { p_user_id: u.id });
+    if (error) { showToast("error", error.message); return; }
+    setDeleteImpact(Array.isArray(data) ? data[0] : data);
+    if (deleteAllUsers.length === 0) {
+      const { data: allUsers } = await supabase.rpc("staff_list_assignable_users_all");
+      setDeleteAllUsers(allUsers || []);
+    }
+  }
+
+  const isValidDeleteReason = deleteReasonCode && deleteReasonNote.trim().length >= 10;
+
+  async function submitDelete(u) {
+    if (!isValidDeleteReason) return;
+    if (deleteImpact?.requires_replacement && !deleteReplacementId) return;
+    setRowBusyId(u.id);
+    try {
+      const { error } = await supabase.rpc("staff_delete_user", {
+        p_user_id: u.id,
+        p_reason_code: deleteReasonCode,
+        p_reason_note: deleteReasonNote.trim(),
+        p_replacement_user_id: deleteReplacementId || null,
+      });
+      if (error) throw error;
+      setDeleteFor(null);
+      showToast("success", t("userDeletedMsg", lang));
+      await loadRoster();
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  const loadDeletedUsers = useCallback(async () => {
+    setDeletedUsersLoading(true);
+    const { data, error } = await supabase.rpc("staff_list_deleted_users");
+    if (error) showToast("error", error.message);
+    else setDeletedUsers(data || []);
+    setDeletedUsersLoading(false);
+  }, [showToast]);
+
+  function toggleDeletedUsers() {
+    const next = !showDeletedUsers;
+    setShowDeletedUsers(next);
+    if (next) loadDeletedUsers();
+  }
+
+  async function submitRestore(userId) {
+    if (restoreReason.trim().length < 10) return;
+    setRowBusyId(userId);
+    try {
+      const { error } = await supabase.rpc("staff_restore_user", { p_user_id: userId, p_reason: restoreReason.trim() });
+      if (error) throw error;
+      setRestoreFor(null);
+      setRestoreReason("");
+      showToast("success", t("userRestoredMsg", lang));
+      await loadDeletedUsers();
+      await loadRoster();
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
 
   // Only Super Admin/Management may change an existing user's role
   // (staff_update_user_role — Management is blocked server-side from
@@ -110,6 +212,17 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
 
   useEffect(() => {
     loadRoster();
+  }, [loadRoster]);
+
+  // Live refresh: any user_profiles change (created, edited, role changed,
+  // deactivated, deleted, merged, restored) updates the roster immediately
+  // -- no browser refresh or repeated login needed to see it.
+  useEffect(() => {
+    return subscribeTable("user_creation_roster", "user_profiles", null, () => {
+      loadRoster();
+      if (showDeletedUsers) loadDeletedUsers();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadRoster]);
 
   function startEdit(u) {
@@ -380,6 +493,11 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
                 >
                   {u.is_active ? t("deactivate", lang) : t("reactivate", lang)}
                 </button>
+                {canDeleteUsers && u.id !== profile.id && (
+                  <button className="btn btn-outline" onClick={() => (deleteFor === u.id ? setDeleteFor(null) : startDelete(u))}>
+                    {t("deleteUserAction", lang)}
+                  </button>
+                )}
               </div>
             )}
 
@@ -435,9 +553,115 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
                 </div>
               </div>
             )}
+
+            {deleteFor === u.id && (
+              <div style={{ marginTop: 10 }}>
+                {!deleteImpact ? (
+                  <div className="msg info">…</div>
+                ) : (
+                  <>
+                    <div className="task-meta" style={{ marginTop: 0, flexWrap: "wrap" }}>
+                      <span><strong>{t("fullName", lang)}:</strong> {u.full_name}</span>
+                      <span><strong>{t("employeeCode", lang)}:</strong> {u.employee_code}</span>
+                      <span><strong>{t("department", lang)}:</strong> {deptName}</span>
+                      <span><strong>{t("role", lang)}:</strong> {roleName}</span>
+                      <span><strong>{t("active", lang)}/{t("inactive", lang)}:</strong> {u.is_active ? t("active", lang) : t("inactive", lang)}</span>
+                      <span><strong>{t("openTasksLabel", lang)}:</strong> {deleteImpact.open_task_count}</span>
+                      <span><strong>{t("activeProjectCountLabel", lang)}:</strong> {deleteImpact.active_project_count}</span>
+                      <span><strong>{t("assignedProjectCountLabel", lang)}:</strong> {deleteImpact.assigned_project_count}</span>
+                      <span><strong>{t("createdDataCountLabel", lang)}:</strong> {deleteImpact.created_data_count}</span>
+                    </div>
+
+                    <div className="msg error" style={{ marginTop: 8 }}>{t("deleteUserWarningMsg", lang)}</div>
+
+                    <label>{t("userDeletionReasonLabel", lang)} *</label>
+                    <select value={deleteReasonCode} onChange={(e) => setDeleteReasonCode(e.target.value)}>
+                      <option value="" disabled>—</option>
+                      {DELETE_REASONS.map((r) => (
+                        <option key={r.code} value={r.code}>{lang === "gu" ? r.gu : r.en}</option>
+                      ))}
+                    </select>
+
+                    <label>{t("detailedReasonLabel", lang)} *</label>
+                    <textarea value={deleteReasonNote} onChange={(e) => setDeleteReasonNote(e.target.value)} />
+
+                    {deleteImpact.requires_replacement && (
+                      <>
+                        <label>{t("replacementEmployeeLabel", lang)} *</label>
+                        <select value={deleteReplacementId} onChange={(e) => setDeleteReplacementId(e.target.value)}>
+                          <option value="" disabled>—</option>
+                          {deleteAllUsers.filter((c) => c.id !== u.id).map((c) => (
+                            <option key={c.id} value={c.id}>{c.full_name} ({c.employee_code})</option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+
+                    <div className="btn-row">
+                      <button
+                        className="btn btn-primary"
+                        disabled={rowBusyId === u.id || !isValidDeleteReason || (deleteImpact.requires_replacement && !deleteReplacementId)}
+                        onClick={() => submitDelete(u)}
+                      >
+                        {t("confirmDelete", lang)}
+                      </button>
+                      <button className="btn btn-outline" onClick={() => setDeleteFor(null)}>{t("cancel", lang)}</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
+
+      <div className="section-title" style={{ marginTop: 20 }}>
+        <button className="btn btn-outline" onClick={toggleDeletedUsers}>
+          {t("deletedUsersLabel", lang)}
+        </button>
+      </div>
+      {showDeletedUsers && (
+        <div>
+          {deletedUsersLoading && <div className="msg info">…</div>}
+          {!deletedUsersLoading && deletedUsers.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
+          {deletedUsers.map((du) => (
+            <div className="task-card" key={du.id}>
+              <div className="top-row">
+                <div>
+                  <div className="task-title">{du.full_name}</div>
+                  <div className="task-number">{du.employee_code}</div>
+                </div>
+              </div>
+              <div className="task-meta">
+                <span>{t("deleteUserAction", lang)}: {new Date(du.deleted_at).toLocaleString()}</span>
+                {du.merged_into_employee_code && <span>{t("mergedIntoLabel", lang)}: {du.merged_into_employee_code}</span>}
+                <span>{du.deletion_reason_note}</span>
+              </div>
+              {profile.isSuperAdmin && !du.merged_into_user_id && (
+                <div className="btn-row">
+                  <button className="btn btn-outline" onClick={() => setRestoreFor(restoreFor === du.id ? null : du.id)}>
+                    {t("restoreUserAction", lang)}
+                  </button>
+                </div>
+              )}
+              {restoreFor === du.id && (
+                <div style={{ marginTop: 10 }}>
+                  <label>{t("restoreReasonLabel", lang)} *</label>
+                  <textarea value={restoreReason} onChange={(e) => setRestoreReason(e.target.value)} />
+                  <div className="btn-row">
+                    <button className="btn btn-primary" disabled={rowBusyId === du.id || restoreReason.trim().length < 10} onClick={() => submitRestore(du.id)}>
+                      {t("submit", lang)}
+                    </button>
+                    <button className="btn btn-outline" onClick={() => { setRestoreFor(null); setRestoreReason(""); }}>
+                      {t("cancel", lang)}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

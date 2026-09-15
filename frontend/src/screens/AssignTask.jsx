@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { uploadTaskProof } from "../lib/api";
 import { t } from "../lib/i18n";
 import { listProjects, listInteriorPeople, listProjectTeamIds } from "../lib/interiorApi";
+import { subscribeTable } from "../lib/realtime";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 
 // Fixed bilingual message only — never a raw Supabase/Postgres error string —
@@ -183,6 +184,13 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
 
   useEffect(() => {
     loadDirectories();
+  }, [loadDirectories]);
+
+  // Live refresh: a merge/delete/restore/create/deactivate anywhere in
+  // user_profiles updates the assignee/verifier pools immediately -- no
+  // refresh or relogin needed to stop seeing a just-merged duplicate.
+  useEffect(() => {
+    return subscribeTable("assign_task_directories", "user_profiles", null, () => loadDirectories());
   }, [loadDirectories]);
 
   // To Department options come directly from the authorized department RPC
