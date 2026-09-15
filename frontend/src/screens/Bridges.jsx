@@ -33,6 +33,8 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
   const [projectsById, setProjectsById] = useState({});
   const [interiorProfilesById, setInteriorProfilesById] = useState({});
   const interiorProfilesLoadedRef = useRef(false);
+  const interiorDeptId = lookups.departments.find((d) => d.code === "INTERIOR")?.id;
+  const [projectFilter, setProjectFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [returnReasonFor, setReturnReasonFor] = useState(null);
@@ -189,9 +191,21 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
         {t("refresh", lang)}
       </button>
 
+      {Object.keys(projectsById).length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <label>{t("filterByProjectLabel", lang)}</label>
+          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+            <option value="">{t("allInteriorProjectsLabel", lang)}</option>
+            {Object.values(projectsById).map((p) => (
+              <option key={p.id} value={p.id}>{p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {!loading && bridges.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
 
-      {bridges.map((bridge) => {
+      {bridges.filter((b) => !projectFilter || tasksById[b.task_id]?.project_id === projectFilter).map((bridge) => {
         const task = tasksById[bridge.task_id];
         const status = task ? lookups.statusById[task.status_id] : null;
         const statusCode = status?.code || "";
@@ -219,6 +233,11 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
                 {projectsById[task.project_id].lead_executive_id && (
                   <span className="sub">{t("leadExecutiveLabel", lang)}: {interiorProfilesById[projectsById[task.project_id].lead_executive_id]?.name || "—"}</span>
                 )}
+              </div>
+            )}
+            {task && !task.project_id && interiorDeptId && [task.from_department_id, task.to_department_id].includes(interiorDeptId) && (
+              <div className="task-meta" style={{ marginTop: 4 }}>
+                <span className="sub">{t("generalInteriorTaskLabel", lang)}</span>
               </div>
             )}
             {bridge.quantity && <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{t("quantity", lang)}: {bridge.quantity}</div>}
@@ -356,7 +375,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
             {task && detailsFor === task.id && (
               <>
                 <TaskTimeline task={task} usersById={usersById} lang={lang} />
-                {task.project_id && (
+                {(task.project_id || (interiorDeptId && [task.from_department_id, task.to_department_id].includes(interiorDeptId))) && (
                   <ProjectSiteSection
                     task={task}
                     lang={lang}

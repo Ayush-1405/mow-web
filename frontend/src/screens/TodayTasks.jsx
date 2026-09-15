@@ -43,6 +43,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [interiorProfilesById, setInteriorProfilesById] = useState({});
   const interiorProfilesLoadedRef = useRef(false);
   const [projectFilter, setProjectFilter] = useState("");
+  const interiorDeptId = lookups.departments.find((d) => d.code === "INTERIOR")?.id;
 
   // Retail leads/complaints/VM-tasks and Interior snags/tasks live in
   // separate tables from staff_tasks (different lifecycle, no shared
@@ -392,7 +393,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         <div style={{ marginBottom: 10 }}>
           <label>{t("filterByProjectLabel", lang)}</label>
           <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">{t("allSitesLabel", lang)}</option>
+            <option value="">{t("allInteriorProjectsLabel", lang)}</option>
             {Object.values(projectsById).map((p) => (
               <option key={p.id} value={p.id}>{p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}</option>
             ))}
@@ -484,6 +485,11 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                   <span className="sub">{t("primaryAssigneeLabel", lang)}: {usersById[task.assigned_to]?.full_name || "—"}</span>
                 )}
                 {task.source_module === "daily_site_update" && <span className="badge ASSIGNED">{t("sourceDailySiteUpdateLabel", lang)}</span>}
+              </div>
+            )}
+            {!taskProject && interiorDeptId && [task.from_department_id, task.to_department_id].includes(interiorDeptId) && (
+              <div className="task-meta" style={{ marginTop: 4 }}>
+                <span className="sub">{t("generalInteriorTaskLabel", lang)}</span>
               </div>
             )}
             {isMulti && (
@@ -715,7 +721,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               <>
                 {isMulti && <AssignedTeamSection assignees={assignees} usersById={usersById} lang={lang} />}
                 <TaskTimeline task={task} usersById={usersById} lang={lang} assignees={assignees} />
-                {(task.project_id || task.from_department_id === lookups.departments.find((d) => d.code === "INTERIOR")?.id) && (
+                {(task.project_id || [task.from_department_id, task.to_department_id].includes(interiorDeptId)) && (
                   <ProjectSiteSection
                     task={task}
                     lang={lang}

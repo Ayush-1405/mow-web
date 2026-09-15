@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof } from "../lib/api";
 import { t } from "../lib/i18n";
-import { listProjects, listInteriorPeople, listProjectTeamIds } from "../lib/interiorApi";
 import { subscribeTable } from "../lib/realtime";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import VoiceRecorder from "./VoiceRecorder.jsx";
@@ -55,17 +54,21 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   const [voiceDuration, setVoiceDuration] = useState(0);
   const [voiceKey, setVoiceKey] = useState(0);
 
-  // Project/Site (Interior Projects Department only). Loaded lazily — only
-  // once From Department actually resolves to Interior — so no other
-  // department pays for an extra query it will never use. `listProjects()`
-  // is RLS-scoped (projects_select_scoped: interior_is_org_wide() OR
-  // interior_is_project_member(id)) — this is already the exact
-  // authorized-project-list this feature needs, no new query logic here.
+  // Project/Site — shown whenever To Department resolves to Interior
+  // Projects, regardless of which department the caller is assigning
+  // FROM (Management/Accounts/Purchase/Production -> Interior all show
+  // this, per the explicit "any department -> Interior" requirement).
+  // Loaded lazily on first need. staff_list_interior_project_options() is
+  // a SECURITY DEFINER RPC deliberately broader than projects_select_scoped
+  // — it returns ONLY id/project_code/customer/location (never files,
+  // payments, remarks, or anything else) to ANY authorized task-creator,
+  // not just Interior staff, per this feature's explicit permission model:
+  // selecting a project tags a reference on an already-authorized task, it
+  // is not a grant of real project access (that stays behind the existing,
+  // untouched projects_select_scoped RLS everywhere else in the app).
   const [projects, setProjects] = useState([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
-  const [interiorPeople, setInteriorPeople] = useState([]);
-  const [projectTeamAuthIds, setProjectTeamAuthIds] = useState(() => new Set());
 
   const [form, setForm] = useState({
     title: "",
@@ -94,73 +97,48 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     () => lookups.departments.find((d) => d.code === "INTERIOR")?.id || null,
     [lookups.departments],
   );
-  const isInteriorFrom = !!interiorDeptId && form.from_department_id === interiorDeptId;
+  // Watches To Department (not From) — this is the field that decides
+  // whether the task lands in Interior Projects, so it's the correct
+  // trigger regardless of who's sending it.
+  const isInteriorTo = !!interiorDeptId && form.to_department_id === interiorDeptId;
 
   useEffect(() => {
-    if (!isInteriorFrom || projectsLoaded) return;
+    if (!isInteriorTo || projectsLoaded) return;
     let cancelled = false;
-    (async () => {
-      const [projRes, peopleRes] = await Promise.all([listProjects(), listInteriorPeople()]);
+    supabase.rpc("staff_list_interior_project_options").then(({ data, error }) => {
       if (cancelled) return;
-      if (!projRes.error) setProjects(projRes.data || []);
-      if (!peopleRes.error) setInteriorPeople(peopleRes.data || []);
+      if (!error) setProjects(data || []);
       setProjectsLoaded(true);
-    })();
+    });
     return () => { cancelled = true; };
-  }, [isInteriorFrom, projectsLoaded]);
+  }, [isInteriorTo, projectsLoaded]);
 
-  // Switching From Department away from Interior clears whatever
-  // Project/Site was picked — it belongs only to an Interior-originated
-  // task and must never silently ride along on a task for another
-  // department.
+  // Switching To Department away from Interior clears whatever
+  // Project/Site was picked — it must never silently ride along on a task
+  // for another department.
   useEffect(() => {
-    if (!isInteriorFrom) {
+    if (!isInteriorTo) {
       setForm((f) => (f.project_id ? { ...f, project_id: "" } : f));
-      setProjectTeamAuthIds(new Set());
     }
-  }, [isInteriorFrom]);
-
-  const interiorPersonName = useCallback(
-    (profileId) => interiorPeople.find((p) => p.id === profileId)?.name || null,
-    [interiorPeople],
-  );
+  }, [isInteriorTo]);
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === form.project_id) || null,
     [projects, form.project_id],
   );
 
-  // Search matches project code, client/project name, site location, Lead
-  // Executive, and Executive Assistant — never a hard-coded list, always
-  // the live rows this caller is authorized to see.
+  // Search matches project code, client/project name, and site location —
+  // never a hard-coded list, always the live active rows.
   const debouncedProjectSearch = useDebouncedValue(projectSearch, 250);
   const projectSearchLower = debouncedProjectSearch.trim().toLowerCase();
   const projectOptions = useMemo(() => {
     const matches = !projectSearchLower
       ? projects
-      : projects.filter((p) => {
-          const leadName = interiorPersonName(p.lead_executive_id) || "";
-          const eaName = interiorPersonName(p.executive_assistant_id) || "";
-          return [p.project_code, p.customer, p.location, leadName, eaName]
-            .filter(Boolean)
-            .some((v) => v.toLowerCase().includes(projectSearchLower));
-        });
+      : projects.filter((p) =>
+          [p.project_code, p.customer, p.location].filter(Boolean).some((v) => v.toLowerCase().includes(projectSearchLower)),
+        );
     return matches.slice().sort((a, b) => (a.project_code || "").localeCompare(b.project_code || ""));
-  }, [projects, projectSearchLower, interiorPersonName]);
-
-  async function selectProject(projectId) {
-    setForm((f) => ({ ...f, project_id: projectId }));
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) {
-      setProjectTeamAuthIds(new Set());
-      return;
-    }
-    const teamProfileIds = new Set(await listProjectTeamIds(project));
-    const authIds = new Set(
-      interiorPeople.filter((p) => teamProfileIds.has(p.id) && p.auth_id).map((p) => p.auth_id),
-    );
-    setProjectTeamAuthIds(authIds);
-  }
+  }, [projects, projectSearchLower]);
 
   // Loads the department directory and the staff directory independently
   // (two separate RPC calls) but as one unit for loading/error purposes: if
@@ -236,20 +214,8 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
           u.employee_code.toLowerCase().includes(q) ||
           roleLabel(u).toLowerCase().includes(q),
         );
-    const sorted = matches.slice().sort((a, b) => a.full_name.localeCompare(b.full_name));
-    // Project/Site selected (Interior): the selected project's own team —
-    // Lead Executive, Executive Assistant, project members, assigned
-    // execution staff — sort first, so the person most likely to be the
-    // right assignee doesn't get lost in the full department roster.
-    if (isInteriorFrom && form.project_id && projectTeamAuthIds.size) {
-      return sorted.slice().sort((a, b) => {
-        const aTeam = projectTeamAuthIds.has(a.id) ? 0 : 1;
-        const bTeam = projectTeamAuthIds.has(b.id) ? 0 : 1;
-        return aTeam - bTeam || a.full_name.localeCompare(b.full_name);
-      });
-    }
-    return sorted;
-  }, [usersInToDepartment, debouncedAssigneeSearch, roleLabel, isInteriorFrom, form.project_id, projectTeamAuthIds]);
+    return matches.slice().sort((a, b) => a.full_name.localeCompare(b.full_name));
+  }, [usersInToDepartment, debouncedAssigneeSearch, roleLabel]);
 
   // Second Assignee candidates: same pool as Primary, minus whoever is
   // currently selected as Primary (a person can't be both — hidden here
@@ -294,10 +260,6 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     }
     if (form.second_assignee && form.second_assignee === form.assigned_to) {
       showToast("error", t("samePersonErrorMsg", lang));
-      return;
-    }
-    if (isInteriorFrom && !form.project_id) {
-      showToast("error", t("selectProjectSiteRequiredMsg", lang));
       return;
     }
     setBusy(true);
@@ -369,7 +331,6 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       }));
       setAssigneeSearch("");
       setProjectSearch("");
-      setProjectTeamAuthIds(new Set());
     } catch (err) {
       // Surface the real reason (e.g. a role/department restriction inside
       // staff_create_task) instead of a generic message — a swallowed error
@@ -486,9 +447,9 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
             )}
           </div>
 
-          {isInteriorFrom && (
+          {isInteriorTo && (
             <div className="field full">
-              <label>{t("selectProjectSiteLabel", lang)} *</label>
+              <label>{t("selectProjectSiteLabel", lang)} ({t("optionalFieldLabel", lang)})</label>
               {!projectsLoaded && <div className="msg info">…</div>}
               {projectsLoaded && (
                 <>
@@ -498,8 +459,8 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
                     value={projectSearch}
                     onChange={(e) => setProjectSearch(e.target.value)}
                   />
-                  <select value={form.project_id} onChange={(e) => selectProject(e.target.value)} required>
-                    <option value="" disabled>—</option>
+                  <select value={form.project_id} onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}>
+                    <option value="">{t("generalInteriorTaskLabel", lang)}</option>
                     {projectOptions.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}
@@ -518,10 +479,6 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
                     <span><strong>{t("projectCodeFullLabel", lang)}:</strong> {selectedProject.project_code}</span>
                     <span><strong>{t("clientNameLabel", lang)}:</strong> {selectedProject.customer}</span>
                     {selectedProject.location && <span><strong>{t("siteLocationLabel", lang)}:</strong> {selectedProject.location}</span>}
-                    <span><strong>{t("leadExecutiveLabel", lang)}:</strong> {interiorPersonName(selectedProject.lead_executive_id) || "—"}</span>
-                    <span><strong>{t("executiveAssistantLabel", lang)}:</strong> {interiorPersonName(selectedProject.executive_assistant_id) || "—"}</span>
-                    {selectedProject.stage && <span><strong>{t("projectStageLabel", lang)}:</strong> {selectedProject.stage}</span>}
-                    <span><strong>{t("projectStatusLabel", lang)}:</strong> {selectedProject.archived ? t("archivedStatusLabel", lang) : t("active", lang)}</span>
                   </div>
                 </div>
               )}

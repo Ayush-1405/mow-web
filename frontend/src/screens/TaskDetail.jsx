@@ -178,7 +178,7 @@ export const ProjectSiteSection = React.memo(function ProjectSiteSection({ task,
           <span><strong>{t("projectStatusLabel", lang)}:</strong> {project.archived ? t("archivedStatusLabel", lang) : t("active", lang)}</span>
         </div>
       ) : (
-        <div className="msg info">{t("projectSiteNotAssignedLabel", lang)}</div>
+        <div className="msg info">{t("generalInteriorTaskLabel", lang)}</div>
       )}
 
       <div className="btn-row">

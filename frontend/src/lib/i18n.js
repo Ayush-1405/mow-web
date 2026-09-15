@@ -967,6 +967,9 @@ export const STRINGS = {
   restoreReasonLabel: { en: "Reason for Restoring", gu: "પુનઃસ્થાપિત કરવાનું કારણ" },
   mergedIntoLabel: { en: "Merged Into", gu: "આમાં મર્જ કરાયું" },
   loadMore: { en: "Load More", gu: "વધુ લોડ કરો" },
+  optionalFieldLabel: { en: "Optional", gu: "વૈકલ્પિક" },
+  generalInteriorTaskLabel: { en: "General Interior Task", gu: "સામાન્ય ઇન્ટિરિયર કાર્ય" },
+  allInteriorProjectsLabel: { en: "All Interior Projects", gu: "બધા ઇન્ટિરિયર પ્રોજેક્ટ" },
 };
 
 export function t(key, lang) {
