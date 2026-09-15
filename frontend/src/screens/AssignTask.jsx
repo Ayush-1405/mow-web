@@ -4,6 +4,7 @@ import { uploadTaskProof } from "../lib/api";
 import { t } from "../lib/i18n";
 import { listProjects, listInteriorPeople, listProjectTeamIds } from "../lib/interiorApi";
 import { subscribeTable } from "../lib/realtime";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 
 // Fixed bilingual message only — never a raw Supabase/Postgres error string —
@@ -132,7 +133,8 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // Search matches project code, client/project name, site location, Lead
   // Executive, and Executive Assistant — never a hard-coded list, always
   // the live rows this caller is authorized to see.
-  const projectSearchLower = projectSearch.trim().toLowerCase();
+  const debouncedProjectSearch = useDebouncedValue(projectSearch, 250);
+  const projectSearchLower = debouncedProjectSearch.trim().toLowerCase();
   const projectOptions = useMemo(() => {
     const matches = !projectSearchLower
       ? projects
@@ -220,8 +222,13 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // Search matches name, employee code, or role — nothing here adds or
   // removes authorization, it only narrows what's already in
   // usersInToDepartment (itself already scoped to the selected department).
+  // Debounced ~250ms: the search box itself is bound to `assigneeSearch`
+  // (always instantly responsive to typing); only the candidate-list
+  // recomputation below waits for a short pause, so a large department
+  // roster doesn't re-filter on every keystroke.
+  const debouncedAssigneeSearch = useDebouncedValue(assigneeSearch, 250);
   const assigneeCandidates = useMemo(() => {
-    const q = assigneeSearch.trim().toLowerCase();
+    const q = debouncedAssigneeSearch.trim().toLowerCase();
     const matches = !q
       ? usersInToDepartment
       : usersInToDepartment.filter((u) =>
@@ -242,7 +249,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       });
     }
     return sorted;
-  }, [usersInToDepartment, assigneeSearch, roleLabel, isInteriorFrom, form.project_id, projectTeamAuthIds]);
+  }, [usersInToDepartment, debouncedAssigneeSearch, roleLabel, isInteriorFrom, form.project_id, projectTeamAuthIds]);
 
   // Second Assignee candidates: same pool as Primary, minus whoever is
   // currently selected as Primary (a person can't be both — hidden here

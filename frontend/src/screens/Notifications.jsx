@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
+import { subscribeTable, upsertById } from "../lib/realtime";
 
 // entity_type -> where clicking a notification should land. staff_tasks
 // notifications ("task") deep-link straight to that task via TodayTasks'
@@ -27,42 +28,72 @@ function routeFor(n) {
   }
 }
 
+const PAGE_SIZE = 20;
+
 export default function Notifications({ lang, showToast }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
+  // First page only, on demand — "Load More" fetches older pages rather
+  // than the previous flat limit(100), so a long-lived account with
+  // hundreds of accumulated notifications doesn't pay for all of them on
+  // every screen open, and a realtime INSERT never has to re-fetch the
+  // whole list (it prepends the one new row directly — see the realtime
+  // effect below).
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("notifications")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(100);
+      .range(0, PAGE_SIZE - 1);
     if (error) showToast("error", error.message);
-    else setItems(data || []);
+    else {
+      setItems(data || []);
+      setHasMore((data || []).length === PAGE_SIZE);
+    }
     setLoading(false);
   }, [showToast]);
+
+  async function loadMore() {
+    setLoadingMore(true);
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(items.length, items.length + PAGE_SIZE - 1);
+    if (error) showToast("error", error.message);
+    else {
+      setItems((cur) => [...cur, ...(data || [])]);
+      setHasMore((data || []).length === PAGE_SIZE);
+    }
+    setLoadingMore(false);
+  }
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Live updates: a new notification (recipient_id scoped by RLS to the
-  // current user) prepends immediately instead of waiting for a manual
-  // Refresh or a tab switch.
+  // Live updates: merge only the affected row (INSERT prepends, UPDATE
+  // replaces in place) instead of refetching the whole page on every
+  // event — a notification arriving for an unrelated reason (someone else
+  // marking a DIFFERENT one of their own notifications read, in another
+  // tab) never re-runs the full list query here.
   useEffect(() => {
-    const channel = supabase
-      .channel("notifications_screen")
-      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [load]);
+    return subscribeTable("notifications_screen", "notifications", null, (payload) => {
+      const row = payload.new;
+      if (!row) return;
+      setItems((cur) => upsertById(cur, row));
+    });
+  }, []);
 
   async function markRead(id) {
     const { error } = await supabase.rpc("staff_mark_notification_read", { p_notification_id: id });
-    if (error) showToast("error", error.message);
-    else load();
+    if (error) { showToast("error", error.message); return; }
+    setItems((cur) => cur.map((n) => (n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)));
   }
 
   function openNotification(n) {
@@ -108,6 +139,11 @@ export default function Notifications({ lang, showToast }) {
           );
         })}
       </div>
+      {hasMore && (
+        <button className="btn btn-outline" style={{ marginTop: 10 }} onClick={loadMore} disabled={loadingMore}>
+          {loadingMore ? "…" : t("loadMore", lang)}
+        </button>
+      )}
     </div>
   );
 }

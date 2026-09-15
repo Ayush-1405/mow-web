@@ -966,6 +966,7 @@ export const STRINGS = {
   restoreUserAction: { en: "Restore", gu: "પુનઃસ્થાપિત કરો" },
   restoreReasonLabel: { en: "Reason for Restoring", gu: "પુનઃસ્થાપિત કરવાનું કારણ" },
   mergedIntoLabel: { en: "Merged Into", gu: "આમાં મર્જ કરાયું" },
+  loadMore: { en: "Load More", gu: "વધુ લોડ કરો" },
 };
 
 export function t(key, lang) {

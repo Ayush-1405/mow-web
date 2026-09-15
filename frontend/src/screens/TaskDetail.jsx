@@ -5,6 +5,7 @@ import { uploadTaskProof, downloadTaskProof, resolveMimeType, uploadTaskMessageF
 import { t } from "../lib/i18n";
 import { subscribeTable, upsertById } from "../lib/realtime";
 import { listProjects } from "../lib/interiorApi";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 
 // Shared accountability-timeline + reassign UI used by both TodayTasks and
@@ -19,7 +20,7 @@ function userLabel(usersById, id) {
   return u ? `${u.full_name} (${u.employee_code})` : "—";
 }
 
-export function TaskTimeline({ task, usersById, lang, assignees }) {
+export const TaskTimeline = React.memo(function TaskTimeline({ task, usersById, lang, assignees }) {
   // Second Assignee: one extra row per active assignee, sourced from their
   // own staff_task_assignees.assigned_at — purely additive alongside the
   // existing created_at/accepted_at/.../closed_at rows below, never
@@ -67,14 +68,14 @@ export function TaskTimeline({ task, usersById, lang, assignees }) {
       )}
     </div>
   );
-}
+});
 
 // Second Assignee: "Assigned Team" section (spec §9) -- role, acceptance
 // status, individual work status, and timestamps per person, read straight
 // from their own staff_task_assignees row. Read-only display; status
 // changes happen via each person's own action buttons on the task card
 // (TodayTasks.jsx), never from here.
-export function AssignedTeamSection({ assignees, usersById, lang }) {
+export const AssignedTeamSection = React.memo(function AssignedTeamSection({ assignees, usersById, lang }) {
   if (!assignees || assignees.length === 0) return null;
   const acceptanceLabel = (row) => (row.acceptance_status === "ACCEPTED" ? t("accept", lang) : row.acceptance_status === "REJECTED" ? t("rejectedStatusLabel", lang) : t("pendingAcceptanceLabel", lang));
   const individualLabel = (row) => (row.individual_status === "BLOCKED" ? t("blockedStatusLabel", lang) : row.individual_status === "REJECTED" ? t("rejectedStatusLabel", lang) : row.individual_status);
@@ -94,7 +95,7 @@ export function AssignedTeamSection({ assignees, usersById, lang }) {
       ))}
     </div>
   );
-}
+});
 
 // Project/Site Information (Interior Projects Department). Read-only
 // display of the exact project a task is linked to (never free-text —
@@ -109,7 +110,7 @@ export function AssignedTeamSection({ assignees, usersById, lang }) {
 // `projectsById`/`profilesById` are loaded once by the parent screen
 // (TodayTasks/Bridges) and shared across every visible task card, so
 // opening a second task's Details never re-fetches the same rows.
-export function ProjectSiteSection({ task, lang, profile, projectsById, profilesById, showToast, onChanged }) {
+export const ProjectSiteSection = React.memo(function ProjectSiteSection({ task, lang, profile, projectsById, profilesById, showToast, onChanged }) {
   const navigate = useNavigate();
   const [changing, setChanging] = useState(false);
   const [candidates, setCandidates] = useState([]);
@@ -215,7 +216,7 @@ export function ProjectSiteSection({ task, lang, profile, projectsById, profiles
       )}
     </div>
   );
-}
+});
 
 // Maps a browser File's mime type to the file_type value staff_record_
 // attachment/staff-file-url actually accept (mirrors MIME_WHITELIST in the
@@ -235,7 +236,7 @@ export function detectFileType(mimeType) {
 // (staff_attachments_select_matches_parent decides visibility), plus a
 // generic "attach a file" control usable any time — not only at Complete,
 // unlike the existing photo-proof uploader on TodayTasks.
-export function AttachmentsList({ taskId, lang, showToast }) {
+export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lang, showToast }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -365,7 +366,7 @@ export function AttachmentsList({ taskId, lang, showToast }) {
       </label>
     </div>
   );
-}
+});
 
 // Reassign panel. Calls staff_reassign_task via onSubmit(payload) — the RPC
 // itself is the authorization boundary (Management or the authorized Dept
@@ -379,7 +380,7 @@ export function AttachmentsList({ taskId, lang, showToast }) {
 // department actually changes; this form just requires a new assignee
 // whenever a different department is picked, since the old assignee can't
 // belong to it.
-export function ReassignPanel({ task, candidates, lang, busy, onSubmit, onCancel }) {
+export const ReassignPanel = React.memo(function ReassignPanel({ task, candidates, lang, busy, onSubmit, onCancel }) {
   const [departments, setDepartments] = useState([]);
   const [toDepartment, setToDepartment] = useState(task.to_department_id);
   const [newAssignee, setNewAssignee] = useState("");
@@ -457,7 +458,7 @@ export function ReassignPanel({ task, candidates, lang, busy, onSubmit, onCancel
       </div>
     </form>
   );
-}
+});
 
 function formatFileSize(bytes) {
   if (!bytes) return "";
@@ -481,7 +482,7 @@ const MESSAGE_DOCUMENT_ACCEPT = "application/pdf,application/msword,application/
 // sender name + role, no extra query. `highlightMessageId` (from a
 // notification's ?message= deep link) scrolls to and briefly highlights
 // that one message once it's loaded.
-export function TaskConversation({ taskId, lang, profile, usersById, showToast, highlightMessageId }) {
+export const TaskConversation = React.memo(function TaskConversation({ taskId, lang, profile, usersById, showToast, highlightMessageId }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState("");
@@ -659,7 +660,12 @@ export function TaskConversation({ taskId, lang, profile, usersById, showToast, 
     }
   }
 
-  const searchLower = search.trim().toLowerCase();
+  // Debounced: the input itself stays instantly responsive (bound to
+  // `search`), but the filter recomputation only re-runs ~250ms after
+  // typing pauses, so a long conversation doesn't re-filter on every
+  // keystroke.
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const searchLower = debouncedSearch.trim().toLowerCase();
   const visibleMessages = messages.filter((m) => {
     if (!searchLower) return true;
     return (m.message_text || "").toLowerCase().includes(searchLower);
@@ -854,4 +860,4 @@ export function TaskConversation({ taskId, lang, profile, usersById, showToast, 
       </div>
     </div>
   );
-}
+});

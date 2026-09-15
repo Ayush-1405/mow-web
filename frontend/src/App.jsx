@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { Routes, Route, useNavigate, useParams, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
@@ -7,53 +7,79 @@ import { useForegroundRefresh } from "./lib/useForegroundRefresh";
 import UpdateBanner from "./components/UpdateBanner.jsx";
 import Login from "./screens/Login.jsx";
 import ChangePassword from "./screens/ChangePassword.jsx";
-import TodayTasks from "./screens/TodayTasks.jsx";
-import AssignTask from "./screens/AssignTask.jsx";
-import Bridges from "./screens/Bridges.jsx";
-import Notifications from "./screens/Notifications.jsx";
-import UserCreation from "./screens/UserCreation.jsx";
-import ManagementDashboard from "./screens/ManagementDashboard.jsx";
-import AuditLog from "./screens/AuditLog.jsx";
-import AdminDepartments from "./screens/AdminDepartments.jsx";
-import DepartmentDashboard from "./screens/DepartmentDashboard.jsx";
-import ManagementControlTower from "./screens/ManagementControlTower.jsx";
-import Reports from "./screens/Reports.jsx";
-import Analytics from "./screens/Analytics.jsx";
-import RetailLeads from "./screens/retail/RetailLeads.jsx";
-import RetailQuotations from "./screens/retail/RetailQuotations.jsx";
-import RetailOrders from "./screens/retail/RetailOrders.jsx";
-import RetailDisplay from "./screens/retail/RetailDisplay.jsx";
-import RetailStoreOps from "./screens/retail/RetailStoreOps.jsx";
-import RetailStock from "./screens/retail/RetailStock.jsx";
-import RetailStockTransfer from "./screens/retail/RetailStockTransfer.jsx";
-import RetailDelivery from "./screens/retail/RetailDelivery.jsx";
-import RetailComplaints from "./screens/retail/RetailComplaints.jsx";
-import RetailTargets from "./screens/retail/RetailTargets.jsx";
-import RetailPerformance from "./screens/retail/RetailPerformance.jsx";
-import InteriorHeadDashboard from "./screens/interior/InteriorHeadDashboard.jsx";
-import InteriorAttachments from "./screens/interior/InteriorAttachments.jsx";
-import InteriorSiteExecution from "./screens/interior/InteriorSiteExecution.jsx";
-import InteriorDailyUpdates from "./screens/interior/InteriorDailyUpdates.jsx";
-import InteriorMaterials from "./screens/interior/InteriorMaterials.jsx";
-import InteriorPurchaseManagement from "./screens/interior/InteriorPurchaseManagement.jsx";
-import FactoryJobOrders from "./screens/factory/FactoryJobOrders.jsx";
-import InteriorTasks from "./screens/interior/InteriorTasks.jsx";
-import InteriorRequests from "./screens/interior/InteriorRequests.jsx";
-import InteriorTimeline from "./screens/interior/InteriorTimeline.jsx";
-import InteriorProjectCreate from "./screens/interior/InteriorProjectCreate.jsx";
-import InteriorClientComm from "./screens/interior/InteriorClientComm.jsx";
-import InteriorPayments from "./screens/interior/InteriorPayments.jsx";
-import InteriorCompletion from "./screens/interior/InteriorCompletion.jsx";
-import InteriorProjectDetail from "./screens/interior/InteriorProjectDetail.jsx";
-import InteriorMasterReportSelect from "./screens/interior/InteriorMasterReportSelect.jsx";
-import InteriorMasterReport from "./screens/interior/InteriorMasterReport.jsx";
-import InteriorWorkingDrawings from "./screens/interior/InteriorWorkingDrawings.jsx";
-import InteriorDeletedFiles from "./screens/interior/InteriorDeletedFiles.jsx";
 import DeptShell from "./components/DeptShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import InteriorProfileGate from "./components/InteriorProfileGate.jsx";
 import { useCurrentUserAccess } from "./lib/access.js";
 import { DEPARTMENT_ROUTES, buildOrderedDepartments } from "./lib/departmentConfig.js";
+
+// Route-level code splitting: every screen below used to be a static
+// top-of-file import, so the very first page load pulled in Retail,
+// Interior (18 modules), Reports/Analytics, User Management, Audit Log —
+// every department any session might ever visit — into one JS chunk,
+// whether or not that session ever opens them. Only Login/ChangePassword
+// stay eager (needed before a session even exists, and small). Each
+// lazy() call becomes its own chunk, fetched only the first time its route
+// actually renders, then cached by the browser/module registry for the
+// rest of the session — including its OTHER usage site, for the handful of
+// screens (TodayTasks/AssignTask/Bridges/Notifications/UserCreation) that
+// are reachable both from a dedicated route and from the legacy view
+// switcher lower in this file.
+const TodayTasks = lazy(() => import("./screens/TodayTasks.jsx"));
+const AssignTask = lazy(() => import("./screens/AssignTask.jsx"));
+const Bridges = lazy(() => import("./screens/Bridges.jsx"));
+const Notifications = lazy(() => import("./screens/Notifications.jsx"));
+const UserCreation = lazy(() => import("./screens/UserCreation.jsx"));
+const ManagementDashboard = lazy(() => import("./screens/ManagementDashboard.jsx"));
+const AuditLog = lazy(() => import("./screens/AuditLog.jsx"));
+const AdminDepartments = lazy(() => import("./screens/AdminDepartments.jsx"));
+const DepartmentDashboard = lazy(() => import("./screens/DepartmentDashboard.jsx"));
+const ManagementControlTower = lazy(() => import("./screens/ManagementControlTower.jsx"));
+const Reports = lazy(() => import("./screens/Reports.jsx"));
+const Analytics = lazy(() => import("./screens/Analytics.jsx"));
+const RetailLeads = lazy(() => import("./screens/retail/RetailLeads.jsx"));
+const RetailQuotations = lazy(() => import("./screens/retail/RetailQuotations.jsx"));
+const RetailOrders = lazy(() => import("./screens/retail/RetailOrders.jsx"));
+const RetailDisplay = lazy(() => import("./screens/retail/RetailDisplay.jsx"));
+const RetailStoreOps = lazy(() => import("./screens/retail/RetailStoreOps.jsx"));
+const RetailStock = lazy(() => import("./screens/retail/RetailStock.jsx"));
+const RetailStockTransfer = lazy(() => import("./screens/retail/RetailStockTransfer.jsx"));
+const RetailDelivery = lazy(() => import("./screens/retail/RetailDelivery.jsx"));
+const RetailComplaints = lazy(() => import("./screens/retail/RetailComplaints.jsx"));
+const RetailTargets = lazy(() => import("./screens/retail/RetailTargets.jsx"));
+const RetailPerformance = lazy(() => import("./screens/retail/RetailPerformance.jsx"));
+const InteriorHeadDashboard = lazy(() => import("./screens/interior/InteriorHeadDashboard.jsx"));
+const InteriorAttachments = lazy(() => import("./screens/interior/InteriorAttachments.jsx"));
+const InteriorSiteExecution = lazy(() => import("./screens/interior/InteriorSiteExecution.jsx"));
+const InteriorDailyUpdates = lazy(() => import("./screens/interior/InteriorDailyUpdates.jsx"));
+const InteriorMaterials = lazy(() => import("./screens/interior/InteriorMaterials.jsx"));
+const InteriorPurchaseManagement = lazy(() => import("./screens/interior/InteriorPurchaseManagement.jsx"));
+const FactoryJobOrders = lazy(() => import("./screens/factory/FactoryJobOrders.jsx"));
+const InteriorTasks = lazy(() => import("./screens/interior/InteriorTasks.jsx"));
+const InteriorRequests = lazy(() => import("./screens/interior/InteriorRequests.jsx"));
+const InteriorTimeline = lazy(() => import("./screens/interior/InteriorTimeline.jsx"));
+const InteriorProjectCreate = lazy(() => import("./screens/interior/InteriorProjectCreate.jsx"));
+const InteriorClientComm = lazy(() => import("./screens/interior/InteriorClientComm.jsx"));
+const InteriorPayments = lazy(() => import("./screens/interior/InteriorPayments.jsx"));
+const InteriorCompletion = lazy(() => import("./screens/interior/InteriorCompletion.jsx"));
+const InteriorProjectDetail = lazy(() => import("./screens/interior/InteriorProjectDetail.jsx"));
+const InteriorMasterReportSelect = lazy(() => import("./screens/interior/InteriorMasterReportSelect.jsx"));
+const InteriorMasterReport = lazy(() => import("./screens/interior/InteriorMasterReport.jsx"));
+const InteriorWorkingDrawings = lazy(() => import("./screens/interior/InteriorWorkingDrawings.jsx"));
+const InteriorDeletedFiles = lazy(() => import("./screens/interior/InteriorDeletedFiles.jsx"));
+
+// Lightweight loading skeleton shown only while a lazy chunk is actually
+// in flight (typically well under a second on a normal connection, and
+// never shown again for a screen once its chunk has loaded once this
+// session) — never a full blank page, never the app's own boot spinner.
+function RouteLoadingSkeleton() {
+  return (
+    <div style={{ padding: 24 }}>
+      <div className="skeleton-block" style={{ height: 90, marginBottom: 12 }} />
+      <div className="skeleton-block" style={{ height: 160 }} />
+    </div>
+  );
+}
 
 // Nav/screen visibility only — never the real authorization boundary. The
 // actual gate for every action is server-side: staff-create-user's own
@@ -272,16 +298,19 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, [session?.user?.id, loadProfile]);
 
-  // Belt-and-suspenders: catches anything a dropped websocket might have
-  // missed (phone locked, brief network drop, tab backgrounded during the
-  // exact moment a role change was made).
-  useForegroundRefresh(session?.user?.id ? () => loadProfile(session.user.id) : undefined);
-
-  // Belt-and-suspenders on top of the realtime badge channel above: if a
-  // websocket was dropped while the tab was backgrounded/offline, silently
-  // catch up on unread notifications once the tab/device is usable again
-  // -- never a forced logout, never a page reload.
-  useForegroundRefresh(session ? loadUnread : undefined);
+  // Belt-and-suspenders on top of the two realtime channels above: if a
+  // websocket was dropped while the tab was backgrounded/offline (phone
+  // locked, brief network drop, a role change made while asleep), silently
+  // catch up on both the profile and the unread count once the tab/device
+  // is usable again -- never a forced logout, never a page reload. One
+  // combined callback instead of two separate useForegroundRefresh calls,
+  // so there's only ever one extra set of online/focus/visibilitychange
+  // listeners for this, not two.
+  const refreshOnForeground = useCallback(() => {
+    if (session?.user?.id) loadProfile(session.user.id);
+    if (session) loadUnread();
+  }, [session, loadProfile, loadUnread]);
+  useForegroundRefresh(session ? refreshOnForeground : undefined);
 
   async function handleLoggedIn({ mustChangePassword: mcp }) {
     setBootError(null);
@@ -473,6 +502,7 @@ export default function App() {
   return (
     <>
     <UpdateBanner lang={lang} />
+    <Suspense fallback={<RouteLoadingSkeleton />}>
     <Routes>
       <Route path="/management" element={
         <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
@@ -641,6 +671,7 @@ export default function App() {
     </div>
       } />
     </Routes>
+    </Suspense>
     </>
   );
 }
