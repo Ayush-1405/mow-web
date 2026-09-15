@@ -17,6 +17,7 @@ import InteriorTasks from "./InteriorTasks.jsx";
 import InteriorRequests from "./InteriorRequests.jsx";
 import InteriorAllFiles from "./InteriorAllFiles.jsx";
 import InteriorActivityHistory from "./InteriorActivityHistory.jsx";
+import InteriorProjectAssignedTasks from "./InteriorProjectAssignedTasks.jsx";
 
 // Same authoritative stage list InteriorTimeline.jsx uses (projects_stage_check).
 const STAGES = [
@@ -48,6 +49,7 @@ const TABS = [
   { key: "clientComm", labelKey: "tabClientComm", render: (pid, c) => <InteriorClientComm lang={c.lang} lockedProjectId={pid} /> },
   { key: "payments", labelKey: "tabPayments", render: (pid, c) => <InteriorPayments lang={c.lang} lookups={c.lookups} lockedProjectId={pid} /> },
   { key: "tasks", labelKey: "tabTasks", render: (pid, c) => <InteriorTasks lang={c.lang} lockedProjectId={pid} /> },
+  { key: "assignedTasks", labelKey: "siteWiseTasksLabel", render: (pid, c) => <InteriorProjectAssignedTasks lang={c.lang} lockedProjectId={pid} /> },
   { key: "requests", labelKey: "tabRequests", render: (pid, c) => <InteriorRequests lang={c.lang} lockedProjectId={pid} /> },
   { key: "completion", labelKey: "tabCompletion", render: (pid, c) => <InteriorCompletion lang={c.lang} lockedProjectId={pid} /> },
   { key: "files", labelKey: "tabFiles", render: (pid, c) => <InteriorAllFiles lang={c.lang} projectId={pid} /> },

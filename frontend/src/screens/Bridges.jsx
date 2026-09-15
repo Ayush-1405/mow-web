@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
-import { TaskTimeline, ReassignPanel, AttachmentsList } from "./TaskDetail.jsx";
+import { TaskTimeline, ReassignPanel, AttachmentsList, TaskConversation, ProjectSiteSection } from "./TaskDetail.jsx";
+import { subscribeTable } from "../lib/realtime";
+import { listInteriorPeople } from "../lib/interiorApi";
 
 // Cross-department Bridge screen. Reads public.bridges (RLS-scoped via
 // bridges_select_scoped) joined against its linked staff_tasks row for
@@ -28,12 +30,21 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
   const [tasksById, setTasksById] = useState({});
   const [usersById, setUsersById] = useState({});
   const [directory, setDirectory] = useState([]);
+  const [projectsById, setProjectsById] = useState({});
+  const [interiorProfilesById, setInteriorProfilesById] = useState({});
+  const interiorProfilesLoadedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [returnReasonFor, setReturnReasonFor] = useState(null);
   const [returnReason, setReturnReason] = useState("");
   const [detailsFor, setDetailsFor] = useState(null);
   const [reassignFor, setReassignFor] = useState(null);
+  const [unreadByTask, setUnreadByTask] = useState({});
+
+  const loadUnread = useCallback(async () => {
+    const { data, error } = await supabase.rpc("staff_task_unread_message_counts");
+    if (!error) setUnreadByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count])));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,6 +74,29 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
     }
     setBridges(bridgeRows || []);
     setTasksById(taskMap);
+
+    // A Bridge task retains its originating Interior project_id (the
+    // insert path is the SAME staff_tasks row staff_create_task/
+    // staff_reassign_task write to regardless of is_bridge) -- this just
+    // makes that already-preserved link visible on the card, so the
+    // destination department's assignee clearly sees which Interior site
+    // the requirement came from.
+    const projectIds = Array.from(new Set(Object.values(taskMap).map((tk) => tk.project_id).filter(Boolean)));
+    if (projectIds.length) {
+      const { data: projRows } = await supabase
+        .from("projects")
+        .select("id, project_code, customer, location, lead_executive_id, executive_assistant_id, stage, archived")
+        .in("id", projectIds);
+      setProjectsById(Object.fromEntries((projRows || []).map((p) => [p.id, p])));
+      if (!interiorProfilesLoadedRef.current) {
+        interiorProfilesLoadedRef.current = true;
+        const { data: peopleRows, error: peopleErr } = await listInteriorPeople();
+        if (!peopleErr) setInteriorProfilesById(Object.fromEntries((peopleRows || []).map((p) => [p.id, p])));
+      }
+    } else {
+      setProjectsById({});
+    }
+
     setLoading(false);
   }, [showToast]);
 
@@ -77,7 +111,8 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
   useEffect(() => {
     load();
     loadDirectory();
-  }, [load, loadDirectory]);
+    loadUnread();
+  }, [load, loadDirectory, loadUnread]);
 
   useEffect(() => {
     const channel = supabase
@@ -87,6 +122,10 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [load]);
+
+  useEffect(() => {
+    return subscribeTable("task_messages_unread_bridges", "task_messages", null, () => loadUnread());
+  }, [loadUnread]);
 
   async function runAction(rpcName, taskId, extraArgs = {}) {
     setBusyId(taskId);
@@ -173,6 +212,15 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
             </div>
             <div style={{ fontSize: 13, marginTop: 6 }}>{bridge.requirement_text}</div>
             {task?.description && <div style={{ fontSize: 13, marginTop: 4 }}>{task.description}</div>}
+            {task?.project_id && projectsById[task.project_id] && (
+              <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 700 }}>{t("siteNameLabel", lang)}: {projectsById[task.project_id].project_code} — {projectsById[task.project_id].customer}</span>
+                {projectsById[task.project_id].location && <span className="sub">{t("siteLocationLabel", lang)}: {projectsById[task.project_id].location}</span>}
+                {projectsById[task.project_id].lead_executive_id && (
+                  <span className="sub">{t("leadExecutiveLabel", lang)}: {interiorProfilesById[projectsById[task.project_id].lead_executive_id]?.name || "—"}</span>
+                )}
+              </div>
+            )}
             {bridge.quantity && <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>{t("quantity", lang)}: {bridge.quantity}</div>}
 
             <div className="task-meta">
@@ -265,6 +313,17 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
                 >
                   {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
                 </button>
+                <button
+                  className="btn btn-outline"
+                  onClick={() => {
+                    setDetailsFor(task.id);
+                    requestAnimationFrame(() => {
+                      document.getElementById(`conversation-${task.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    });
+                  }}
+                >
+                  {t("replyAction", lang)}{unreadByTask[task.id] ? ` (${unreadByTask[task.id]})` : ""}
+                </button>
               </div>
             )}
 
@@ -297,7 +356,21 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
             {task && detailsFor === task.id && (
               <>
                 <TaskTimeline task={task} usersById={usersById} lang={lang} />
+                {task.project_id && (
+                  <ProjectSiteSection
+                    task={task}
+                    lang={lang}
+                    profile={profile}
+                    projectsById={projectsById}
+                    profilesById={interiorProfilesById}
+                    showToast={showToast}
+                    onChanged={load}
+                  />
+                )}
                 <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
+                <div id={`conversation-${task.id}`}>
+                  <TaskConversation taskId={task.id} lang={lang} profile={profile} usersById={usersById} showToast={showToast} />
+                </div>
               </>
             )}
           </div>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
@@ -43,6 +43,7 @@ export default function DepartmentDashboard({ lang, profile, department, onOpenL
   const [rosterAllowed, setRosterAllowed] = useState(false);
   const [headName, setHeadName] = useState(null);
   const [activeCard, setActiveCard] = useState(null);
+  const [unreadReplyTotal, setUnreadReplyTotal] = useState(0);
 
   const load = useCallback(async () => {
     if (!department?.id) return;
@@ -118,11 +119,31 @@ export default function DepartmentDashboard({ lang, profile, department, onOpenL
     load();
   }, [load]);
 
+  // "Tasks waiting for a response" for this department — reuses the same
+  // caller-scoped staff_task_unread_message_counts() every task card
+  // already uses, summed down to just the tasks belonging to this
+  // department (no separate department-scoped RPC needed). Kept in a ref
+  // so the realtime channel below can call the latest version without
+  // needing to resubscribe every time `tasks` changes.
+  const loadUnreadReplies = useCallback(async () => {
+    const { data, error } = await supabase.rpc("staff_task_unread_message_counts");
+    if (error) return;
+    const deptTaskIds = new Set(tasks.map((tsk) => tsk.id));
+    setUnreadReplyTotal((data || []).filter((r) => deptTaskIds.has(r.task_id)).length);
+  }, [tasks]);
+  const loadUnreadRepliesRef = useRef(loadUnreadReplies);
+  loadUnreadRepliesRef.current = loadUnreadReplies;
+
+  useEffect(() => {
+    loadUnreadReplies();
+  }, [loadUnreadReplies]);
+
   useEffect(() => {
     if (!department?.id) return undefined;
     const channel = supabase
       .channel(`dept_dashboard_${department.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "staff_tasks" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "task_messages" }, () => loadUnreadRepliesRef.current())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [department?.id, load]);
@@ -216,6 +237,7 @@ export default function DepartmentDashboard({ lang, profile, department, onOpenL
             <div className="kpi-tile"><div className="num">{overdueTasks.length}</div><div className="label">{t("overdueTasksLabel", lang)}</div></div>
             <div className="kpi-tile"><div className="num">{awaitingVerification.length}</div><div className="label">{t("pendingApprovals", lang)}</div></div>
             <div className="kpi-tile gold"><div className="num">{urgentOverdue.length}</div><div className="label">{t("criticalAlerts", lang)}</div></div>
+            <div className="kpi-tile"><div className="num">{unreadReplyTotal}</div><div className="label">{t("waitingForReplyLabel", lang)}</div></div>
           </div>
         </>
       ) : (

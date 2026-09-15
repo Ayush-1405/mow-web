@@ -144,3 +144,54 @@ export async function uploadTaskProof({ entityType, entityId, file, fileType, du
 export function downloadTaskProof(attachmentId) {
   return callFunction("staff-file-url", { action: "download", attachment_id: attachmentId }, { auth: true });
 }
+
+// Authenticated: uploads an attachment/voice file for a task Reply, BEFORE
+// the reply itself is created — mirrors uploadTaskProof's own
+// mint-URL / PUT / verify-server-side shape, but stops short of recording
+// any metadata row (there's no message to attach it to yet). The returned
+// object is exactly the p_attachment_metadata shape
+// staff_send_task_message expects; that RPC re-verifies the uploaded
+// object exists before it's ever linked to a reply, so an upload that's
+// never followed by a send just leaves an orphaned, never-referenced
+// object under the uploader's own storage prefix.
+export async function uploadTaskMessageFile({ taskId, file, fileType, durationSeconds }) {
+  const mimeType = resolveMimeType(file);
+  const urlRes = await callFunction(
+    "staff-file-url",
+    {
+      action: "upload",
+      entity_type: "task_message",
+      entity_id: taskId,
+      filename: file.name,
+      mime_type: mimeType,
+      file_type: fileType,
+      file_size: file.size,
+      ...(durationSeconds != null ? { duration_seconds: durationSeconds } : {}),
+    },
+    { auth: true },
+  );
+
+  const { error: uploadError } = await supabase.storage
+    .from("staff-attachments")
+    .uploadToSignedUrl(urlRes.storage_path, urlRes.token, file);
+  if (uploadError) {
+    throw new Error("Could not upload the file. Please try again. / ફાઇલ અપલોડ કરી શકાઈ નથી. કૃપા કરીને ફરી પ્રયાસ કરો.");
+  }
+
+  return {
+    kind: fileType === "voice" ? "voice" : "attachment",
+    storage_path: urlRes.storage_path,
+    filename: file.name,
+    file_type: fileType,
+    file_size: file.size,
+    ...(durationSeconds != null ? { duration_seconds: durationSeconds } : {}),
+  };
+}
+
+// Authenticated: mints a short-lived signed download/playback URL for a
+// Reply's own attachment or voice message (access gated by task_messages'
+// own RLS via the Edge Function's user-scoped client — see
+// handleDownloadMessage).
+export function downloadTaskMessageFile(messageId) {
+  return callFunction("staff-file-url", { action: "download", message_id: messageId }, { auth: true });
+}

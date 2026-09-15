@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof } from "../lib/api";
 import { t } from "../lib/i18n";
+import { listProjects, listInteriorPeople, listProjectTeamIds } from "../lib/interiorApi";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 
 // Fixed bilingual message only — never a raw Supabase/Postgres error string —
@@ -52,6 +53,18 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   const [voiceDuration, setVoiceDuration] = useState(0);
   const [voiceKey, setVoiceKey] = useState(0);
 
+  // Project/Site (Interior Projects Department only). Loaded lazily — only
+  // once From Department actually resolves to Interior — so no other
+  // department pays for an extra query it will never use. `listProjects()`
+  // is RLS-scoped (projects_select_scoped: interior_is_org_wide() OR
+  // interior_is_project_member(id)) — this is already the exact
+  // authorized-project-list this feature needs, no new query logic here.
+  const [projects, setProjects] = useState([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [interiorPeople, setInteriorPeople] = useState([]);
+  const [projectTeamAuthIds, setProjectTeamAuthIds] = useState(() => new Set());
+
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -72,7 +85,79 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     reference_number: "",
     requirement_text: "",
     quantity: "",
+    project_id: "",
   });
+
+  const interiorDeptId = useMemo(
+    () => lookups.departments.find((d) => d.code === "INTERIOR")?.id || null,
+    [lookups.departments],
+  );
+  const isInteriorFrom = !!interiorDeptId && form.from_department_id === interiorDeptId;
+
+  useEffect(() => {
+    if (!isInteriorFrom || projectsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      const [projRes, peopleRes] = await Promise.all([listProjects(), listInteriorPeople()]);
+      if (cancelled) return;
+      if (!projRes.error) setProjects(projRes.data || []);
+      if (!peopleRes.error) setInteriorPeople(peopleRes.data || []);
+      setProjectsLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [isInteriorFrom, projectsLoaded]);
+
+  // Switching From Department away from Interior clears whatever
+  // Project/Site was picked — it belongs only to an Interior-originated
+  // task and must never silently ride along on a task for another
+  // department.
+  useEffect(() => {
+    if (!isInteriorFrom) {
+      setForm((f) => (f.project_id ? { ...f, project_id: "" } : f));
+      setProjectTeamAuthIds(new Set());
+    }
+  }, [isInteriorFrom]);
+
+  const interiorPersonName = useCallback(
+    (profileId) => interiorPeople.find((p) => p.id === profileId)?.name || null,
+    [interiorPeople],
+  );
+
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === form.project_id) || null,
+    [projects, form.project_id],
+  );
+
+  // Search matches project code, client/project name, site location, Lead
+  // Executive, and Executive Assistant — never a hard-coded list, always
+  // the live rows this caller is authorized to see.
+  const projectSearchLower = projectSearch.trim().toLowerCase();
+  const projectOptions = useMemo(() => {
+    const matches = !projectSearchLower
+      ? projects
+      : projects.filter((p) => {
+          const leadName = interiorPersonName(p.lead_executive_id) || "";
+          const eaName = interiorPersonName(p.executive_assistant_id) || "";
+          return [p.project_code, p.customer, p.location, leadName, eaName]
+            .filter(Boolean)
+            .some((v) => v.toLowerCase().includes(projectSearchLower));
+        });
+    return matches.slice().sort((a, b) => (a.project_code || "").localeCompare(b.project_code || ""));
+  }, [projects, projectSearchLower, interiorPersonName]);
+
+  async function selectProject(projectId) {
+    setForm((f) => ({ ...f, project_id: projectId }));
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) {
+      setProjectTeamAuthIds(new Set());
+      return;
+    }
+    const teamProfileIds = new Set(await listProjectTeamIds(project));
+    const authIds = new Set(
+      interiorPeople.filter((p) => teamProfileIds.has(p.id) && p.auth_id).map((p) => p.auth_id),
+    );
+    setProjectTeamAuthIds(authIds);
+  }
 
   // Loads the department directory and the staff directory independently
   // (two separate RPC calls) but as one unit for loading/error purposes: if
@@ -136,8 +221,20 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
           u.employee_code.toLowerCase().includes(q) ||
           roleLabel(u).toLowerCase().includes(q),
         );
-    return matches.slice().sort((a, b) => a.full_name.localeCompare(b.full_name));
-  }, [usersInToDepartment, assigneeSearch, roleLabel]);
+    const sorted = matches.slice().sort((a, b) => a.full_name.localeCompare(b.full_name));
+    // Project/Site selected (Interior): the selected project's own team —
+    // Lead Executive, Executive Assistant, project members, assigned
+    // execution staff — sort first, so the person most likely to be the
+    // right assignee doesn't get lost in the full department roster.
+    if (isInteriorFrom && form.project_id && projectTeamAuthIds.size) {
+      return sorted.slice().sort((a, b) => {
+        const aTeam = projectTeamAuthIds.has(a.id) ? 0 : 1;
+        const bTeam = projectTeamAuthIds.has(b.id) ? 0 : 1;
+        return aTeam - bTeam || a.full_name.localeCompare(b.full_name);
+      });
+    }
+    return sorted;
+  }, [usersInToDepartment, assigneeSearch, roleLabel, isInteriorFrom, form.project_id, projectTeamAuthIds]);
 
   // Second Assignee candidates: same pool as Primary, minus whoever is
   // currently selected as Primary (a person can't be both — hidden here
@@ -184,6 +281,10 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       showToast("error", t("samePersonErrorMsg", lang));
       return;
     }
+    if (isInteriorFrom && !form.project_id) {
+      showToast("error", t("selectProjectSiteRequiredMsg", lang));
+      return;
+    }
     setBusy(true);
     setResult(null);
     try {
@@ -203,6 +304,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         p_requirement_text: form.requirement_text || null,
         p_quantity: form.quantity || null,
         p_second_assignee: form.second_assignee || null,
+        p_project_id: form.project_id || null,
       });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
@@ -248,8 +350,11 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         reference_number: "",
         requirement_text: "",
         quantity: "",
+        project_id: "",
       }));
       setAssigneeSearch("");
+      setProjectSearch("");
+      setProjectTeamAuthIds(new Set());
     } catch (err) {
       // Surface the real reason (e.g. a role/department restriction inside
       // staff_create_task) instead of a generic message — a swallowed error
@@ -365,6 +470,48 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
               )
             )}
           </div>
+
+          {isInteriorFrom && (
+            <div className="field full">
+              <label>{t("selectProjectSiteLabel", lang)} *</label>
+              {!projectsLoaded && <div className="msg info">…</div>}
+              {projectsLoaded && (
+                <>
+                  <input
+                    type="text"
+                    placeholder={t("searchProjectPlaceholder", lang)}
+                    value={projectSearch}
+                    onChange={(e) => setProjectSearch(e.target.value)}
+                  />
+                  <select value={form.project_id} onChange={(e) => selectProject(e.target.value)} required>
+                    <option value="" disabled>—</option>
+                    {projectOptions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {projectOptions.length === 0 && (
+                    <div className="msg info">{t("noProjectsFoundMsg", lang)}</div>
+                  )}
+                </>
+              )}
+
+              {selectedProject && (
+                <div className="card" style={{ marginTop: 8, padding: 10 }}>
+                  <div className="task-meta" style={{ marginTop: 0, flexWrap: "wrap" }}>
+                    <span><strong>{t("projectCodeFullLabel", lang)}:</strong> {selectedProject.project_code}</span>
+                    <span><strong>{t("clientNameLabel", lang)}:</strong> {selectedProject.customer}</span>
+                    {selectedProject.location && <span><strong>{t("siteLocationLabel", lang)}:</strong> {selectedProject.location}</span>}
+                    <span><strong>{t("leadExecutiveLabel", lang)}:</strong> {interiorPersonName(selectedProject.lead_executive_id) || "—"}</span>
+                    <span><strong>{t("executiveAssistantLabel", lang)}:</strong> {interiorPersonName(selectedProject.executive_assistant_id) || "—"}</span>
+                    {selectedProject.stage && <span><strong>{t("projectStageLabel", lang)}:</strong> {selectedProject.stage}</span>}
+                    <span><strong>{t("projectStatusLabel", lang)}:</strong> {selectedProject.archived ? t("archivedStatusLabel", lang) : t("active", lang)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="field full">
             <label>{t("primaryAssigneeLabel", lang)} *</label>

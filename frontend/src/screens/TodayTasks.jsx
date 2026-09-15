@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof, resolveMimeType } from "../lib/api";
 import { t } from "../lib/i18n";
-import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, detectFileType } from "./TaskDetail.jsx";
-import { getMyInteriorProfile } from "../lib/interiorApi";
+import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, TaskConversation, ProjectSiteSection, detectFileType } from "./TaskDetail.jsx";
+import { getMyInteriorProfile, listInteriorPeople } from "../lib/interiorApi";
 import { subscribeTable, upsertById, removeById } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
 import VoiceRecorder from "./VoiceRecorder.jsx";
@@ -39,6 +39,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [reassignFor, setReassignFor] = useState(null);
   const [deleteConfirmFor, setDeleteConfirmFor] = useState(null);
   const [assignedItems, setAssignedItems] = useState([]);
+  const [unreadByTask, setUnreadByTask] = useState({});
+  const [interiorProfilesById, setInteriorProfilesById] = useState({});
+  const interiorProfilesLoadedRef = useRef(false);
+  const [projectFilter, setProjectFilter] = useState("");
 
   // Retail leads/complaints/VM-tasks and Interior snags/tasks live in
   // separate tables from staff_tasks (different lifecycle, no shared
@@ -100,8 +104,20 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     // can see.
     const projectIds = Array.from(new Set((data || []).map((tsk) => tsk.project_id).filter(Boolean)));
     if (projectIds.length) {
-      const { data: projRows } = await supabase.from("projects").select("id, project_code, customer, location").in("id", projectIds);
+      const { data: projRows } = await supabase
+        .from("projects")
+        .select("id, project_code, customer, location, lead_executive_id, executive_assistant_id, stage, archived")
+        .in("id", projectIds);
       setProjectsById(Object.fromEntries((projRows || []).map((p) => [p.id, p])));
+      // Lead Executive/Executive Assistant names live in Interior's own
+      // `profiles` table (a different id space from user_profiles) —
+      // loaded once, lazily, only once a project-linked task is actually
+      // visible, so a non-Interior caller never pays for this query.
+      if (!interiorProfilesLoadedRef.current) {
+        interiorProfilesLoadedRef.current = true;
+        const { data: peopleRows, error: peopleErr } = await listInteriorPeople();
+        if (!peopleErr) setInteriorProfilesById(Object.fromEntries((peopleRows || []).map((p) => [p.id, p])));
+      }
     } else {
       setProjectsById({});
     }
@@ -133,11 +149,28 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
   }, []);
 
+  // Per-task unread-reply count (staff_task_unread_message_counts is scoped
+  // to whatever tasks staff_task_visible already lets this caller see — no
+  // separate authorization check needed here).
+  const loadUnread = useCallback(async () => {
+    const { data, error } = await supabase.rpc("staff_task_unread_message_counts");
+    if (!error) setUnreadByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count])));
+  }, []);
+
   useEffect(() => {
     load();
     loadDirectory();
     loadAssignedItems();
-  }, [load, loadDirectory, loadAssignedItems]);
+    loadUnread();
+  }, [load, loadDirectory, loadAssignedItems, loadUnread]);
+
+  // Live updates: any reply anywhere this caller can see re-derives the
+  // unread badges immediately — an open TaskConversation panel keeps its
+  // own separate realtime subscription (TaskDetail.jsx) for the message
+  // list itself; this one only drives the per-card "Reply (N)" badges.
+  useEffect(() => {
+    return subscribeTable("task_messages_unread_today", "task_messages", null, () => loadUnread());
+  }, [loadUnread]);
 
   // Live updates: merge INSERT/UPDATE straight into `tasks` instead of a
   // full refetch (spec'd "person-wise Today's Tasks realtime" pattern) --
@@ -197,7 +230,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // Catches anything a dropped websocket might have missed (phone locked,
   // brief network drop) -- a silent background refetch, never a forced
   // logout or page reload.
-  useForegroundRefresh(load);
+  useForegroundRefresh(useCallback(() => { load(); loadUnread(); }, [load, loadUnread]));
 
   // Arriving here via a notification click (?focus=<task id>) or a
   // Control Tower KPI tile — open that task's Details panel and scroll it
@@ -208,14 +241,18 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // realtime reload for the SAME focus id doesn't keep re-scrolling.
   useEffect(() => {
     const focusId = searchParams.get("focus");
+    const messageId = searchParams.get("message");
     if (!focusId || focusId === focusedRef.current) return;
     if (!tasks.some((tsk) => tsk.id === focusId)) return;
     focusedRef.current = focusId;
     setDetailsFor(focusId);
     requestAnimationFrame(() => {
-      document.getElementById(`task-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const anchor = messageId ? `conversation-${focusId}` : `task-${focusId}`;
+      document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   }, [tasks, searchParams]);
+
+  const highlightMessageId = searchParams.get("message");
 
   async function runAction(rpcName, taskId, extraArgs = {}) {
     setBusyId(taskId);
@@ -340,7 +377,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // before; anything due strictly after today moves under its own
   // "Upcoming" heading instead of being mixed in unconditionally.
   const isUpcoming = (task) => !!task.due_date && task.due_date > todayStr;
-  const sortedTasks = [...tasks].sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));
+  const projectFiltered = projectFilter ? tasks.filter((tsk) => tsk.project_id === projectFilter) : tasks;
+  const sortedTasks = [...projectFiltered].sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));
   const firstUpcomingIndex = sortedTasks.findIndex(isUpcoming);
 
   return (
@@ -349,6 +387,18 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       <button className="btn btn-outline" style={{ marginBottom: 10 }} onClick={load} disabled={loading}>
         {t("refresh", lang)}
       </button>
+
+      {Object.keys(projectsById).length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <label>{t("filterByProjectLabel", lang)}</label>
+          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+            <option value="">{t("allSitesLabel", lang)}</option>
+            {Object.values(projectsById).map((p) => (
+              <option key={p.id} value={p.id}>{p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {assignedItems.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
@@ -424,9 +474,15 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               <span className={`badge ${statusCode}`}>{lang === "gu" ? status?.name_gu : status?.name_en || statusCode}</span>
             </div>
             {taskProject && (
-              <div className="task-meta" style={{ marginTop: 4 }}>
-                <span style={{ fontWeight: 700 }}>{taskProject.project_code} — {taskProject.customer}</span>
-                {taskProject.location && <span className="sub">{taskProject.location}</span>}
+              <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 700 }}>{t("siteNameLabel", lang)}: {taskProject.project_code} — {taskProject.customer}</span>
+                {taskProject.location && <span className="sub">{t("siteLocationLabel", lang)}: {taskProject.location}</span>}
+                {taskProject.lead_executive_id && (
+                  <span className="sub">{t("leadExecutiveLabel", lang)}: {interiorProfilesById[taskProject.lead_executive_id]?.name || "—"}</span>
+                )}
+                {!isMulti && (
+                  <span className="sub">{t("primaryAssigneeLabel", lang)}: {usersById[task.assigned_to]?.full_name || "—"}</span>
+                )}
                 {task.source_module === "daily_site_update" && <span className="badge ASSIGNED">{t("sourceDailySiteUpdateLabel", lang)}</span>}
               </div>
             )}
@@ -583,6 +639,17 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               >
                 {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
               </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => {
+                  setDetailsFor(task.id);
+                  requestAnimationFrame(() => {
+                    document.getElementById(`conversation-${task.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  });
+                }}
+              >
+                {t("replyAction", lang)}{unreadByTask[task.id] ? ` (${unreadByTask[task.id]})` : ""}
+              </button>
               {canDeleteTask && (
                 <button
                   className="btn btn-outline"
@@ -648,7 +715,28 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               <>
                 {isMulti && <AssignedTeamSection assignees={assignees} usersById={usersById} lang={lang} />}
                 <TaskTimeline task={task} usersById={usersById} lang={lang} assignees={assignees} />
+                {(task.project_id || task.from_department_id === lookups.departments.find((d) => d.code === "INTERIOR")?.id) && (
+                  <ProjectSiteSection
+                    task={task}
+                    lang={lang}
+                    profile={profile}
+                    projectsById={projectsById}
+                    profilesById={interiorProfilesById}
+                    showToast={showToast}
+                    onChanged={load}
+                  />
+                )}
                 <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
+                <div id={`conversation-${task.id}`}>
+                  <TaskConversation
+                    taskId={task.id}
+                    lang={lang}
+                    profile={profile}
+                    usersById={usersById}
+                    showToast={showToast}
+                    highlightMessageId={highlightMessageId}
+                  />
+                </div>
               </>
             )}
           </div>
