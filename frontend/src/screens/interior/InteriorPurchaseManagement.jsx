@@ -510,7 +510,7 @@ function RequestPanel({ lang, projectId, request, items, people, profile, isElev
 function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocations, people, profile, isOrgWide, onChanged }) {
   const [form, setForm] = useState({
     factory_location_id: "", production_department: "", product_item: "", bom_reference: "", quantity: "", unit: "",
-    required_completion_date: "", delivery_site_date: "", assigned_factory_coordinator: "", special_instructions: "",
+    required_completion_date: "", delivery_site_date: "", assigned_factory_coordinator: "", second_assignee: "", special_instructions: "",
     quality_requirements: "", finishing_requirements: "", packing_requirements: "", installation_requirement: "",
   });
   const [msg, setMsg] = useState("");
@@ -519,13 +519,19 @@ function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocat
 
   useEffect(() => { if (costing) setCostForm(costing); }, [costing]);
 
+  const factoryPeople = people.filter((p) => p.department_name === "Factory/Manufacturing");
+
   async function handleSubmit(e) {
     e.preventDefault();
+    if (form.second_assignee && form.second_assignee === form.assigned_factory_coordinator) {
+      setMsg(lang === "gu" ? "કોઓર્ડિનેટર અને બીજી જવાબદાર વ્યક્તિ અલગ હોવી જોઈએ." : "Coordinator and Second Assignee must be different people.");
+      return;
+    }
     setMsg(t("saving", lang));
     const { error: err, alreadySubmitted } = await submitToFactory(projectId, request.id, {
       ...form, quantity: form.quantity || null, assigned_factory_coordinator: form.assigned_factory_coordinator || null,
-    }, profile?.id);
-    setMsg(err ? t("errorSaving", lang) : alreadySubmitted ? t("alreadySubmittedMsg", lang) : t("saved", lang));
+    }, form.second_assignee || null);
+    setMsg(err ? (err.message || t("errorSaving", lang)) : alreadySubmitted ? t("alreadySubmittedMsg", lang) : t("saved", lang));
     if (!err) onChanged();
   }
 
@@ -555,8 +561,11 @@ function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocat
           <div className="card dept-meta-tile"><div className="label">Job Order</div><div className="value">{inhouse.job_order_number}</div></div>
           <div className="card dept-meta-tile"><div className="label">Factory</div><div className="value">{factoryLocations.find((f) => f.id === inhouse.factory_location_id)?.name || "—"}</div></div>
           <div className="card dept-meta-tile"><div className="label">Coordinator</div><div className="value">{personName(people, inhouse.assigned_factory_coordinator)}</div></div>
+          <div className="card dept-meta-tile"><div className="label">Second Assignee</div><div className="value">{inhouse.second_assignee_coordinator ? personName(people, inhouse.second_assignee_coordinator) : "—"}</div></div>
           <div className="card dept-meta-tile"><div className="label">Status</div><div className="value">{inhouse.status}</div></div>
+          <div className="card dept-meta-tile"><div className="label">Production Stage</div><div className="value">{inhouse.current_stage || "—"} ({inhouse.completion_percentage ?? 0}%)</div></div>
         </div>
+        {inhouse.linked_task_id && <div className="sub" style={{ marginTop: 4 }}>Linked task: open Today's Tasks or Bridges to view the full conversation and history for this job.</div>}
         <div className="field" style={{ marginTop: 8 }}>
           <label>Update Status</label>
           <select value={inhouse.status} onChange={(e) => handleStatusChange(e.target.value)}>
@@ -614,9 +623,16 @@ function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocat
         <div className="field"><label>Required Completion Date</label><input type="date" value={form.required_completion_date} onChange={(e) => setForm((f) => ({ ...f, required_completion_date: e.target.value }))} required /></div>
         <div className="field"><label>Delivery/Site Requirement Date</label><input type="date" value={form.delivery_site_date} onChange={(e) => setForm((f) => ({ ...f, delivery_site_date: e.target.value }))} /></div>
         <div className="field"><label>Assigned Factory Coordinator</label>
-          <select value={form.assigned_factory_coordinator} onChange={(e) => setForm((f) => ({ ...f, assigned_factory_coordinator: e.target.value }))}>
+          <select value={form.assigned_factory_coordinator} onChange={(e) => setForm((f) => ({ ...f, assigned_factory_coordinator: e.target.value }))} required>
             <option value="">—</option>
-            {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {factoryPeople.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.employee_code || "—"}</option>)}
+          </select>
+          {factoryPeople.length === 0 && <div className="sub" style={{ color: "var(--danger, #b91c1c)" }}>No active Factory employees found — a coordinator is required to submit.</div>}
+        </div>
+        <div className="field"><label>Second Assignee (optional)</label>
+          <select value={form.second_assignee} onChange={(e) => setForm((f) => ({ ...f, second_assignee: e.target.value }))}>
+            <option value="">—</option>
+            {factoryPeople.filter((p) => p.id !== form.assigned_factory_coordinator).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.employee_code || "—"}</option>)}
           </select>
         </div>
         <div className="field"><label>Special Instructions</label><textarea rows={2} value={form.special_instructions} onChange={(e) => setForm((f) => ({ ...f, special_instructions: e.target.value }))} /></div>

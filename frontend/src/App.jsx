@@ -261,6 +261,18 @@ export default function App() {
     requestNotificationPermission().then((perm) => {
       if (perm === "granted") subscribeToPush(supabase);
     });
+    // Defensive: this effect re-runs whenever `profile` or `lang` changes
+    // (a language toggle, or a role/department change reloading the
+    // profile) — if a same-named channel from the previous run hasn't
+    // fully detached yet, `.channel(name)` can hand back an already-
+    // subscribed instance and the `.on()` calls below throw "cannot add
+    // postgres_changes callbacks ... after subscribe()", crashing the
+    // whole app shell (confirmed live elsewhere in this app via the
+    // shared subscribeTable helper — same root cause, fixed the same way
+    // here since this pair predates that helper and calls the client API
+    // directly).
+    const stale = supabase.getChannels().find((ch) => ch.topic === "realtime:app_unread_badge");
+    if (stale) supabase.removeChannel(stale);
     const channel = supabase
       .channel("app_unread_badge")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
@@ -287,6 +299,8 @@ export default function App() {
   // (loadProfile), never from JWT claims, so no fresh token is needed.
   useEffect(() => {
     if (!session?.user?.id) return undefined;
+    const staleProfileChannel = supabase.getChannels().find((ch) => ch.topic === "realtime:app_own_profile_changes");
+    if (staleProfileChannel) supabase.removeChannel(staleProfileChannel);
     const channel = supabase
       .channel("app_own_profile_changes")
       .on(

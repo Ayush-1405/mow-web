@@ -1393,22 +1393,38 @@ export async function getInhouseProductionRequest(purchaseRequestId) {
   return supabase.from("inhouse_production_requests").select("*").eq("purchase_request_id", purchaseRequestId).maybeSingle();
 }
 
-// Idempotent: a unique constraint on purchase_request_id means a second
-// "Submit to Factory" click can never create a second job order -- this
-// checks first and returns the existing row instead of erroring blindly.
-export async function submitToFactory(projectId, purchaseRequestId, payload, submittedBy) {
-  const { data: existing } = await supabase.from("inhouse_production_requests").select("*").eq("purchase_request_id", purchaseRequestId).maybeSingle();
-  if (existing) return { data: existing, error: null, alreadySubmitted: true };
-  const job_order_number = await nextSequenceNumber("inhouse_production_requests", "id", "JO");
-  const { data, error } = await supabase.from("inhouse_production_requests").insert({
-    ...payload, project_id: projectId, purchase_request_id: purchaseRequestId, job_order_number,
-    status: "Submitted to Factory", submitted_by: submittedBy || null, submitted_at: new Date().toISOString(),
-  }).select().single();
-  if (!error) {
-    await supabase.from("purchase_requests").update({ status: "In-house Submitted" }).eq("id", purchaseRequestId);
-    await logAudit("inhouse_production_requests", data.id, "submit_to_factory", { job_order_number }, projectId);
-  }
-  return { data, error, alreadySubmitted: false };
+// Routed through staff_submit_to_factory (not a raw insert): the RPC
+// atomically creates the job order AND the real cross-department task
+// (Bridge, notifications, realtime, Task Conversation) linking Interior to
+// Factory -- a raw insert here had no linked task at all, so Factory never
+// saw the work in Today's Tasks and there was no way to talk about it. The
+// RPC itself is idempotent on purchase_request_id (returns the existing
+// row with already_submitted: true instead of erroring).
+export async function submitToFactory(projectId, purchaseRequestId, payload, secondAssignee) {
+  const { data, error } = await supabase.rpc("staff_submit_to_factory", {
+    p_project_id: projectId,
+    p_purchase_request_id: purchaseRequestId,
+    p_factory_location_id: payload.factory_location_id || null,
+    p_product_item: payload.product_item,
+    p_design_version_id: payload.design_version_id || null,
+    p_working_drawing_version_id: payload.working_drawing_version_id || null,
+    p_bom_reference: payload.bom_reference || null,
+    p_quantity: payload.quantity || null,
+    p_unit: payload.unit || null,
+    p_required_completion_date: payload.required_completion_date,
+    p_delivery_site_date: payload.delivery_site_date || null,
+    p_assigned_factory_coordinator: payload.assigned_factory_coordinator || null,
+    p_second_assignee: secondAssignee || null,
+    p_special_instructions: payload.special_instructions || null,
+    p_quality_requirements: payload.quality_requirements || null,
+    p_finishing_requirements: payload.finishing_requirements || null,
+    p_packing_requirements: payload.packing_requirements || null,
+    p_installation_requirement: payload.installation_requirement || null,
+    p_production_department: payload.production_department || null,
+  });
+  if (error) return { data: null, error, alreadySubmitted: false };
+  const row = Array.isArray(data) ? data[0] : data;
+  return { data: row, error: null, alreadySubmitted: row?.already_submitted === true };
 }
 
 export async function updateInhouseProductionStatus(projectId, id, patch) {
@@ -1422,17 +1438,63 @@ export async function updateInhouseProductionStatus(projectId, id, patch) {
   return { data, error };
 }
 
-// Cross-department read used by the new Factory Job Orders screen -- joins
-// enough project/request context for a Factory user with no Interior
-// profile to make sense of the list. RLS still applies per-row
-// (inhouse_production_requests_scoped); a Factory Head reaches these rows
-// via interior_is_org_wide()'s staff_is_dept_head()+HOD-scope check same
-// as any other org-wide Interior viewer -- there is no separate Factory-
-// side RLS table to maintain.
+// Cross-department read used by the Factory Job Orders screen -- joins
+// enough project/request context for a Factory user (who has no Interior
+// profile) to make sense of the list. RLS still applies per-row
+// (inhouse_production_requests_scoped): Management/SuperAdmin/Interior
+// org-wide viewers see everything, and -- since the Factory-module
+// migration -- a real Factory coordinator/second assignee/Factory
+// Department Head is granted access to their own jobs via a genuine
+// Factory-staff RLS branch (staff_is_factory_staff()), not just Interior's
+// org-wide check.
 export async function listAllInhouseProductionRequests() {
   return supabase.from("inhouse_production_requests")
     .select("*, purchase_requests(request_number, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(300);
+}
+
+// ---------- factory production stage / QC / rework ----------
+export async function listProductionStageUpdates(jobId) {
+  return supabase.from("production_stage_updates").select("*").eq("job_id", jobId);
+}
+
+export async function factoryUpdateStage(jobId, stage, status, extra = {}) {
+  return supabase.rpc("factory_update_stage", {
+    p_job_id: jobId, p_stage: stage, p_status: status,
+    p_assigned_to: extra.assignedTo || null,
+    p_quantity_completed: extra.quantityCompleted ?? null,
+    p_quantity_pending: extra.quantityPending ?? null,
+    p_notes: extra.notes || null,
+    p_delay_reason: extra.delayReason || null,
+    p_planned_start: extra.plannedStart || null,
+    p_planned_end: extra.plannedEnd || null,
+  });
+}
+
+export async function listFactoryQualityChecks(jobId) {
+  return supabase.from("factory_quality_checks").select("*").eq("job_id", jobId).order("created_at", { ascending: false });
+}
+
+export async function factoryRecordQualityCheck(jobId, checklist, result, extra = {}) {
+  return supabase.rpc("factory_record_quality_check", {
+    p_job_id: jobId,
+    p_dimensions_checked: !!checklist.dimensions, p_material_checked: !!checklist.material,
+    p_finish_checked: !!checklist.finish, p_hardware_checked: !!checklist.hardware,
+    p_drawing_matched: !!checklist.drawing, p_quantity_checked: !!checklist.quantity,
+    p_result: result, p_defect_reason: extra.defectReason || null,
+    p_rework_required: !!extra.reworkRequired, p_assigned_rework_person: extra.assignedReworkPerson || null,
+    p_recheck_date: extra.recheckDate || null,
+  });
+}
+
+export async function listFactoryReworkRecords(jobId) {
+  return supabase.from("factory_rework_records").select("*").eq("job_id", jobId).order("created_at", { ascending: false });
+}
+
+export async function factoryCloseRework(reworkId, recheckResult, correctiveAction) {
+  return supabase.rpc("factory_close_rework", {
+    p_rework_id: reworkId, p_recheck_result: recheckResult, p_corrective_action: correctiveAction || null,
+  });
 }
 
 // ---------- outsource workflow ----------
