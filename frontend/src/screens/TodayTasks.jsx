@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof, resolveMimeType } from "../lib/api";
@@ -7,7 +7,20 @@ import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, Task
 import { getMyInteriorProfile, listInteriorPeople } from "../lib/interiorApi";
 import { subscribeTable, upsertById, removeById } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
+import { kolkataDateStr, addDaysToDateStr, daysBetweenDateStrs, kolkataDateOf, msUntilNextKolkataMidnight } from "../lib/kolkataTime";
 import VoiceRecorder from "./VoiceRecorder.jsx";
+
+const CLOSED_STATUS_CODES = new Set(["COMPLETED", "VERIFIED", "CLOSED"]);
+const DATE_FILTER_STORAGE_KEY = "todayTasks.dateFilter.v1";
+const PRIORITY_COLORS = { URGENT: "#a23434", HIGH: "#97731c", NORMAL: "#4c6d2b", LOW: "#5c5347" };
+
+function formatDisplayDate(dateStr, lang) {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return new Intl.DateTimeFormat(lang === "gu" ? "gu-IN" : "en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(dt);
+}
 
 // Today's Tasks. Reads public.staff_tasks through the normal RLS-scoped
 // client (staff_tasks_select_scoped decides which rows come back — this
@@ -21,6 +34,14 @@ import VoiceRecorder from "./VoiceRecorder.jsx";
 // (from ACCEPTED/IN_PROGRESS) check `current_owner_id`. Gating on the wrong
 // column here would only hide/show a button incorrectly — the RPC itself
 // remains the real authorization boundary either way.
+//
+// Date handling (see lib/kolkataTime.js): "today" is ALWAYS computed in
+// Asia/Kolkata, never via `new Date().toISOString()` (which is UTC and
+// would show the wrong calendar date for roughly the first 5.5 hours of
+// every IST day). due_date is a plain SQL `date` with no time/timezone
+// attached, so comparing it against the Kolkata "today" string is always
+// correct with no further conversion; only the "Assigned Date" filter
+// (a real timestamptz column) needs the Kolkata-aware conversion helpers.
 export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -44,6 +65,51 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const interiorProfilesLoadedRef = useRef(false);
   const [projectFilter, setProjectFilter] = useState("");
   const interiorDeptId = lookups.departments.find((d) => d.code === "INTERIOR")?.id;
+
+  // ---- Date filter bar state -- persisted in sessionStorage so the
+  // selected date survives leaving this page (e.g. to view a task's
+  // linked project) and coming back, without surviving past the tab
+  // closing (a fresh session always starts back on "today"). ----
+  const savedFilter = (() => {
+    try { return JSON.parse(sessionStorage.getItem(DATE_FILTER_STORAGE_KEY)) || {}; } catch { return {}; }
+  })();
+  const [dateMode, setDateMode] = useState(savedFilter.dateMode || "all"); // "all" | "date" | "week" | "overdue"
+  const [selectedDate, setSelectedDate] = useState(savedFilter.selectedDate || kolkataDateStr());
+  const [filterType, setFilterType] = useState(savedFilter.filterType || "due"); // "due" | "assigned" -- only affects "date" mode
+  const [statusFilter, setStatusFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [primaryAssigneeFilter, setPrimaryAssigneeFilter] = useState("");
+  const [secondAssigneeFilter, setSecondAssigneeFilter] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const searchText = useDebouncedValue(searchInput, 250);
+  const [showClosedSection, setShowClosedSection] = useState(false);
+  const [today, setToday] = useState(() => kolkataDateStr());
+  const todayRef = useRef(today);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(DATE_FILTER_STORAGE_KEY, JSON.stringify({ dateMode, selectedDate, filterType })); } catch { /* private-browsing storage can throw — non-fatal */ }
+  }, [dateMode, selectedDate, filterType]);
+
+  // Midnight rollover in Asia/Kolkata, no reload required. If the user was
+  // pinned to "today" (either via the Today quick button or simply never
+  // having changed the date), the selected date rolls forward with it —
+  // an explicitly-chosen past/future date is left alone.
+  useEffect(() => {
+    let timer;
+    function schedule() {
+      timer = setTimeout(() => {
+        const prevToday = todayRef.current;
+        const newToday = kolkataDateStr();
+        todayRef.current = newToday;
+        setToday(newToday);
+        setSelectedDate((cur) => (cur === prevToday ? newToday : cur));
+        schedule();
+      }, msUntilNextKolkataMidnight());
+    }
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
 
   // Retail leads/complaints/VM-tasks and Interior snags/tasks live in
   // separate tables from staff_tasks (different lifecycle, no shared
@@ -86,12 +152,15 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     // requirement_text/quantity now live directly on staff_tasks (every
     // task, not just Bridges — see mvp_pilot_task_requirement_quantity_
     // v2_2z.sql), so a plain select("*") picks them up like any other field.
+    // Limit raised from 100 -> 300: the date-filter modes (a specific past/
+    // future date, This Week, Overdue) need to see further back/forward
+    // than "most recently created 100" would allow for an active user.
     const { data, error } = await supabase
       .from("staff_tasks")
       .select("*")
       .eq("is_active", true)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(300);
     if (error) {
       showToast("error", error.message);
       setLoading(false);
@@ -180,6 +249,11 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // changed to someone else) simply stops arriving as an event for them;
   // staff_delete_task soft-deletes (is_active=false), which arrives as an
   // UPDATE, so that case is handled the same way as a real DELETE below.
+  // Because every section/date-bucket below is DERIVED from this same
+  // `tasks` state via useMemo, a due-date change, reassignment, status
+  // change, or new task lands here once and automatically reflows into
+  // its correct section/date — no separate per-section realtime logic
+  // needed.
   useEffect(() => {
     return subscribeTable("staff_tasks_today", "staff_tasks", null, (payload) => {
       if (payload.eventType === "DELETE") {
@@ -298,10 +372,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         if (!file) throw new Error("A photo is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે ફોટો જરૂરી છે.");
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "image" });
       } else if (proofTypeCode === "document") {
-        if (!file) throw new Error("A document (PDF/Word/Excel) is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે દસ્તાવેજ જરૂરી છે.");
+        if (!file) throw new Error("A document (PDF/Word/Excel/Drawing) is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે દસ્તાવેજ જરૂરી છે.");
         const detected = detectFileType(resolveMimeType(file));
         if (!detected || detected === "image") {
-          throw new Error("Please attach a PDF, Word, or Excel file — not a photo. / કૃપા કરીને PDF, Word અથવા Excel ફાઇલ જોડો — ફોટો નહીં.");
+          throw new Error("Please attach a PDF, Word, Excel, or DWG/DXF drawing file — not a photo. / કૃપા કરીને PDF, Word, Excel અથવા DWG/DXF ડ્રોઈંગ ફાઇલ જોડો — ફોટો નહીં.");
         }
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: detected });
       } else if (proofTypeCode === "voice") {
@@ -368,19 +442,455 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   }
 
   const statusOf = (id) => lookups.statusById[id];
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const priorityOf = (id) => (lookups.priorities || []).find((p) => p.id === id);
+  const isClosedStatus = (task) => CLOSED_STATUS_CODES.has(statusOf(task.status_id)?.code);
   const isOverdue = (task) => {
     const s = statusOf(task.status_id)?.code;
-    if (!task.due_date || s === "CLOSED" || s === "VERIFIED") return false;
-    return task.due_date < todayStr;
+    if (!task.due_date || CLOSED_STATUS_CODES.has(s)) return false;
+    return task.due_date < today;
   };
-  // Today/overdue/no-due-date tasks stay in the primary list exactly as
-  // before; anything due strictly after today moves under its own
-  // "Upcoming" heading instead of being mixed in unconditionally.
-  const isUpcoming = (task) => !!task.due_date && task.due_date > todayStr;
-  const projectFiltered = projectFilter ? tasks.filter((tsk) => tsk.project_id === projectFilter) : tasks;
-  const sortedTasks = [...projectFiltered].sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));
-  const firstUpcomingIndex = sortedTasks.findIndex(isUpcoming);
+
+  // ---------------------------------------------------------------------
+  // Combined filters + date-mode sectioning. Every section below is
+  // recomputed from `tasks` (and the filter selections) on every render —
+  // there is no separate "refetch per filter" path, which is exactly what
+  // lets a realtime-updated task instantly reflow into its correct
+  // section/date without any special-case code.
+  // ---------------------------------------------------------------------
+  const priorityRank = useMemo(() => Object.fromEntries((lookups.priorities || []).map((p) => [p.id, p.sort_order])), [lookups.priorities]);
+
+  function matchesNonDateFilters(task) {
+    if (projectFilter && task.project_id !== projectFilter) return false;
+    if (statusFilter && statusOf(task.status_id)?.code !== statusFilter) return false;
+    if (priorityFilter && task.priority_id !== priorityFilter) return false;
+    if (departmentFilter && task.from_department_id !== departmentFilter && task.to_department_id !== departmentFilter) return false;
+    if (primaryAssigneeFilter && task.assigned_to !== primaryAssigneeFilter) return false;
+    if (secondAssigneeFilter) {
+      const rows = assigneesByTask[task.id] || [];
+      if (!rows.some((r) => r.user_id === secondAssigneeFilter && r.assignment_role !== "primary")) return false;
+    }
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      const hay = [task.title, task.task_number, task.description, task.reference_number].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }
+
+  function comparePriorityDesc(a, b) { return (priorityRank[b.priority_id] ?? -1) - (priorityRank[a.priority_id] ?? -1); }
+  function compareDueTime(a, b) {
+    if (!a.due_time && !b.due_time) return 0;
+    if (!a.due_time) return 1;
+    if (!b.due_time) return -1;
+    return a.due_time.localeCompare(b.due_time);
+  }
+  function sortActiveDefault(list) {
+    return [...list].sort((a, b) => comparePriorityDesc(a, b) || compareDueTime(a, b) || (b.created_at || "").localeCompare(a.created_at || ""));
+  }
+  function sortByDueDateThenPriority(list) {
+    return [...list].sort((a, b) => (a.due_date || "").localeCompare(b.due_date || "") || comparePriorityDesc(a, b) || compareDueTime(a, b));
+  }
+  function sortMostRecentlyClosedFirst(list) {
+    return [...list].sort((a, b) => (b.completed_at || b.closed_at || b.verified_at || "").localeCompare(a.completed_at || a.closed_at || a.verified_at || ""));
+  }
+  function taskDateForSingleDateMode(task) {
+    return filterType === "assigned" ? kolkataDateOf(task.assigned_at) : task.due_date;
+  }
+
+  const sections = useMemo(() => {
+    const base = tasks.filter(matchesNonDateFilters);
+    const activeBase = base.filter((tsk) => !isClosedStatus(tsk));
+    const closedBase = base.filter((tsk) => isClosedStatus(tsk));
+
+    if (dateMode === "date") {
+      const activeForDate = sortActiveDefault(activeBase.filter((tsk) => taskDateForSingleDateMode(tsk) === selectedDate));
+      const closedForDate = sortMostRecentlyClosedFirst(closedBase.filter((tsk) => taskDateForSingleDateMode(tsk) === selectedDate));
+      return { mode: "date", activeForDate, closedForDate };
+    }
+    if (dateMode === "overdue") {
+      return { mode: "overdue", list: sortByDueDateThenPriority(activeBase.filter((tsk) => tsk.due_date && tsk.due_date < today)) };
+    }
+    if (dateMode === "week") {
+      const weekEnd = addDaysToDateStr(today, 6);
+      return { mode: "week", list: sortByDueDateThenPriority(activeBase.filter((tsk) => tsk.due_date && tsk.due_date >= today && tsk.due_date <= weekEnd)) };
+    }
+    return {
+      mode: "all",
+      todayList: sortActiveDefault(activeBase.filter((tsk) => tsk.due_date === today)),
+      overdueList: sortByDueDateThenPriority(activeBase.filter((tsk) => tsk.due_date && tsk.due_date < today)),
+      upcomingList: sortByDueDateThenPriority(activeBase.filter((tsk) => tsk.due_date && tsk.due_date > today)),
+      noDueDateList: sortActiveDefault(activeBase.filter((tsk) => !tsk.due_date)),
+      closedList: sortMostRecentlyClosedFirst(closedBase),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, today, dateMode, selectedDate, filterType, projectFilter, statusFilter, priorityFilter, departmentFilter, primaryAssigneeFilter, secondAssigneeFilter, searchText, assigneesByTask, priorityRank]);
+
+  function dateBadge(task) {
+    if (isClosedStatus(task)) return <span className="badge COMPLETED">{t("completedBadgeLabel", lang)}</span>;
+    if (!task.due_date) return <span className="badge CLOSED">{t("noDueDateBadgeLabel", lang)}</span>;
+    if (task.due_date === today) return <span className="badge ASSIGNED">{t("todayBadgeLabel", lang)}</span>;
+    if (task.due_date === addDaysToDateStr(today, 1)) return <span className="badge ASSIGNED">{t("tomorrowBadgeLabel", lang)}</span>;
+    if (task.due_date < today) return <span className="badge RETURNED">{t("overdueByDaysLabel", lang).replace("{n}", String(daysBetweenDateStrs(task.due_date, today)))}</span>;
+    return null;
+  }
+
+  function clearAllFilters() {
+    setProjectFilter(""); setStatusFilter(""); setPriorityFilter(""); setDepartmentFilter("");
+    setPrimaryAssigneeFilter(""); setSecondAssigneeFilter(""); setSearchInput(""); setDateMode("all");
+  }
+
+  // Options for the assignee filters are drawn from people actually
+  // present in the currently loaded tasks (not the entire company
+  // directory) — keeps the dropdown short and always relevant.
+  const assigneeOptions = useMemo(() => {
+    const ids = new Set();
+    tasks.forEach((tsk) => {
+      if (tsk.assigned_to) ids.add(tsk.assigned_to);
+      (assigneesByTask[tsk.id] || []).forEach((r) => ids.add(r.user_id));
+    });
+    return Array.from(ids).map((id) => usersById[id]).filter(Boolean).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+  }, [tasks, assigneesByTask, usersById]);
+
+  function renderTaskCard(task) {
+    const status = statusOf(task.status_id);
+    const statusCode = status?.code || "";
+    const priority = priorityOf(task.priority_id);
+    const mine = task.current_owner_id === profile.id;
+    const isAssignee = task.assigned_to === profile.id;
+    const iAmVerifier = task.verifier_id === profile.id;
+    const canManage = profile.isManagement || profile.isDeptHead;
+    const iCreatedIt = task.assigned_by === profile.id;
+    // staff_delete_task server-side also allows Management/Super Admin/
+    // Department Head to delete ANY task, not just their own creations
+    // — this mirrors that exactly (it's only the optimistic UI gate;
+    // the RPC re-checks regardless of what this computes).
+    const canDeleteTask = iCreatedIt || profile.isManagement || profile.isSuperAdmin || profile.isDeptHead;
+    const busy = busyId === task.id;
+    // Undefined here means either an unrecognized proof_type_id or one
+    // that's since been deactivated (e.g. "voice" — see
+    // mvp_pilot_task_proof_type_fixes_v2_30.sql, disabled because the
+    // DB trigger unconditionally rejects completing it). ProofUploader
+    // treats "undefined" the same as an explicitly unsupported type —
+    // a clear message instead of a picker that can only ever fail.
+    const proofTypeCode = lookups.proofTypes?.find((pt) => pt.id === task.proof_type_id)?.code;
+    const taskProject = task.project_id ? projectsById[task.project_id] : null;
+
+    // Second Assignee: staff_task_assignees rows for this task (RLS-
+    // scoped, same as the task itself). isMulti === false means this is
+    // an ordinary single-assignee task -- mine/isAssignee above (the
+    // shared scalar columns) remain the ENTIRE gating story for it,
+    // completely unchanged from before this feature existed. Only when
+    // isMulti is true do the *Mine booleans below take over, driven by
+    // the caller's own row instead of the shared columns (which, once
+    // there's a second person, are ambiguous as to whose "part" is done).
+    const assignees = assigneesByTask[task.id] || [];
+    const isMulti = assignees.length > 1;
+    const myRow = assignees.find((a) => a.user_id === profile.id);
+    const canAcceptMine = !!myRow && myRow.acceptance_status !== "ACCEPTED" && myRow.individual_status !== "REJECTED";
+    const canStartMine = !!myRow && myRow.individual_status === "ACCEPTED";
+    const canCompleteMine = !!myRow && myRow.individual_status === "IN_PROGRESS";
+    const canReturnMine = !!myRow && !["COMPLETED", "REJECTED"].includes(myRow.individual_status);
+    const iAmBlockedMulti = myRow?.individual_status === "BLOCKED";
+    const canToggleBlockedMulti = !!myRow && ["IN_PROGRESS", "BLOCKED"].includes(myRow.individual_status);
+    const acceptanceLabel = (row) => (row.acceptance_status === "ACCEPTED" ? t("accept", lang) : row.acceptance_status === "REJECTED" ? t("rejectedStatusLabel", lang) : t("pendingAcceptanceLabel", lang));
+    const individualLabel = (row) => (row.individual_status === "BLOCKED" ? t("blockedStatusLabel", lang) : row.individual_status === "REJECTED" ? t("rejectedStatusLabel", lang) : row.individual_status);
+
+    return (
+      <div className="task-card" id={`task-${task.id}`} key={task.id}>
+        <div className="top-row">
+          <div>
+            <div className="task-title">{task.title}</div>
+            <div className="task-number">{t("taskNumber", lang)} {task.task_number}</div>
+          </div>
+          <span className={`badge ${statusCode}`}>{lang === "gu" ? status?.name_gu : status?.name_en || statusCode}</span>
+        </div>
+        {taskProject && (
+          <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 700 }}>{t("siteNameLabel", lang)}: {taskProject.project_code} — {taskProject.customer}</span>
+            {taskProject.location && <span className="sub">{t("siteLocationLabel", lang)}: {taskProject.location}</span>}
+            {taskProject.lead_executive_id && (
+              <span className="sub">{t("leadExecutiveLabel", lang)}: {interiorProfilesById[taskProject.lead_executive_id]?.name || "—"}</span>
+            )}
+            {task.source_module === "daily_site_update" && <span className="badge ASSIGNED">{t("sourceDailySiteUpdateLabel", lang)}</span>}
+          </div>
+        )}
+        {!taskProject && interiorDeptId && [task.from_department_id, task.to_department_id].includes(interiorDeptId) && (
+          <div className="task-meta" style={{ marginTop: 4 }}>
+            <span className="sub">{t("generalInteriorTaskLabel", lang)}</span>
+          </div>
+        )}
+        <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
+          <span className="sub">{t("primaryAssigneeLabel", lang)}: {usersById[task.assigned_to]?.full_name || "—"}</span>
+          {isMulti && assignees.filter((a) => a.user_id !== task.assigned_to).map((a) => (
+            <span key={a.id} className="sub">
+              {t("secondAssigneeFilterLabel", lang)}: {usersById[a.user_id]?.full_name || "—"} — {acceptanceLabel(a)}{a.individual_status !== "ASSIGNED" ? ` · ${individualLabel(a)}` : ""}
+            </span>
+          ))}
+        </div>
+        {task.description && <div style={{ fontSize: 13, marginTop: 6 }}>{task.description}</div>}
+        {task.requirement_text && (
+          <div style={{ fontSize: 13, marginTop: 6 }}>
+            <strong>{t("requirementText", lang)}:</strong> {task.requirement_text}
+          </div>
+        )}
+        <div className="task-meta" style={{ flexWrap: "wrap" }}>
+          {dateBadge(task)}
+          {task.due_date && <span className={isOverdue(task) ? "overdue" : ""}>{t("dueDate", lang)}: {task.due_date}</span>}
+          {task.due_time && <span>{t("dueTimeLabel", lang)}: {task.due_time.slice(0, 5)}</span>}
+          <span className="sub">{t("assignedDateLabel", lang)}: {kolkataDateOf(task.assigned_at) || "—"}</span>
+          {priority && (
+            <span style={{ fontWeight: 700, color: PRIORITY_COLORS[priority.code] || undefined }}>
+              {lang === "gu" ? priority.name_gu : priority.name_en}
+            </span>
+          )}
+          {task.reference_number && <span>{t("referenceNumber", lang)}: {task.reference_number}</span>}
+          {task.quantity && <span>{t("quantity", lang)}: {task.quantity}</span>}
+          {task.is_bridge && <span>🌉 {t("bridges", lang)}</span>}
+          {task.help_requested && <span>🆘 {t("requestHelp", lang)}</span>}
+        </div>
+
+        {statusCode === "RETURNED" && task.return_reason && (
+          <div className="msg info" style={{ marginTop: 8 }}>
+            {t("returnedReason", lang)}: {task.return_reason}
+          </div>
+        )}
+
+        <div className="btn-row">
+          {!isMulti && statusCode === "ASSIGNED" && isAssignee && (
+            <>
+              <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
+                {t("accept", lang)}
+              </button>
+              <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
+                {t("returnTask", lang)}
+              </button>
+            </>
+          )}
+          {!isMulti && statusCode === "RETURNED" && isAssignee && (
+            <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
+              {t("accept", lang)}
+            </button>
+          )}
+          {!isMulti && statusCode === "ACCEPTED" && mine && (
+            <>
+              <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
+                {t("start", lang)}
+              </button>
+              <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
+                {t("returnTask", lang)}
+              </button>
+            </>
+          )}
+          {!isMulti && statusCode === "IN_PROGRESS" && mine && (
+            <button
+              className="btn btn-gold"
+              disabled={busy}
+              onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
+            >
+              {t("complete", lang)}
+            </button>
+          )}
+          {/* Second Assignee: each person's own buttons are gated on
+              THEIR OWN staff_task_assignees row, never on the other
+              assignee's — Employee A can never flip Employee B's status
+              from here since these RPCs only ever touch auth.uid()'s
+              own row (server-enforced, this is just the matching UI gate). */}
+          {isMulti && canAcceptMine && (
+            <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
+              {t("accept", lang)}
+            </button>
+          )}
+          {isMulti && canStartMine && (
+            <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
+              {t("start", lang)}
+            </button>
+          )}
+          {isMulti && canCompleteMine && (
+            <button
+              className="btn btn-gold"
+              disabled={busy}
+              onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
+            >
+              {t("complete", lang)}
+            </button>
+          )}
+          {isMulti && canReturnMine && (
+            <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
+              {t("returnTask", lang)}
+            </button>
+          )}
+          {statusCode === "COMPLETED" && iAmVerifier && (
+            <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_verify_task", task.id)}>
+              {t("verify", lang)}
+            </button>
+          )}
+          {statusCode === "VERIFIED" && (canManage || task.assigned_by === profile.id) && (
+            <button className="btn btn-primary" disabled={busy} onClick={() => runAction("staff_close_task", task.id)}>
+              {t("close", lang)}
+            </button>
+          )}
+          {!isMulti && !task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && mine && (
+            <button
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => runAction("staff_request_help", task.id, { p_note: "" })}
+            >
+              {t("requestHelp", lang)}
+            </button>
+          )}
+          {isMulti && canToggleBlockedMulti && (
+            <button
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => runAction("staff_set_task_blocked", task.id, { p_blocked: !iAmBlockedMulti, p_note: "" })}
+            >
+              {iAmBlockedMulti ? t("start", lang) : t("requestHelp", lang)}
+            </button>
+          )}
+          {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "PARTIALLY_ACCEPTED", "PARTIALLY_COMPLETED"].includes(statusCode) && (
+            <button
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => setReassignFor(reassignFor === task.id ? null : task.id)}
+            >
+              {t("reassign", lang)}
+            </button>
+          )}
+          {taskProject && (
+            <>
+              <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}`)}>
+                {t("viewProjectAction", lang)}
+              </button>
+              {task.source_module === "daily_site_update" && (
+                <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}?tab=dailyUpdates`)}>
+                  {t("viewDailyUpdateAction", lang)}
+                </button>
+              )}
+            </>
+          )}
+          <button
+            className="btn btn-outline"
+            onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)}
+          >
+            {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
+          </button>
+          <button
+            className="btn btn-outline"
+            onClick={() => {
+              setDetailsFor(task.id);
+              requestAnimationFrame(() => {
+                document.getElementById(`conversation-${task.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+              });
+            }}
+          >
+            {t("replyAction", lang)}{unreadByTask[task.id] ? ` (${unreadByTask[task.id]})` : ""}
+          </button>
+          {canDeleteTask && (
+            <button
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => setDeleteConfirmFor(deleteConfirmFor === task.id ? null : task.id)}
+            >
+              {t("deleteTask", lang)}
+            </button>
+          )}
+        </div>
+
+        {deleteConfirmFor === task.id && (
+          <div className="msg error" style={{ marginTop: 10 }}>
+            {t("confirmDeleteTask", lang)}
+            <div className="btn-row">
+              <button className="btn btn-primary" disabled={busy} onClick={() => handleDelete(task.id)}>
+                {t("confirmDelete", lang)}
+              </button>
+              <button className="btn btn-outline" onClick={() => setDeleteConfirmFor(null)}>
+                {t("cancel", lang)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {returnReasonFor === task.id && (
+          <div style={{ marginTop: 10 }}>
+            <label>{t("reason", lang)}</label>
+            <textarea value={returnReason} onChange={(e) => setReturnReason(e.target.value)} />
+            <div className="btn-row">
+              <button className="btn btn-primary" disabled={busy} onClick={() => submitReturn(task.id)}>
+                {t("submit", lang)}
+              </button>
+              <button className="btn btn-outline" onClick={() => { setReturnReasonFor(null); setReturnReason(""); }}>
+                {t("cancel", lang)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {proofFor === task.id && (
+          <ProofUploader
+            lang={lang}
+            busy={busy}
+            proofTypeCode={proofTypeCode}
+            onCancel={() => setProofFor(null)}
+            onSubmit={(file, confirmationText, voiceDurationSeconds) => completeWithProof(task, proofTypeCode, file, confirmationText, voiceDurationSeconds)}
+          />
+        )}
+
+        {reassignFor === task.id && (
+          <ReassignPanel
+            task={task}
+            candidates={directory}
+            lang={lang}
+            busy={busy}
+            onCancel={() => setReassignFor(null)}
+            onSubmit={(payload) => submitReassign(task.id, payload)}
+          />
+        )}
+
+        {detailsFor === task.id && (
+          <>
+            {isMulti && <AssignedTeamSection assignees={assignees} usersById={usersById} lang={lang} />}
+            <TaskTimeline task={task} usersById={usersById} lang={lang} assignees={assignees} />
+            {(task.project_id || [task.from_department_id, task.to_department_id].includes(interiorDeptId)) && (
+              <ProjectSiteSection
+                task={task}
+                lang={lang}
+                profile={profile}
+                projectsById={projectsById}
+                profilesById={interiorProfilesById}
+                showToast={showToast}
+                onChanged={load}
+              />
+            )}
+            <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
+            <div id={`conversation-${task.id}`}>
+              <TaskConversation
+                taskId={task.id}
+                lang={lang}
+                profile={profile}
+                usersById={usersById}
+                showToast={showToast}
+                highlightMessageId={highlightMessageId}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  function renderSection(titleKey, list, options = {}) {
+    if (!list.length) return null;
+    return (
+      <React.Fragment key={titleKey}>
+        <div className="section-title" style={{ marginTop: 16 }}>
+          {t(titleKey, lang)} {options.showCount !== false && <span className="sub">({list.length})</span>}
+        </div>
+        {list.map((task) => renderTaskCard(task))}
+      </React.Fragment>
+    );
+  }
+
+  const totalVisible = tasks.length;
 
   return (
     <div>
@@ -389,17 +899,91 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         {t("refresh", lang)}
       </button>
 
-      {Object.keys(projectsById).length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <label>{t("filterByProjectLabel", lang)}</label>
-          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">{t("allInteriorProjectsLabel", lang)}</option>
-            {Object.values(projectsById).map((p) => (
-              <option key={p.id} value={p.id}>{p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}</option>
-            ))}
+      {/* ---------------- Date filter bar ---------------- */}
+      <div className="card" style={{ marginBottom: 10 }}>
+        <div className="task-meta" style={{ flexWrap: "wrap", gap: 8 }}>
+          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate((d) => addDaysToDateStr(d, -1)); }}>
+            {t("previousDayLabel", lang)}
+          </button>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => { setDateMode("date"); setSelectedDate(e.target.value); }}
+            style={{ width: "auto" }}
+          />
+          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate(today); }}>
+            {t("todayButtonLabel", lang)}
+          </button>
+          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate((d) => addDaysToDateStr(d, 1)); }}>
+            {t("nextDayLabel", lang)}
+          </button>
+          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => setDateMode("all")}>
+            {t("allDatesLabel", lang)}
+          </button>
+        </div>
+
+        <div className="task-meta" style={{ flexWrap: "wrap", gap: 6, marginTop: 8, overflowX: "auto" }}>
+          <button className={`btn ${dateMode === "date" && selectedDate === today ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate(today); }}>
+            {t("todayButtonLabel", lang)}
+          </button>
+          <button className={`btn ${dateMode === "date" && selectedDate === addDaysToDateStr(today, 1) ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate(addDaysToDateStr(today, 1)); }}>
+            {t("tomorrowLabel", lang)}
+          </button>
+          <button className={`btn ${dateMode === "week" ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("week")}>
+            {t("thisWeekLabel", lang)}
+          </button>
+          <button className={`btn ${dateMode === "overdue" ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("overdue")}>
+            {t("overdueQuickLabel", lang)}
+          </button>
+          <button className={`btn ${dateMode === "all" ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("all")}>
+            {t("allTasksLabel", lang)}
+          </button>
+        </div>
+
+        <div className="task-meta" style={{ flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+          <label style={{ margin: 0 }}>{t("filterTypeLabel", lang)}</label>
+          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: "auto" }}>
+            <option value="due">{t("dueDateFilterTypeLabel", lang)}</option>
+            <option value="assigned">{t("assignedDateFilterTypeLabel", lang)}</option>
           </select>
         </div>
-      )}
+      </div>
+
+      {/* ---------------- Other filters ---------------- */}
+      <div className="card" style={{ marginBottom: 10 }}>
+        <div className="task-meta" style={{ flexWrap: "wrap", gap: 8 }}>
+          <input placeholder={t("searchLabel", lang)} value={searchInput} onChange={(e) => setSearchInput(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+          {Object.keys(projectsById).length > 0 && (
+            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={{ width: "auto" }}>
+              <option value="">{t("allInteriorProjectsLabel", lang)}</option>
+              {Object.values(projectsById).map((p) => (
+                <option key={p.id} value={p.id}>{p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}</option>
+              ))}
+            </select>
+          )}
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: "auto" }}>
+            <option value="">{t("allStatusesLabel", lang)}</option>
+            {(lookups.statuses || []).map((s) => <option key={s.id} value={s.code}>{lang === "gu" ? s.name_gu : s.name_en}</option>)}
+          </select>
+          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ width: "auto" }}>
+            <option value="">{t("allPrioritiesLabel", lang)}</option>
+            {(lookups.priorities || []).map((p) => <option key={p.id} value={p.id}>{lang === "gu" ? p.name_gu : p.name_en}</option>)}
+          </select>
+          <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} style={{ width: "auto" }}>
+            <option value="">{t("allDepartmentsLabel", lang)}</option>
+            {(lookups.departments || []).map((d) => <option key={d.id} value={d.id}>{lang === "gu" ? d.name_gu : d.name_en}</option>)}
+          </select>
+          <select value={primaryAssigneeFilter} onChange={(e) => setPrimaryAssigneeFilter(e.target.value)} style={{ width: "auto" }}>
+            <option value="">{t("primaryAssigneeFilterLabel", lang)}</option>
+            {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+          </select>
+          <select value={secondAssigneeFilter} onChange={(e) => setSecondAssigneeFilter(e.target.value)} style={{ width: "auto" }}>
+            <option value="">{t("secondAssigneeFilterLabel", lang)}</option>
+            {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+          </select>
+          <button className="btn btn-outline" style={{ width: "auto" }} onClick={clearAllFilters}>{t("clearFiltersAction", lang)}</button>
+        </div>
+      </div>
 
       {assignedItems.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
@@ -418,342 +1002,69 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       )}
 
       {loading && tasks.length === 0 && <div className="msg info">…</div>}
-      {!loading && tasks.length === 0 && assignedItems.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
+      {!loading && totalVisible === 0 && assignedItems.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
 
-      {sortedTasks.map((task, index) => {
-        const status = statusOf(task.status_id);
-        const statusCode = status?.code || "";
-        const mine = task.current_owner_id === profile.id;
-        const isAssignee = task.assigned_to === profile.id;
-        const iAmVerifier = task.verifier_id === profile.id;
-        const canManage = profile.isManagement || profile.isDeptHead;
-        const iCreatedIt = task.assigned_by === profile.id;
-        // staff_delete_task server-side also allows Management/Super Admin/
-        // Department Head to delete ANY task, not just their own creations
-        // — this mirrors that exactly (it's only the optimistic UI gate;
-        // the RPC re-checks regardless of what this computes).
-        const canDeleteTask = iCreatedIt || profile.isManagement || profile.isSuperAdmin || profile.isDeptHead;
-        const busy = busyId === task.id;
-        // Undefined here means either an unrecognized proof_type_id or one
-        // that's since been deactivated (e.g. "voice" — see
-        // mvp_pilot_task_proof_type_fixes_v2_30.sql, disabled because the
-        // DB trigger unconditionally rejects completing it). ProofUploader
-        // treats "undefined" the same as an explicitly unsupported type —
-        // a clear message instead of a picker that can only ever fail.
-        const proofTypeCode = lookups.proofTypes?.find((pt) => pt.id === task.proof_type_id)?.code;
-        const taskProject = task.project_id ? projectsById[task.project_id] : null;
-
-        // Second Assignee: staff_task_assignees rows for this task (RLS-
-        // scoped, same as the task itself). isMulti === false means this is
-        // an ordinary single-assignee task -- mine/isAssignee above (the
-        // shared scalar columns) remain the ENTIRE gating story for it,
-        // completely unchanged from before this feature existed. Only when
-        // isMulti is true do the *Mine booleans below take over, driven by
-        // the caller's own row instead of the shared columns (which, once
-        // there's a second person, are ambiguous as to whose "part" is done).
-        const assignees = assigneesByTask[task.id] || [];
-        const isMulti = assignees.length > 1;
-        const myRow = assignees.find((a) => a.user_id === profile.id);
-        const canAcceptMine = !!myRow && myRow.acceptance_status !== "ACCEPTED" && myRow.individual_status !== "REJECTED";
-        const canStartMine = !!myRow && myRow.individual_status === "ACCEPTED";
-        const canCompleteMine = !!myRow && myRow.individual_status === "IN_PROGRESS";
-        const canReturnMine = !!myRow && !["COMPLETED", "REJECTED"].includes(myRow.individual_status);
-        const iAmBlockedMulti = myRow?.individual_status === "BLOCKED";
-        const canToggleBlockedMulti = !!myRow && ["IN_PROGRESS", "BLOCKED"].includes(myRow.individual_status);
-        const acceptanceLabel = (row) => (row.acceptance_status === "ACCEPTED" ? t("accept", lang) : row.acceptance_status === "REJECTED" ? t("rejectedStatusLabel", lang) : t("pendingAcceptanceLabel", lang));
-        const individualLabel = (row) => (row.individual_status === "BLOCKED" ? t("blockedStatusLabel", lang) : row.individual_status === "REJECTED" ? t("rejectedStatusLabel", lang) : row.individual_status);
-
-        return (
-          <React.Fragment key={task.id}>
-          {index === firstUpcomingIndex && <div className="section-title" style={{ marginTop: 16 }}>{t("upcomingLabel", lang)}</div>}
-          <div className="task-card" id={`task-${task.id}`}>
-            <div className="top-row">
-              <div>
-                <div className="task-title">{task.title}</div>
-                <div className="task-number">{t("taskNumber", lang)} {task.task_number}</div>
-              </div>
-              <span className={`badge ${statusCode}`}>{lang === "gu" ? status?.name_gu : status?.name_en || statusCode}</span>
-            </div>
-            {taskProject && (
-              <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 700 }}>{t("siteNameLabel", lang)}: {taskProject.project_code} — {taskProject.customer}</span>
-                {taskProject.location && <span className="sub">{t("siteLocationLabel", lang)}: {taskProject.location}</span>}
-                {taskProject.lead_executive_id && (
-                  <span className="sub">{t("leadExecutiveLabel", lang)}: {interiorProfilesById[taskProject.lead_executive_id]?.name || "—"}</span>
-                )}
-                {!isMulti && (
-                  <span className="sub">{t("primaryAssigneeLabel", lang)}: {usersById[task.assigned_to]?.full_name || "—"}</span>
-                )}
-                {task.source_module === "daily_site_update" && <span className="badge ASSIGNED">{t("sourceDailySiteUpdateLabel", lang)}</span>}
-              </div>
-            )}
-            {!taskProject && interiorDeptId && [task.from_department_id, task.to_department_id].includes(interiorDeptId) && (
-              <div className="task-meta" style={{ marginTop: 4 }}>
-                <span className="sub">{t("generalInteriorTaskLabel", lang)}</span>
-              </div>
-            )}
-            {isMulti && (
-              <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 700 }}>{t("workingWithLabel", lang)}:</span>
-                {assignees.map((a) => (
-                  <span key={a.id} className="sub">
-                    {usersById[a.user_id]?.full_name || "—"} — {acceptanceLabel(a)}{a.individual_status !== "ASSIGNED" ? ` · ${individualLabel(a)}` : ""}
-                  </span>
-                ))}
-              </div>
-            )}
-            {task.description && <div style={{ fontSize: 13, marginTop: 6 }}>{task.description}</div>}
-            {task.requirement_text && (
-              <div style={{ fontSize: 13, marginTop: 6 }}>
-                <strong>{t("requirementText", lang)}:</strong> {task.requirement_text}
-              </div>
-            )}
-            <div className="task-meta">
-              {task.due_date && (
-                <span className={isOverdue(task) ? "overdue" : ""}>
-                  {t("dueDate", lang)}: {task.due_date}{isOverdue(task) ? ` · ${t("overdue", lang)}` : ""}
-                </span>
-              )}
-              {task.reference_number && <span>{t("referenceNumber", lang)}: {task.reference_number}</span>}
-              {task.quantity && <span>{t("quantity", lang)}: {task.quantity}</span>}
-              {task.is_bridge && <span>🌉 {t("bridges", lang)}</span>}
-              {task.help_requested && <span>🆘 {t("requestHelp", lang)}</span>}
-            </div>
-
-            {statusCode === "RETURNED" && task.return_reason && (
-              <div className="msg info" style={{ marginTop: 8 }}>
-                {t("returnedReason", lang)}: {task.return_reason}
-              </div>
-            )}
-
-            <div className="btn-row">
-              {!isMulti && statusCode === "ASSIGNED" && isAssignee && (
-                <>
-                  <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
-                    {t("accept", lang)}
-                  </button>
-                  <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
-                    {t("returnTask", lang)}
-                  </button>
-                </>
-              )}
-              {!isMulti && statusCode === "RETURNED" && isAssignee && (
-                <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
-                  {t("accept", lang)}
-                </button>
-              )}
-              {!isMulti && statusCode === "ACCEPTED" && mine && (
-                <>
-                  <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
-                    {t("start", lang)}
-                  </button>
-                  <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
-                    {t("returnTask", lang)}
-                  </button>
-                </>
-              )}
-              {!isMulti && statusCode === "IN_PROGRESS" && mine && (
-                <button
-                  className="btn btn-gold"
-                  disabled={busy}
-                  onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
-                >
-                  {t("complete", lang)}
-                </button>
-              )}
-              {/* Second Assignee: each person's own buttons are gated on
-                  THEIR OWN staff_task_assignees row, never on the other
-                  assignee's — Employee A can never flip Employee B's status
-                  from here since these RPCs only ever touch auth.uid()'s
-                  own row (server-enforced, this is just the matching UI gate). */}
-              {isMulti && canAcceptMine && (
-                <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
-                  {t("accept", lang)}
-                </button>
-              )}
-              {isMulti && canStartMine && (
-                <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
-                  {t("start", lang)}
-                </button>
-              )}
-              {isMulti && canCompleteMine && (
-                <button
-                  className="btn btn-gold"
-                  disabled={busy}
-                  onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
-                >
-                  {t("complete", lang)}
-                </button>
-              )}
-              {isMulti && canReturnMine && (
-                <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
-                  {t("returnTask", lang)}
-                </button>
-              )}
-              {statusCode === "COMPLETED" && iAmVerifier && (
-                <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_verify_task", task.id)}>
-                  {t("verify", lang)}
-                </button>
-              )}
-              {statusCode === "VERIFIED" && (canManage || task.assigned_by === profile.id) && (
-                <button className="btn btn-primary" disabled={busy} onClick={() => runAction("staff_close_task", task.id)}>
-                  {t("close", lang)}
-                </button>
-              )}
-              {!isMulti && !task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && mine && (
-                <button
-                  className="btn btn-outline"
-                  disabled={busy}
-                  onClick={() => runAction("staff_request_help", task.id, { p_note: "" })}
-                >
-                  {t("requestHelp", lang)}
-                </button>
-              )}
-              {isMulti && canToggleBlockedMulti && (
-                <button
-                  className="btn btn-outline"
-                  disabled={busy}
-                  onClick={() => runAction("staff_set_task_blocked", task.id, { p_blocked: !iAmBlockedMulti, p_note: "" })}
-                >
-                  {iAmBlockedMulti ? t("start", lang) : t("requestHelp", lang)}
-                </button>
-              )}
-              {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "PARTIALLY_ACCEPTED", "PARTIALLY_COMPLETED"].includes(statusCode) && (
-                <button
-                  className="btn btn-outline"
-                  disabled={busy}
-                  onClick={() => setReassignFor(reassignFor === task.id ? null : task.id)}
-                >
-                  {t("reassign", lang)}
-                </button>
-              )}
-              {taskProject && (
-                <>
-                  <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}`)}>
-                    {t("viewProjectAction", lang)}
-                  </button>
-                  {task.source_module === "daily_site_update" && (
-                    <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}?tab=dailyUpdates`)}>
-                      {t("viewDailyUpdateAction", lang)}
-                    </button>
-                  )}
-                </>
-              )}
-              <button
-                className="btn btn-outline"
-                onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)}
-              >
-                {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
-              </button>
-              <button
-                className="btn btn-outline"
-                onClick={() => {
-                  setDetailsFor(task.id);
-                  requestAnimationFrame(() => {
-                    document.getElementById(`conversation-${task.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  });
-                }}
-              >
-                {t("replyAction", lang)}{unreadByTask[task.id] ? ` (${unreadByTask[task.id]})` : ""}
-              </button>
-              {canDeleteTask && (
-                <button
-                  className="btn btn-outline"
-                  disabled={busy}
-                  onClick={() => setDeleteConfirmFor(deleteConfirmFor === task.id ? null : task.id)}
-                >
-                  {t("deleteTask", lang)}
-                </button>
-              )}
-            </div>
-
-            {deleteConfirmFor === task.id && (
-              <div className="msg error" style={{ marginTop: 10 }}>
-                {t("confirmDeleteTask", lang)}
-                <div className="btn-row">
-                  <button className="btn btn-primary" disabled={busy} onClick={() => handleDelete(task.id)}>
-                    {t("confirmDelete", lang)}
-                  </button>
-                  <button className="btn btn-outline" onClick={() => setDeleteConfirmFor(null)}>
-                    {t("cancel", lang)}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {returnReasonFor === task.id && (
-              <div style={{ marginTop: 10 }}>
-                <label>{t("reason", lang)}</label>
-                <textarea value={returnReason} onChange={(e) => setReturnReason(e.target.value)} />
-                <div className="btn-row">
-                  <button className="btn btn-primary" disabled={busy} onClick={() => submitReturn(task.id)}>
-                    {t("submit", lang)}
-                  </button>
-                  <button className="btn btn-outline" onClick={() => { setReturnReasonFor(null); setReturnReason(""); }}>
-                    {t("cancel", lang)}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {proofFor === task.id && (
-              <ProofUploader
-                lang={lang}
-                busy={busy}
-                proofTypeCode={proofTypeCode}
-                onCancel={() => setProofFor(null)}
-                onSubmit={(file, confirmationText, voiceDurationSeconds) => completeWithProof(task, proofTypeCode, file, confirmationText, voiceDurationSeconds)}
-              />
-            )}
-
-            {reassignFor === task.id && (
-              <ReassignPanel
-                task={task}
-                candidates={directory}
-                lang={lang}
-                busy={busy}
-                onCancel={() => setReassignFor(null)}
-                onSubmit={(payload) => submitReassign(task.id, payload)}
-              />
-            )}
-
-            {detailsFor === task.id && (
-              <>
-                {isMulti && <AssignedTeamSection assignees={assignees} usersById={usersById} lang={lang} />}
-                <TaskTimeline task={task} usersById={usersById} lang={lang} assignees={assignees} />
-                {(task.project_id || [task.from_department_id, task.to_department_id].includes(interiorDeptId)) && (
-                  <ProjectSiteSection
-                    task={task}
-                    lang={lang}
-                    profile={profile}
-                    projectsById={projectsById}
-                    profilesById={interiorProfilesById}
-                    showToast={showToast}
-                    onChanged={load}
-                  />
-                )}
-                <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
-                <div id={`conversation-${task.id}`}>
-                  <TaskConversation
-                    taskId={task.id}
-                    lang={lang}
-                    profile={profile}
-                    usersById={usersById}
-                    showToast={showToast}
-                    highlightMessageId={highlightMessageId}
-                  />
-                </div>
-              </>
-            )}
+      {!loading && sections.mode === "date" && (
+        <>
+          <div className="section-title">
+            {filterType === "assigned" ? t("tasksAssignedOnHeading", lang) : t("tasksForDateHeading", lang)} {formatDisplayDate(selectedDate, lang)}
           </div>
-          </React.Fragment>
-        );
-      })}
+          {sections.activeForDate.length === 0 && sections.closedForDate.length === 0 && (
+            <div className="msg info">{t("noTasksForDateMsg", lang)}</div>
+          )}
+          {sections.activeForDate.map((task) => renderTaskCard(task))}
+          {sections.closedForDate.length > 0 && (
+            <>
+              <div className="section-title" style={{ marginTop: 16 }}>{t("completedClosedSectionLabel", lang)} <span className="sub">({sections.closedForDate.length})</span></div>
+              {sections.closedForDate.map((task) => renderTaskCard(task))}
+            </>
+          )}
+        </>
+      )}
+
+      {!loading && sections.mode === "overdue" && (
+        <>
+          <div className="section-title">{t("overdueSectionLabel", lang)} <span className="sub">({sections.list.length})</span></div>
+          {sections.list.length === 0 && <div className="msg info">{t("noTasksForDateMsg", lang)}</div>}
+          {sections.list.map((task) => renderTaskCard(task))}
+        </>
+      )}
+
+      {!loading && sections.mode === "week" && (
+        <>
+          <div className="section-title">{t("thisWeekLabel", lang)} <span className="sub">({sections.list.length})</span></div>
+          {sections.list.length === 0 && <div className="msg info">{t("noTasksForDateMsg", lang)}</div>}
+          {sections.list.map((task) => renderTaskCard(task))}
+        </>
+      )}
+
+      {!loading && sections.mode === "all" && (
+        <>
+          {renderSection("todaysTasks", sections.todayList)}
+          {renderSection("overdueSectionLabel", sections.overdueList)}
+          {renderSection("upcomingSectionLabel", sections.upcomingList)}
+          {renderSection("noDueDateSectionLabel", sections.noDueDateList)}
+          {sections.closedList.length > 0 && (
+            <>
+              <div className="section-title" style={{ marginTop: 16, cursor: "pointer" }} onClick={() => setShowClosedSection((s) => !s)}>
+                {t("completedClosedSectionLabel", lang)} <span className="sub">({sections.closedList.length}) — {showClosedSection ? t("collapseLabel", lang) : t("expandLabel", lang)}</span>
+              </div>
+              {showClosedSection && sections.closedList.map((task) => renderTaskCard(task))}
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-const DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+// Includes CAD drawing MIME types/extensions alongside PDF/Word/Excel —
+// the server (staff-file-url's MIME_WHITELIST, the staff-attachments
+// storage bucket, and staff_record_attachment()) already accepts a
+// 'drawing' file_type for DWG/DXF; this was the one place still missing
+// it, which made every DWG "document" proof upload fail before the file
+// even left the browser.
+const DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf,application/dxf,application/dwg,image/vnd.dwg,image/vnd.dxf,application/x-dwg,application/x-dxf,application/acad";
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif";
 
 const SUPPORTED_PROOF_CODES = new Set(["photo", "barcode", "document", "voice", "customer_confirmation", "none"]);

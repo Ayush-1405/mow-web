@@ -227,6 +227,7 @@ export function detectFileType(mimeType) {
   if (mimeType === "application/pdf") return "pdf";
   if (["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(mimeType)) return "word";
   if (["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"].includes(mimeType)) return "excel";
+  if (["application/dxf", "application/dwg", "image/vnd.dwg", "image/vnd.dxf", "application/x-dwg", "application/x-dxf", "application/acad"].includes(mimeType)) return "drawing";
   return null;
 }
 
@@ -358,7 +359,7 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
         {uploading ? t("uploading", lang) : t("attachFile", lang)}
         <input
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf,application/dxf,application/dwg,image/vnd.dwg,image/vnd.dxf,application/x-dwg,application/x-dxf,application/acad"
           style={{ display: "none" }}
           disabled={uploading}
           onChange={(e) => { handleUpload(e.target.files?.[0] || null); e.target.value = ""; }}
@@ -467,7 +468,7 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const MESSAGE_DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,image/webp,image/heic,image/heif,application/dxf,application/dwg,image/vnd.dwg,image/vnd.dxf";
+const MESSAGE_DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,image/webp,image/heic,image/heif,.dwg,.dxf,application/dxf,application/dwg,image/vnd.dwg,image/vnd.dxf,application/x-dwg,application/x-dxf,application/acad";
 
 // Task-wise Reply / Conversation. Reads/writes public.task_messages through
 // the normal RLS-scoped client + the staff_send_task_message/

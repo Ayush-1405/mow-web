@@ -4,7 +4,8 @@ import { subscribeTable } from "../../lib/realtime";
 import {
   listAllInhouseProductionRequests, updateInhouseProductionStatus, listInteriorPeople,
   listProductionStageUpdates, factoryUpdateStage, listFactoryQualityChecks, factoryRecordQualityCheck,
-  listFactoryReworkRecords, factoryCloseRework,
+  listFactoryReworkRecords, factoryCloseRework, listJobClarifications, factoryRequestClarification,
+  uploadFactoryAttachment, factorySubmitCompletion,
 } from "../../lib/interiorApi";
 
 // The Factory department's working screen — Interior's "Submit to Factory"
@@ -47,7 +48,7 @@ function Kpi({ label, value, tone }) {
   );
 }
 
-export default function FactoryJobOrders({ lang }) {
+export default function FactoryJobOrders({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rows, setRows] = useState([]);
@@ -144,7 +145,7 @@ export default function FactoryJobOrders({ lang }) {
               </select>
               <button type="button" className="btn btn-outline" style={{ width: "auto" }}>{expandedId === r.id ? "Hide" : "Job Card"}</button>
             </div>
-            {expandedId === r.id && <JobCardDetail job={r} factoryPeople={factoryPeople} onChanged={load} />}
+            {expandedId === r.id && <JobCardDetail job={r} factoryPeople={factoryPeople} profile={profile} onChanged={load} />}
           </div>
         ))}
       </div>
@@ -152,28 +153,34 @@ export default function FactoryJobOrders({ lang }) {
   );
 }
 
-function JobCardDetail({ job, factoryPeople, onChanged }) {
+function JobCardDetail({ job, factoryPeople, profile, onChanged }) {
   const [stageUpdates, setStageUpdates] = useState([]);
   const [qcChecks, setQcChecks] = useState([]);
   const [reworkRecords, setReworkRecords] = useState([]);
+  const [clarifications, setClarifications] = useState([]);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [stageForm, setStageForm] = useState({ stage: PRODUCTION_STAGES[0], status: "in_progress", notes: "", quantityCompleted: "", quantityPending: "", delayReason: "" });
   const [savingStage, setSavingStage] = useState(false);
   const [qcForm, setQcForm] = useState({
     dimensions: false, material: false, finish: false, hardware: false, drawing: false, quantity: false,
-    result: "pass", defectReason: "", reworkRequired: false, assignedReworkPerson: "", recheckDate: "",
+    result: "pass", defectReason: "", reworkRequired: false, assignedReworkPerson: "", recheckDate: "", qcStage: "in_process", photoFile: null,
   });
   const [savingQc, setSavingQc] = useState(false);
+  const [clarForm, setClarForm] = useState({ reason: "", relatedReference: "", proofFile: null });
+  const [savingClar, setSavingClar] = useState(false);
+  const [completionForm, setCompletionForm] = useState({ quantity: "", notes: "", photoFiles: [] });
+  const [savingCompletion, setSavingCompletion] = useState(false);
   const [msg, setMsg] = useState("");
 
   const loadDetail = useCallback(async () => {
     setLoadingDetail(true);
-    const [stageRes, qcRes, reworkRes] = await Promise.all([
-      listProductionStageUpdates(job.id), listFactoryQualityChecks(job.id), listFactoryReworkRecords(job.id),
+    const [stageRes, qcRes, reworkRes, clarRes] = await Promise.all([
+      listProductionStageUpdates(job.id), listFactoryQualityChecks(job.id), listFactoryReworkRecords(job.id), listJobClarifications(job.id),
     ]);
     setStageUpdates(stageRes.data || []);
     setQcChecks(qcRes.data || []);
     setReworkRecords(reworkRes.data || []);
+    setClarifications(clarRes.data || []);
     setLoadingDetail(false);
   }, [job.id]);
 
@@ -182,6 +189,52 @@ function JobCardDetail({ job, factoryPeople, onChanged }) {
   useEffect(() => subscribeTable(`factory_job_${job.id}_stages`, "production_stage_updates", `job_id=eq.${job.id}`, loadDetail), [job.id, loadDetail]);
   useEffect(() => subscribeTable(`factory_job_${job.id}_qc`, "factory_quality_checks", `job_id=eq.${job.id}`, loadDetail), [job.id, loadDetail]);
   useEffect(() => subscribeTable(`factory_job_${job.id}_rework`, "factory_rework_records", `job_id=eq.${job.id}`, loadDetail), [job.id, loadDetail]);
+  useEffect(() => subscribeTable(`factory_job_${job.id}_clar`, "factory_clarification_requests", `job_id=eq.${job.id}`, loadDetail), [job.id, loadDetail]);
+  useEffect(() => subscribeTable(`factory_job_${job.id}_row`, "inhouse_production_requests", `id=eq.${job.id}`, onChanged), [job.id, onChanged]);
+
+  async function handleRequestClarification(e) {
+    e.preventDefault();
+    if (!clarForm.reason.trim()) { setMsg("A clarification reason is required."); return; }
+    setSavingClar(true);
+    setMsg("");
+    let proofPath = null;
+    if (clarForm.proofFile) {
+      const { path, error: uploadErr } = await uploadFactoryAttachment({
+        projectId: job.project_id, module: "factory_clarification", relatedRecordId: job.id,
+        file: clarForm.proofFile, fileCategory: "Clarification Proof", uploadedBy: profile?.id,
+      });
+      if (uploadErr) { setSavingClar(false); setMsg(uploadErr.message); return; }
+      proofPath = path;
+    }
+    const { error } = await factoryRequestClarification(job.id, clarForm.reason, clarForm.relatedReference || null, proofPath);
+    setSavingClar(false);
+    if (error) { setMsg(error.message); return; }
+    setClarForm({ reason: "", relatedReference: "", proofFile: null });
+    loadDetail();
+    onChanged();
+  }
+
+  async function handleSubmitCompletion(e) {
+    e.preventDefault();
+    if (!completionForm.quantity || Number(completionForm.quantity) <= 0) { setMsg("Actual completed quantity is required."); return; }
+    setSavingCompletion(true);
+    setMsg("");
+    const photoPaths = [];
+    for (const file of completionForm.photoFiles) {
+      const { path, error: uploadErr } = await uploadFactoryAttachment({
+        projectId: job.project_id, module: "factory_completion", relatedRecordId: job.id,
+        file, fileCategory: "Completion Photo", uploadedBy: profile?.id,
+      });
+      if (uploadErr) { setSavingCompletion(false); setMsg(uploadErr.message); return; }
+      photoPaths.push(path);
+    }
+    const { error } = await factorySubmitCompletion(job.id, Number(completionForm.quantity), photoPaths.length ? photoPaths : null, completionForm.notes || null);
+    setSavingCompletion(false);
+    if (error) { setMsg(error.message); return; }
+    setCompletionForm({ quantity: "", notes: "", photoFiles: [] });
+    loadDetail();
+    onChanged();
+  }
 
   const stageMap = {};
   stageUpdates.forEach((s) => { stageMap[s.stage] = s; });
@@ -206,24 +259,41 @@ function JobCardDetail({ job, factoryPeople, onChanged }) {
   async function handleQcSave(e) {
     e.preventDefault();
     if (qcForm.reworkRequired && !qcForm.defectReason.trim()) { setMsg("A defect reason is required when rework is needed."); return; }
+    if (qcForm.result === "fail" && !qcForm.photoFile) { setMsg("At least one photo is required when QC result is Fail."); return; }
     setSavingQc(true);
     setMsg("");
+    let photos = null;
+    if (qcForm.photoFile) {
+      const { path, error: uploadErr } = await uploadFactoryAttachment({
+        projectId: job.project_id, module: "factory_qc", relatedRecordId: job.id,
+        file: qcForm.photoFile, fileCategory: "QC Photo", uploadedBy: profile?.id,
+      });
+      if (uploadErr) { setSavingQc(false); setMsg(uploadErr.message); return; }
+      photos = [path];
+    }
     const { error } = await factoryRecordQualityCheck(job.id, qcForm, qcForm.result, {
       defectReason: qcForm.defectReason || null,
       reworkRequired: qcForm.reworkRequired,
       assignedReworkPerson: qcForm.assignedReworkPerson || null,
       recheckDate: qcForm.recheckDate || null,
+      qcStage: qcForm.qcStage, photos,
     });
     setSavingQc(false);
     if (error) { setMsg(error.message); return; }
-    setQcForm({ dimensions: false, material: false, finish: false, hardware: false, drawing: false, quantity: false, result: "pass", defectReason: "", reworkRequired: false, assignedReworkPerson: "", recheckDate: "" });
+    setQcForm({ dimensions: false, material: false, finish: false, hardware: false, drawing: false, quantity: false, result: "pass", defectReason: "", reworkRequired: false, assignedReworkPerson: "", recheckDate: "", qcStage: "in_process", photoFile: null });
     loadDetail();
     onChanged();
   }
 
-  async function handleCloseRework(reworkId, recheckResult, correctiveAction) {
+  async function handleCloseRework(reworkId, recheckResult, correctiveAction, afterPhotoFile) {
     if (!recheckResult.trim()) { setMsg("A recheck result is required to close a rework."); return; }
-    const { error } = await factoryCloseRework(reworkId, recheckResult, correctiveAction);
+    if (!afterPhotoFile) { setMsg("An after-rework photo is required to close a rework."); return; }
+    const { path, error: uploadErr } = await uploadFactoryAttachment({
+      projectId: job.project_id, module: "factory_rework_after", relatedRecordId: reworkId,
+      file: afterPhotoFile, fileCategory: "Rework After Photo", uploadedBy: profile?.id,
+    });
+    if (uploadErr) { setMsg(uploadErr.message); return; }
+    const { error } = await factoryCloseRework(reworkId, recheckResult, correctiveAction, [path]);
     if (error) { setMsg(error.message); return; }
     loadDetail();
     onChanged();
@@ -270,12 +340,17 @@ function JobCardDetail({ job, factoryPeople, onChanged }) {
             <div style={{ marginBottom: 8 }}>
               {qcChecks.map((qc) => (
                 <div key={qc.id} className="sub" style={{ padding: "4px 0" }}>
-                  {new Date(qc.created_at).toLocaleDateString()}: <strong>{qc.result}</strong>{qc.defect_reason ? ` — ${qc.defect_reason}` : ""}
+                  [{qc.qc_stage === "final" ? "Final" : "In-process"}] {new Date(qc.created_at).toLocaleDateString()}: <strong>{qc.result}</strong>{qc.defect_reason ? ` — ${qc.defect_reason}` : ""}
                 </div>
               ))}
             </div>
           )}
           <form onSubmit={handleQcSave} className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
+            <div className="field"><label>QC Stage</label>
+              <select value={qcForm.qcStage} onChange={(e) => setQcForm((f) => ({ ...f, qcStage: e.target.value }))}>
+                <option value="in_process">In-process</option><option value="final">Final</option>
+              </select>
+            </div>
             {[["dimensions", "Dimensions"], ["material", "Material"], ["finish", "Finish"], ["hardware", "Hardware"], ["drawing", "Drawing Match"], ["quantity", "Quantity"]].map(([k, label]) => (
               <label key={k} className="sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <input type="checkbox" checked={qcForm[k]} onChange={(e) => setQcForm((f) => ({ ...f, [k]: e.target.checked }))} /> {label}
@@ -285,6 +360,9 @@ function JobCardDetail({ job, factoryPeople, onChanged }) {
               <select value={qcForm.result} onChange={(e) => setQcForm((f) => ({ ...f, result: e.target.value }))}>
                 <option value="pass">Pass</option><option value="conditional_pass">Conditional Pass</option><option value="fail">Fail</option>
               </select>
+            </div>
+            <div className="field"><label>Photo{qcForm.result === "fail" ? " (required on Fail)" : ""}</label>
+              <input type="file" accept="image/*" onChange={(e) => setQcForm((f) => ({ ...f, photoFile: e.target.files?.[0] || null }))} />
             </div>
             <label className="sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <input type="checkbox" checked={qcForm.reworkRequired} onChange={(e) => setQcForm((f) => ({ ...f, reworkRequired: e.target.checked }))} /> Rework Required
@@ -312,6 +390,55 @@ function JobCardDetail({ job, factoryPeople, onChanged }) {
               {reworkRecords.map((rw) => <ReworkRow key={rw.id} rw={rw} onClose={handleCloseRework} />)}
             </>
           )}
+
+          <h3>Clarification / Revision</h3>
+          {clarifications.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              {clarifications.map((c) => (
+                <div key={c.id} className="card" style={{ marginBottom: 6 }}>
+                  <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+                    <span>{c.reason}{c.related_reference ? ` (${c.related_reference})` : ""}</span>
+                    <span className={`badge ${c.status === "resolved" ? "VERIFIED" : c.status === "rejected" ? "RETURNED" : "ASSIGNED"}`}>{c.status}</span>
+                  </div>
+                  <div className="sub">Raised {new Date(c.created_at).toLocaleDateString()}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleRequestClarification} className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
+            <div className="field" style={{ gridColumn: "1 / -1" }}><label>Reason (required)</label>
+              <input value={clarForm.reason} onChange={(e) => setClarForm((f) => ({ ...f, reason: e.target.value }))} />
+            </div>
+            <div className="field"><label>Related Drawing/Material</label>
+              <input value={clarForm.relatedReference} onChange={(e) => setClarForm((f) => ({ ...f, relatedReference: e.target.value }))} />
+            </div>
+            <div className="field"><label>Proof/Photo</label>
+              <input type="file" onChange={(e) => setClarForm((f) => ({ ...f, proofFile: e.target.files?.[0] || null }))} />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={savingClar}>{savingClar ? "Sending…" : "Request Clarification"}</button>
+          </form>
+
+          <h3>Completion Handover</h3>
+          {job.completed_at ? (
+            <div className="sub">
+              Submitted {new Date(job.completed_at).toLocaleDateString()} — qty {job.actual_completed_quantity}.{" "}
+              {job.final_closed_at ? "Closed (Interior confirmed)." : job.interior_issue_raised ? "Interior raised an issue — reopened." : "Awaiting Interior confirmation."}
+            </div>
+          ) : (
+            <form onSubmit={handleSubmitCompletion} className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
+              <div className="field"><label>Actual Completed Quantity</label>
+                <input type="number" value={completionForm.quantity} onChange={(e) => setCompletionForm((f) => ({ ...f, quantity: e.target.value }))} />
+              </div>
+              <div className="field"><label>Completion Photos</label>
+                <input type="file" multiple onChange={(e) => setCompletionForm((f) => ({ ...f, photoFiles: Array.from(e.target.files || []) }))} />
+              </div>
+              <div className="field" style={{ gridColumn: "1 / -1" }}><label>Notes</label>
+                <input value={completionForm.notes} onChange={(e) => setCompletionForm((f) => ({ ...f, notes: e.target.value }))} />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={savingCompletion}>{savingCompletion ? "Submitting…" : "Submit Completion"}</button>
+              <div className="sub" style={{ gridColumn: "1 / -1" }}>Requires a Final QC Pass or Conditional Pass recorded above first (QC Stage = Final).</div>
+            </form>
+          )}
         </>
       )}
     </div>
@@ -321,11 +448,14 @@ function JobCardDetail({ job, factoryPeople, onChanged }) {
 function ReworkRow({ rw, onClose }) {
   const [recheckResult, setRecheckResult] = useState(rw.recheck_result || "");
   const [correctiveAction, setCorrectiveAction] = useState(rw.corrective_action || "");
+  const [afterPhotoFile, setAfterPhotoFile] = useState(null);
   return (
     <div className="card" style={{ marginBottom: 6 }}>
       <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
         <span style={{ fontWeight: 700 }}>{rw.rework_number}</span>
         <span className={`badge ${rw.is_closed ? "VERIFIED" : "RETURNED"}`}>{rw.is_closed ? "Closed" : "Open"}</span>
+        {rw.before_photos?.length > 0 && <span className="sub">📷 before: {rw.before_photos.length}</span>}
+        {rw.after_photos?.length > 0 && <span className="sub">📷 after: {rw.after_photos.length}</span>}
       </div>
       <div className="sub">{rw.defect_details}</div>
       {rw.is_closed ? (
@@ -334,7 +464,8 @@ function ReworkRow({ rw, onClose }) {
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", marginTop: 6 }}>
           <div className="field"><label>Recheck Result</label><input value={recheckResult} onChange={(e) => setRecheckResult(e.target.value)} /></div>
           <div className="field"><label>Corrective Action</label><input value={correctiveAction} onChange={(e) => setCorrectiveAction(e.target.value)} /></div>
-          <button type="button" className="btn btn-primary" onClick={() => onClose(rw.id, recheckResult, correctiveAction)}>Close Rework</button>
+          <div className="field"><label>After Photo (required)</label><input type="file" accept="image/*" onChange={(e) => setAfterPhotoFile(e.target.files?.[0] || null)} /></div>
+          <button type="button" className="btn btn-primary" onClick={() => onClose(rw.id, recheckResult, correctiveAction, afterPhotoFile)}>Close Rework</button>
         </div>
       )}
     </div>

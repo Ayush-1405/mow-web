@@ -93,15 +93,17 @@ export async function subscribeToPush(supabase) {
       });
     }
     const json = subscription.toJSON();
-    await supabase.from("push_subscriptions").upsert(
-      {
-        endpoint: json.endpoint,
-        p256dh: json.keys?.p256dh,
-        auth: json.keys?.auth,
-        user_agent: navigator.userAgent,
-      },
-      { onConflict: "endpoint" },
-    );
+    // Routed through an RPC (not a raw upsert) so it can safely reassign a
+    // shared device's subscription to whoever is currently logged in --
+    // push_subscriptions.endpoint is unique per browser/origin regardless
+    // of which staff account subscribed it first, and RLS correctly hides
+    // another user's existing row from a plain client-side upsert.
+    await supabase.rpc("push_upsert_subscription", {
+      p_endpoint: json.endpoint,
+      p_p256dh: json.keys?.p256dh,
+      p_auth: json.keys?.auth,
+      p_user_agent: navigator.userAgent,
+    });
   } catch {
     // Never block app boot on a push-subscribe failure (e.g. the user
     // dismissed the browser's own subscribe prompt).

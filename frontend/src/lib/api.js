@@ -16,12 +16,20 @@ const FUNCTIONS_URL = `${SUPABASE_URL_BASE}/functions/v1`;
 // the file itself is a perfectly normal photo. Fall back to the file
 // extension only when the browser's own reported type is missing/wrong;
 // a genuinely unsupported file still fails server-side exactly as before.
+// CAD files (.dwg/.dxf) almost always report an empty file.type on Windows
+// — there is no registered browser MIME type for them — so without this
+// fallback every DWG/DXF attachment was detected as "unsupported" and
+// rejected before the upload ever reached the server, even though the
+// server (storage bucket allowed_mime_types, staff-file-url's
+// MIME_WHITELIST, and staff_record_attachment()) already fully supports a
+// 'drawing' file_type for exactly these MIME types.
 const EXTENSION_MIME_FALLBACK = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
   heic: "image/heic", heif: "image/heif",
+  dwg: "application/acad", dxf: "application/dxf",
 };
 export function resolveMimeType(file) {
-  if (file.type && file.type !== "image/jpg") return file.type;
+  if (file.type && file.type !== "image/jpg" && file.type !== "application/octet-stream") return file.type;
   const ext = (file.name.split(".").pop() || "").toLowerCase();
   return EXTENSION_MIME_FALLBACK[ext] || file.type || "application/octet-stream";
 }

@@ -1483,18 +1483,378 @@ export async function factoryRecordQualityCheck(jobId, checklist, result, extra 
     p_drawing_matched: !!checklist.drawing, p_quantity_checked: !!checklist.quantity,
     p_result: result, p_defect_reason: extra.defectReason || null,
     p_rework_required: !!extra.reworkRequired, p_assigned_rework_person: extra.assignedReworkPerson || null,
-    p_recheck_date: extra.recheckDate || null,
+    p_recheck_date: extra.recheckDate || null, p_qc_stage: extra.qcStage || "final", p_photos: extra.photos || null,
   });
+}
+
+// ---------- factory cross-job boards (WIP Stages / In-process QC / Final QC / Rework / Rejection cards) ----------
+export async function listAllProductionStageUpdates() {
+  return supabase.from("production_stage_updates")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("updated_at", { ascending: false }).limit(500);
+}
+
+export async function listAllFactoryQualityChecks(qcStage) {
+  let q = supabase.from("factory_quality_checks")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("created_at", { ascending: false }).limit(500);
+  if (qcStage) q = q.eq("qc_stage", qcStage);
+  return q;
+}
+
+export async function listAllFactoryReworkRecords() {
+  return supabase.from("factory_rework_records")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("created_at", { ascending: false }).limit(500);
+}
+
+export async function listAllFactoryRejectionRecords() {
+  return supabase.from("factory_rejection_records")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("rejected_at", { ascending: false }).limit(500);
+}
+
+export async function factoryRecordRejection(jobId, rejectedQuantity, reason, extra = {}) {
+  return supabase.rpc("factory_record_rejection", {
+    p_job_id: jobId, p_rejected_quantity: rejectedQuantity, p_reason: reason,
+    p_responsible_stage: extra.responsibleStage || null, p_disposition: extra.disposition || "scrap",
+    p_photos: extra.photos || null, p_notes: extra.notes || null, p_quality_check_id: extra.qualityCheckId || null,
+  });
+}
+
+// ---------- factory Phase 2: Production Planning / BOM / Cutting Lists / Wastage / Finished Goods / Packing / Costing / Productivity ----------
+export async function listAllFactoryProductionPlans() {
+  return supabase.from("factory_production_plans")
+    .select("*, projects(project_code, customer), inhouse_production_requests(job_order_number)")
+    .order("created_at", { ascending: false }).limit(500);
+}
+
+export async function factorySaveProductionPlan(planId, fields) {
+  return supabase.rpc("factory_save_production_plan", {
+    p_plan_id: planId || null, p_job_id: fields.jobId || null, p_project_id: fields.projectId || null,
+    p_client: fields.client || null, p_product_item: fields.productItem, p_quantity: fields.quantity || null,
+    p_priority: fields.priority || null, p_planned_start_date: fields.plannedStartDate || null,
+    p_planned_completion_date: fields.plannedCompletionDate || null, p_production_sequence: fields.productionSequence || null,
+    p_assigned_team: fields.assignedTeam || null, p_shift: fields.shift || null, p_machine_requirement: fields.machineRequirement || null,
+    p_drawing_status: fields.drawingStatus || null, p_material_availability_status: fields.materialAvailabilityStatus || null,
+    p_notes: fields.notes || null,
+  });
+}
+
+export async function factoryUpdateProductionPlanStatus(planId, status, reason) {
+  return supabase.rpc("factory_update_production_plan_status", { p_plan_id: planId, p_status: status, p_reason: reason || null });
+}
+
+export async function listAllFactoryBoms() {
+  return supabase.from("factory_boms")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("created_at", { ascending: false }).limit(500);
+}
+
+export async function listFactoryBomItems(bomId) {
+  return supabase.rpc("factory_list_bom_items", { p_bom_id: bomId });
+}
+
+export async function factorySaveBom(jobId, bomId, items) {
+  return supabase.rpc("factory_save_bom", { p_job_id: jobId, p_bom_id: bomId || null, p_items: items });
+}
+
+export async function factorySubmitBom(bomId) {
+  return supabase.rpc("factory_submit_bom", { p_bom_id: bomId });
+}
+
+export async function factoryDecideBom(bomId, decision, reason) {
+  return supabase.rpc("factory_decide_bom", { p_bom_id: bomId, p_decision: decision, p_reason: reason || null });
+}
+
+export async function listAllFactoryCuttingLists() {
+  return supabase.from("factory_cutting_lists")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("created_at", { ascending: false }).limit(500);
+}
+
+export async function listFactoryCuttingListItems(listId) {
+  return supabase.from("factory_cutting_list_items").select("*").eq("cutting_list_id", listId);
+}
+
+export async function factorySaveCuttingList(jobId, drawingReference, items) {
+  return supabase.rpc("factory_save_cutting_list", { p_job_id: jobId, p_drawing_reference: drawingReference || null, p_items: items });
+}
+
+export async function factoryCopyCuttingListAsRevision(listId) {
+  return supabase.rpc("factory_copy_cutting_list_as_revision", { p_list_id: listId });
+}
+
+export async function listAllFactoryWastageRecords() {
+  return supabase.from("factory_wastage_records")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("created_at", { ascending: false }).limit(500);
+}
+
+export async function factoryRecordWastage(jobId, materialName, wastageQuantity, reason, extra = {}) {
+  return supabase.rpc("factory_record_wastage", {
+    p_job_id: jobId, p_material_name: materialName, p_wastage_quantity: wastageQuantity, p_reason: reason,
+    p_process_stage: extra.processStage || null, p_issued_quantity: extra.issuedQuantity || null,
+    p_used_quantity: extra.usedQuantity || null, p_returned_quantity: extra.returnedQuantity || null,
+    p_reusable: !!extra.reusable, p_photos: extra.photos || null, p_notes: extra.notes || null,
+  });
+}
+
+export async function listAllFactoryFinishedGoods() {
+  return supabase.from("factory_finished_goods")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("created_at", { ascending: false }).limit(500);
+}
+
+export async function factoryRecordFinishedGoods(jobId, completedQuantity, extra = {}) {
+  return supabase.rpc("factory_record_finished_goods", {
+    p_job_id: jobId, p_completed_quantity: completedQuantity, p_storage_location: extra.storageLocation || null,
+    p_barcode: extra.barcode || null, p_photos: extra.photos || null, p_notes: extra.notes || null,
+  });
+}
+
+export async function listAllFactoryPackingRecords() {
+  return supabase.from("factory_packing_records")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("created_at", { ascending: false }).limit(500);
+}
+
+export async function factorySavePacking(jobId, packingId, fields) {
+  return supabase.rpc("factory_save_packing", {
+    p_job_id: jobId, p_packing_id: packingId || null, p_finished_goods_id: fields.finishedGoodsId || null,
+    p_packed_quantity: fields.packedQuantity || null, p_package_count: fields.packageCount || null,
+    p_package_dimensions: fields.packageDimensions || null, p_package_weight: fields.packageWeight || null,
+    p_packing_material: fields.packingMaterial || null, p_checklist: fields.checklist || null, p_barcode: fields.barcode || null,
+    p_photos: fields.photos || null, p_status: fields.status || "Pending", p_notes: fields.notes || null,
+  });
+}
+
+export async function getFactoryProductCosting(jobId) {
+  return supabase.from("factory_product_costing").select("*").eq("job_id", jobId).maybeSingle();
+}
+
+export async function factorySaveProductCosting(jobId, fields) {
+  return supabase.rpc("factory_save_product_costing", {
+    p_job_id: jobId, p_material_cost: fields.materialCost || 0, p_hardware_cost: fields.hardwareCost || 0,
+    p_labour_cost: fields.labourCost || 0, p_machine_cost: fields.machineCost || 0, p_outsource_cost: fields.outsourceCost || 0,
+    p_packing_cost: fields.packingCost || 0, p_transport_cost: fields.transportCost || 0, p_other_cost: fields.otherCost || 0,
+    p_estimated_cost: fields.estimatedCost || null, p_notes: fields.notes || null,
+  });
+}
+
+export async function factoryWorkerProductivity(from, to) {
+  return supabase.rpc("factory_worker_productivity", { p_from: from || null, p_to: to || null });
+}
+
+export async function factoryShiftProductivity(from, to) {
+  return supabase.rpc("factory_shift_productivity", { p_from: from || null, p_to: to || null });
+}
+
+export async function factoryProductTimeTracking(jobId) {
+  return supabase.rpc("factory_product_time_tracking", { p_job_id: jobId || null });
+}
+
+// ---------- factory Phase 3: Materials/Stock/Issue, Machines, Transfer, Inventory Costing, Drawings ----------
+export async function listFactoryMaterials() {
+  return supabase.from("factory_materials").select("*").eq("is_active", true).order("material_name");
+}
+
+export async function factoryUpsertMaterial(materialId, fields) {
+  return supabase.rpc("factory_upsert_material", {
+    p_material_id: materialId || null, p_material_code: fields.materialCode, p_material_name: fields.materialName,
+    p_category: fields.category || null, p_unit: fields.unit || null, p_reorder_level: fields.reorderLevel || null,
+  });
+}
+
+export async function listFactoryLocationsAll() {
+  return supabase.from("factory_locations").select("*").eq("active", true).order("name");
+}
+
+export async function listFactoryMaterialStock() {
+  return supabase.from("factory_material_stock").select("*, factory_materials(material_code, material_name, category, unit, reorder_level), factory_locations(name)").order("updated_at", { ascending: false });
+}
+
+export async function listFactoryMaterialTransactions(materialId) {
+  let q = supabase.from("factory_material_transactions")
+    .select("*, factory_materials(material_code, material_name), factory_locations(name), inhouse_production_requests(job_order_number)")
+    .order("performed_at", { ascending: false }).limit(500);
+  if (materialId) q = q.eq("material_id", materialId);
+  return q;
+}
+
+export async function factoryReceiveMaterial(materialId, locationId, quantity, referenceNumber, notes) {
+  return supabase.rpc("factory_receive_material", {
+    p_material_id: materialId, p_location_id: locationId, p_quantity: quantity,
+    p_reference_number: referenceNumber || null, p_notes: notes || null,
+  });
+}
+
+export async function factoryIssueMaterial(materialId, locationId, jobId, quantity, notes) {
+  return supabase.rpc("factory_issue_material", { p_material_id: materialId, p_location_id: locationId, p_job_id: jobId, p_quantity: quantity, p_notes: notes || null });
+}
+
+export async function factoryReturnMaterial(materialId, locationId, jobId, quantity, notes) {
+  return supabase.rpc("factory_return_material", { p_material_id: materialId, p_location_id: locationId, p_job_id: jobId, p_quantity: quantity, p_notes: notes || null });
+}
+
+export async function factoryReserveMaterial(materialId, locationId, jobId, quantity) {
+  return supabase.rpc("factory_reserve_material", { p_material_id: materialId, p_location_id: locationId, p_job_id: jobId, p_quantity: quantity });
+}
+
+export async function factoryReleaseReservation(materialId, locationId, jobId, quantity) {
+  return supabase.rpc("factory_release_reservation", { p_material_id: materialId, p_location_id: locationId, p_job_id: jobId, p_quantity: quantity });
+}
+
+export async function factoryInventoryCosting(from, to) {
+  return supabase.rpc("factory_inventory_costing", { p_from: from || null, p_to: to || null });
+}
+
+export async function listFactoryMachines() {
+  return supabase.from("factory_machines").select("*, factory_locations(name)").order("machine_name");
+}
+
+export async function factoryUpsertMachine(machineId, fields) {
+  return supabase.rpc("factory_upsert_machine", {
+    p_machine_id: machineId || null, p_machine_code: fields.machineCode, p_machine_name: fields.machineName,
+    p_machine_type: fields.machineType || null, p_location_id: fields.locationId || null,
+  });
+}
+
+export async function listFactoryMachineLogs(machineId) {
+  let q = supabase.from("factory_machine_logs")
+    .select("*, factory_machines(machine_code, machine_name), inhouse_production_requests(job_order_number), user_profiles!factory_machine_logs_operator_id_fkey(full_name)")
+    .order("start_time", { ascending: false }).limit(500);
+  if (machineId) q = q.eq("machine_id", machineId);
+  return q;
+}
+
+export async function factoryStartMachineJob(machineId, jobId, process, shift, plannedQuantity) {
+  return supabase.rpc("factory_start_machine_job", { p_machine_id: machineId, p_job_id: jobId || null, p_process: process || null, p_shift: shift || null, p_planned_quantity: plannedQuantity || null });
+}
+
+export async function factoryStopMachineJob(logId, fields) {
+  return supabase.rpc("factory_stop_machine_job", {
+    p_log_id: logId, p_processed_quantity: fields.processedQuantity || null, p_accepted_quantity: fields.acceptedQuantity || null,
+    p_rejected_quantity: fields.rejectedQuantity || null, p_downtime_minutes: fields.downtimeMinutes || null,
+    p_downtime_reason: fields.downtimeReason || null, p_breakdown_photos: fields.breakdownPhotos || null,
+    p_notes: fields.notes || null, p_new_machine_status: fields.newMachineStatus || "idle",
+  });
+}
+
+export async function listAllFactoryTransfers() {
+  return supabase.from("factory_transfers").select("*, projects(project_code, customer), inhouse_production_requests(job_order_number)").order("created_at", { ascending: false }).limit(500);
+}
+
+export async function listFactoryTransferItems(transferId) {
+  return supabase.from("factory_transfer_items").select("*, factory_finished_goods(fg_number)").eq("transfer_id", transferId);
+}
+
+export async function factoryCreateTransfer(fields, items) {
+  return supabase.rpc("factory_create_transfer", {
+    p_from_location_id: fields.fromLocationId || null, p_to_type: fields.toType, p_to_location_id: fields.toLocationId || null,
+    p_to_description: fields.toDescription || null, p_job_id: fields.jobId || null, p_project_id: fields.projectId || null,
+    p_vehicle_number: fields.vehicleNumber || null, p_transporter: fields.transporter || null, p_driver_contact: fields.driverContact || null,
+    p_dispatch_date: fields.dispatchDate || null, p_expected_receipt_date: fields.expectedReceiptDate || null, p_items: items,
+  });
+}
+
+export async function factoryUpdateTransferStatus(transferId, status, extra = {}) {
+  return supabase.rpc("factory_update_transfer_status", {
+    p_transfer_id: transferId, p_status: status, p_dispatch_photos: extra.dispatchPhotos || null,
+    p_receipt_photos: extra.receiptPhotos || null, p_pod_path: extra.podPath || null, p_damage_shortage_notes: extra.damageShortageNotes || null,
+  });
+}
+
+export async function listAllFactoryDrawings() {
+  return supabase.from("factory_drawings")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("uploaded_at", { ascending: false }).limit(500);
+}
+
+export async function factoryUploadDrawing(jobId, category, title, storagePath, extra = {}) {
+  return supabase.rpc("factory_upload_drawing", {
+    p_job_id: jobId, p_category: category, p_title: title, p_storage_path: storagePath,
+    p_custom_category_name: extra.customCategoryName || null, p_revision_reason: extra.revisionReason || null,
+    p_parent_drawing_id: extra.parentDrawingId || null,
+  });
+}
+
+export async function factoryDecideDrawing(drawingId, decision, notes) {
+  return supabase.rpc("factory_decide_drawing", { p_drawing_id: drawingId, p_decision: decision, p_notes: notes || null });
+}
+
+export async function factoryIssueDrawing(drawingId) {
+  return supabase.rpc("factory_issue_drawing", { p_drawing_id: drawingId });
 }
 
 export async function listFactoryReworkRecords(jobId) {
   return supabase.from("factory_rework_records").select("*").eq("job_id", jobId).order("created_at", { ascending: false });
 }
 
-export async function factoryCloseRework(reworkId, recheckResult, correctiveAction) {
+export async function factoryCloseRework(reworkId, recheckResult, correctiveAction, afterPhotos) {
   return supabase.rpc("factory_close_rework", {
     p_rework_id: reworkId, p_recheck_result: recheckResult, p_corrective_action: correctiveAction || null,
+    p_after_photos: afterPhotos || null,
   });
+}
+
+// ---------- factory <-> interior clarification / revision ----------
+// Reuses working_drawing_attachments (via uploadWorkingDrawingAttachment)
+// for the proof/revision document itself -- storage_path is what these
+// RPCs actually store, not a new attachment table.
+export async function uploadFactoryAttachment({ projectId, module, relatedRecordId, file, fileCategory, description, uploadedBy }) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-140);
+  const path = `projects/${projectId}/factory/${module}/${relatedRecordId || "general"}/${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await supabase.storage.from("interior-attachments").upload(path, file);
+  if (uploadError) return { data: null, error: uploadError };
+  const { data, error } = await supabase.from("working_drawing_attachments").insert({
+    project_id: projectId, area_id: null, module, related_record_id: relatedRecordId || null,
+    file_category: fileCategory || "Other", file_name: file.name, original_file_name: file.name,
+    storage_path: path, file_type: file.type, file_size: file.size, description: description || null, uploaded_by: uploadedBy || null,
+  }).select().single();
+  return { data, error, path };
+}
+
+export async function listJobClarifications(jobId) {
+  return supabase.from("factory_clarification_requests").select("*").eq("job_id", jobId).order("created_at", { ascending: false });
+}
+
+export async function listClarificationRevisions(clarificationId) {
+  return supabase.from("factory_clarification_revisions").select("*").eq("clarification_id", clarificationId).order("revision_number", { ascending: true });
+}
+
+export async function factoryRequestClarification(jobId, reason, relatedReference, proofAttachmentPath) {
+  return supabase.rpc("factory_request_clarification", {
+    p_job_id: jobId, p_reason: reason, p_related_reference: relatedReference || null, p_proof_attachment_path: proofAttachmentPath || null,
+  });
+}
+
+export async function interiorUploadClarificationRevision(clarificationId, documentPath, notes) {
+  return supabase.rpc("interior_upload_clarification_revision", {
+    p_clarification_id: clarificationId, p_document_path: documentPath, p_notes: notes || null,
+  });
+}
+
+export async function factoryDecideClarificationRevision(revisionId, decision, notes) {
+  return supabase.rpc("factory_decide_clarification_revision", {
+    p_revision_id: revisionId, p_decision: decision, p_notes: notes || null,
+  });
+}
+
+// ---------- factory completion handover ----------
+export async function factorySubmitCompletion(jobId, actualCompletedQuantity, completionPhotos, completionNotes) {
+  return supabase.rpc("factory_submit_completion", {
+    p_job_id: jobId, p_actual_completed_quantity: actualCompletedQuantity,
+    p_completion_photos: completionPhotos || null, p_completion_notes: completionNotes || null,
+  });
+}
+
+export async function interiorConfirmCompletion(jobId, notes) {
+  return supabase.rpc("interior_confirm_completion", { p_job_id: jobId, p_notes: notes || null });
+}
+
+export async function interiorRaiseCompletionIssue(jobId, issueNotes) {
+  return supabase.rpc("interior_raise_completion_issue", { p_job_id: jobId, p_issue_notes: issueNotes });
 }
 
 // ---------- outsource workflow ----------

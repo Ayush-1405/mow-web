@@ -55,6 +55,27 @@ const InteriorDailyUpdates = lazy(() => import("./screens/interior/InteriorDaily
 const InteriorMaterials = lazy(() => import("./screens/interior/InteriorMaterials.jsx"));
 const InteriorPurchaseManagement = lazy(() => import("./screens/interior/InteriorPurchaseManagement.jsx"));
 const FactoryJobOrders = lazy(() => import("./screens/factory/FactoryJobOrders.jsx"));
+const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
+const FactoryInProcessQC = lazy(() => import("./screens/factory/FactoryInProcessQC.jsx"));
+const FactoryFinalQC = lazy(() => import("./screens/factory/FactoryFinalQC.jsx"));
+const FactoryRework = lazy(() => import("./screens/factory/FactoryRework.jsx"));
+const FactoryRejection = lazy(() => import("./screens/factory/FactoryRejection.jsx"));
+const FactoryProductionPlanning = lazy(() => import("./screens/factory/FactoryProductionPlanning.jsx"));
+const FactoryBom = lazy(() => import("./screens/factory/FactoryBom.jsx"));
+const FactoryCuttingLists = lazy(() => import("./screens/factory/FactoryCuttingLists.jsx"));
+const FactoryWorkerProductivity = lazy(() => import("./screens/factory/FactoryWorkerProductivity.jsx"));
+const FactoryShiftProductivity = lazy(() => import("./screens/factory/FactoryShiftProductivity.jsx"));
+const FactoryWastage = lazy(() => import("./screens/factory/FactoryWastage.jsx"));
+const FactoryFinishedGoods = lazy(() => import("./screens/factory/FactoryFinishedGoods.jsx"));
+const FactoryPacking = lazy(() => import("./screens/factory/FactoryPacking.jsx"));
+const FactoryProductTimeTracking = lazy(() => import("./screens/factory/FactoryProductTimeTracking.jsx"));
+const FactoryProductCosting = lazy(() => import("./screens/factory/FactoryProductCosting.jsx"));
+const FactoryRawMaterialAvailability = lazy(() => import("./screens/factory/FactoryRawMaterialAvailability.jsx"));
+const FactoryMaterialIssue = lazy(() => import("./screens/factory/FactoryMaterialIssue.jsx"));
+const FactoryMachineTracking = lazy(() => import("./screens/factory/FactoryMachineTracking.jsx"));
+const FactoryTransfer = lazy(() => import("./screens/factory/FactoryTransfer.jsx"));
+const FactoryDrawings = lazy(() => import("./screens/factory/FactoryDrawings.jsx"));
+const FactoryInventoryCosting = lazy(() => import("./screens/factory/FactoryInventoryCosting.jsx"));
 const InteriorTasks = lazy(() => import("./screens/interior/InteriorTasks.jsx"));
 const InteriorRequests = lazy(() => import("./screens/interior/InteriorRequests.jsx"));
 const InteriorTimeline = lazy(() => import("./screens/interior/InteriorTimeline.jsx"));
@@ -619,7 +640,28 @@ export default function App() {
       <Route path="/inventory" element={deptPage("GODOWN_INV")} />
       <Route path="/dispatch" element={deptPage("DISPATCH")} />
       <Route path="/factory" element={deptPage("FACTORY")} />
-      <Route path="/factory/job-orders" element={deptModulePage("FACTORY", <FactoryJobOrders lang={lang} />)} />
+      <Route path="/factory/job-orders" element={deptModulePage("FACTORY", <FactoryJobOrders lang={lang} profile={profile} />)} />
+      <Route path="/factory/wip-stages" element={deptModulePage("FACTORY", <FactoryWipStages lang={lang} />)} />
+      <Route path="/factory/in-process-qc" element={deptModulePage("FACTORY", <FactoryInProcessQC lang={lang} profile={profile} />)} />
+      <Route path="/factory/final-qc" element={deptModulePage("FACTORY", <FactoryFinalQC lang={lang} profile={profile} />)} />
+      <Route path="/factory/rework" element={deptModulePage("FACTORY", <FactoryRework lang={lang} profile={profile} />)} />
+      <Route path="/factory/rejection" element={deptModulePage("FACTORY", <FactoryRejection lang={lang} profile={profile} />)} />
+      <Route path="/factory/production-planning" element={deptModulePage("FACTORY", <FactoryProductionPlanning lang={lang} />)} />
+      <Route path="/factory/bom" element={deptModulePage("FACTORY", <FactoryBom lang={lang} />)} />
+      <Route path="/factory/cutting-lists" element={deptModulePage("FACTORY", <FactoryCuttingLists lang={lang} />)} />
+      <Route path="/factory/worker-productivity" element={deptModulePage("FACTORY", <FactoryWorkerProductivity lang={lang} />)} />
+      <Route path="/factory/shift-productivity" element={deptModulePage("FACTORY", <FactoryShiftProductivity lang={lang} />)} />
+      <Route path="/factory/wastage" element={deptModulePage("FACTORY", <FactoryWastage lang={lang} />)} />
+      <Route path="/factory/finished-goods" element={deptModulePage("FACTORY", <FactoryFinishedGoods lang={lang} />)} />
+      <Route path="/factory/packing" element={deptModulePage("FACTORY", <FactoryPacking lang={lang} />)} />
+      <Route path="/factory/product-time-tracking" element={deptModulePage("FACTORY", <FactoryProductTimeTracking lang={lang} />)} />
+      <Route path="/factory/product-costing" element={deptModulePage("FACTORY", <FactoryProductCosting lang={lang} />)} />
+      <Route path="/factory/raw-material-availability" element={deptModulePage("FACTORY", <FactoryRawMaterialAvailability lang={lang} />)} />
+      <Route path="/factory/material-issue" element={deptModulePage("FACTORY", <FactoryMaterialIssue lang={lang} />)} />
+      <Route path="/factory/machine-tracking" element={deptModulePage("FACTORY", <FactoryMachineTracking lang={lang} profile={profile} />)} />
+      <Route path="/factory/transfer" element={deptModulePage("FACTORY", <FactoryTransfer lang={lang} profile={profile} />)} />
+      <Route path="/factory/drawings" element={deptModulePage("FACTORY", <FactoryDrawings lang={lang} profile={profile} />)} />
+      <Route path="/factory/inventory-costing" element={deptModulePage("FACTORY", <FactoryInventoryCosting lang={lang} />)} />
       <Route path="/product-rnd" element={deptPage("RND")} />
       <Route path="/hr-admin" element={deptPage("HR_ADMIN")} />
       <Route path="/accounts-finance" element={deptPage("ACCOUNTS")} />

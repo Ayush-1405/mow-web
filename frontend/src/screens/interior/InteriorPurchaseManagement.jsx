@@ -12,6 +12,8 @@ import {
   createPurchaseRequest, updatePurchaseRequest, archivePurchaseRequest,
   listPurchaseRequestItems, createPurchaseRequestItem, updatePurchaseRequestItem,
   getInhouseProductionRequest, submitToFactory, updateInhouseProductionStatus,
+  listJobClarifications, listClarificationRevisions, interiorUploadClarificationRevision,
+  uploadFactoryAttachment, interiorConfirmCompletion, interiorRaiseCompletionIssue,
   getOutsourceRequirement, upsertOutsourceRequirement,
   listVendorQuotations, createVendorQuotation, listPurchaseVendorSelections, selectPurchaseVendor,
   listPurchaseApprovals, decidePurchaseApproval,
@@ -504,6 +506,136 @@ function RequestPanel({ lang, projectId, request, items, people, profile, isElev
   );
 }
 
+// Clarifications raised by Factory + the Completion confirm/raise-issue gate
+// -- shown inside the existing "In-house Production Status" card, not a
+// separate page, since both are just more facts about the same job.
+function InhouseCompletionAndClarifications({ projectId, inhouse, profile, onChanged }) {
+  const [clarifications, setClarifications] = useState([]);
+  const [revisionsByClar, setRevisionsByClar] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [revisionFiles, setRevisionFiles] = useState({});
+  const [revisionNotes, setRevisionNotes] = useState({});
+  const [saving, setSaving] = useState(null);
+  const [issueNotes, setIssueNotes] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data: clars } = await listJobClarifications(inhouse.id);
+    const list = clars || [];
+    setClarifications(list);
+    const revMap = {};
+    await Promise.all(list.map(async (c) => {
+      const { data: revs } = await listClarificationRevisions(c.id);
+      revMap[c.id] = revs || [];
+    }));
+    setRevisionsByClar(revMap);
+    setLoading(false);
+  }, [inhouse.id]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => subscribeTable(`inhouse_${inhouse.id}_clar`, "factory_clarification_requests", `job_id=eq.${inhouse.id}`, load), [inhouse.id, load]);
+  useEffect(() => subscribeTable(`inhouse_${inhouse.id}_clarrev`, "factory_clarification_revisions", null, load), [inhouse.id, load]);
+
+  async function handleUploadRevision(clarId) {
+    const file = revisionFiles[clarId];
+    if (!file) { setMsg("Select a revised document first."); return; }
+    setSaving(clarId);
+    setMsg("");
+    const { path, error: uploadErr } = await uploadFactoryAttachment({
+      projectId, module: "factory_clarification_revision", relatedRecordId: clarId, file,
+      fileCategory: "Revised Document", uploadedBy: profile?.id,
+    });
+    if (uploadErr) { setSaving(null); setMsg(uploadErr.message); return; }
+    const { error } = await interiorUploadClarificationRevision(clarId, path, revisionNotes[clarId] || null);
+    setSaving(null);
+    if (error) { setMsg(error.message); return; }
+    setRevisionFiles((f) => ({ ...f, [clarId]: null }));
+    setRevisionNotes((n) => ({ ...n, [clarId]: "" }));
+    load();
+    onChanged();
+  }
+
+  async function handleConfirmCompletion() {
+    setSaving("confirm");
+    const { error } = await interiorConfirmCompletion(inhouse.id, null);
+    setSaving(null);
+    if (error) { setMsg(error.message); return; }
+    onChanged();
+  }
+
+  async function handleRaiseIssue() {
+    if (!issueNotes.trim()) { setMsg("Describe the issue before raising it."); return; }
+    setSaving("issue");
+    const { error } = await interiorRaiseCompletionIssue(inhouse.id, issueNotes);
+    setSaving(null);
+    if (error) { setMsg(error.message); return; }
+    setIssueNotes("");
+    onChanged();
+  }
+
+  const openClarifications = clarifications.filter((c) => c.status === "open" || c.status === "rejected");
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      {msg && <div className="msg error">{msg}</div>}
+
+      {inhouse.completed_at && !inhouse.final_closed_at && (
+        <div className="card" style={{ marginTop: 8, borderColor: "var(--gold, #b45309)" }}>
+          <h3 style={{ marginTop: 0 }}>Factory Completion — Awaiting Your Confirmation</h3>
+          <div className="sub">Completed {new Date(inhouse.completed_at).toLocaleDateString()} — actual qty {inhouse.actual_completed_quantity}.</div>
+          {inhouse.completion_notes && <div className="sub">Notes: {inhouse.completion_notes}</div>}
+          <div className="btn-row" style={{ marginTop: 8 }}>
+            <button type="button" className="btn btn-primary" disabled={saving === "confirm"} onClick={handleConfirmCompletion}>
+              {saving === "confirm" ? "Confirming…" : "Confirm Completion"}
+            </button>
+          </div>
+          <div className="field" style={{ marginTop: 8 }}>
+            <label>Or raise an issue instead</label>
+            <input value={issueNotes} onChange={(e) => setIssueNotes(e.target.value)} placeholder="Describe the issue" />
+            <button type="button" className="btn btn-outline" style={{ marginTop: 6, width: "auto" }} disabled={saving === "issue"} onClick={handleRaiseIssue}>
+              {saving === "issue" ? "Raising…" : "Raise Issue"}
+            </button>
+          </div>
+        </div>
+      )}
+      {inhouse.final_closed_at && <div className="msg success" style={{ marginTop: 8 }}>Completion confirmed and closed on {new Date(inhouse.final_closed_at).toLocaleDateString()}.</div>}
+
+      {!loading && clarifications.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <h3>Factory Clarification Requests</h3>
+          {clarifications.map((c) => (
+            <div key={c.id} className="card" style={{ marginBottom: 6 }}>
+              <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+                <span>{c.reason}{c.related_reference ? ` (${c.related_reference})` : ""}</span>
+                <span className={`badge ${c.status === "resolved" ? "VERIFIED" : c.status === "rejected" ? "RETURNED" : "ASSIGNED"}`}>{c.status}</span>
+              </div>
+              {(revisionsByClar[c.id] || []).map((r) => (
+                <div key={r.id} className="sub" style={{ padding: "2px 0" }}>
+                  Rev {r.revision_number} ({new Date(r.uploaded_at).toLocaleDateString()}) — {r.decision}{r.decision_notes ? `: ${r.decision_notes}` : ""}
+                </div>
+              ))}
+              {openClarifications.includes(c) && (
+                <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", marginTop: 6 }}>
+                  <div className="field"><label>Upload Revised Document</label>
+                    <input type="file" onChange={(e) => setRevisionFiles((f) => ({ ...f, [c.id]: e.target.files?.[0] || null }))} />
+                  </div>
+                  <div className="field"><label>Notes</label>
+                    <input value={revisionNotes[c.id] || ""} onChange={(e) => setRevisionNotes((n) => ({ ...n, [c.id]: e.target.value }))} />
+                  </div>
+                  <button type="button" className="btn btn-primary" disabled={saving === c.id} onClick={() => handleUploadRevision(c.id)}>
+                    {saving === c.id ? "Uploading…" : "Upload Revision"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // =======================================================================
 // In-house workflow
 // =======================================================================
@@ -566,6 +698,7 @@ function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocat
           <div className="card dept-meta-tile"><div className="label">Production Stage</div><div className="value">{inhouse.current_stage || "—"} ({inhouse.completion_percentage ?? 0}%)</div></div>
         </div>
         {inhouse.linked_task_id && <div className="sub" style={{ marginTop: 4 }}>Linked task: open Today's Tasks or Bridges to view the full conversation and history for this job.</div>}
+        <InhouseCompletionAndClarifications projectId={projectId} inhouse={inhouse} profile={profile} onChanged={onChanged} />
         <div className="field" style={{ marginTop: 8 }}>
           <label>Update Status</label>
           <select value={inhouse.status} onChange={(e) => handleStatusChange(e.target.value)}>
