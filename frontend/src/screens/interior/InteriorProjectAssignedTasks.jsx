@@ -107,7 +107,7 @@ export default function InteriorProjectAssignedTasks({ lang, lockedProjectId }) 
     assigned: statCount("ASSIGNED"),
     accepted: statCount("ACCEPTED"),
     inProgress: statCount("IN_PROGRESS"),
-    partiallyCompleted: statCount("PARTIALLY_COMPLETED"),
+    onHold: statCount("ON_HOLD"),
     awaitingVerification: tasks.filter((tk) => statusById[tk.status_id]?.code === "COMPLETED").length,
     completed: tasks.filter((tk) => ["VERIFIED", "CLOSED"].includes(statusById[tk.status_id]?.code)).length,
     blocked: tasks.filter((tk) => tk.help_requested || (assigneesByTask[tk.id] || []).some((a) => a.individual_status === "BLOCKED")).length,
@@ -125,7 +125,7 @@ export default function InteriorProjectAssignedTasks({ lang, lockedProjectId }) 
         <div className="kpi-tile"><div className="num">{stats.assigned}</div><div className="label">{lang === "gu" ? "સોંપાયેલ" : "Assigned"}</div></div>
         <div className="kpi-tile"><div className="num">{stats.accepted}</div><div className="label">{t("accept", lang)}</div></div>
         <div className="kpi-tile"><div className="num">{stats.inProgress}</div><div className="label">{t("start", lang)}</div></div>
-        <div className="kpi-tile"><div className="num">{stats.partiallyCompleted}</div><div className="label">{lang === "gu" ? "આંશિક પૂર્ણ" : "Partially Completed"}</div></div>
+        <div className="kpi-tile"><div className="num">{stats.onHold}</div><div className="label">{t("onHoldReasonLabel", lang)}</div></div>
         <div className="kpi-tile"><div className="num">{stats.awaitingVerification}</div><div className="label">{t("siteTaskStatsAwaitingVerification", lang)}</div></div>
         <div className="kpi-tile"><div className="num">{stats.completed}</div><div className="label">{t("complete", lang)}</div></div>
         <div className="kpi-tile"><div className="num">{stats.blocked}</div><div className="label">{t("siteTaskStatsBlocked", lang)}</div></div>

@@ -389,6 +389,13 @@ textarea { min-height: 84px; resize: vertical; }
    their ACCEPTED/COMPLETED "destination" state, just lighter/unfinished. */
 .badge.PARTIALLY_ACCEPTED { background: #f0f6fc; color: #3d76ab; }
 .badge.PARTIALLY_COMPLETED { background: #f4eefb; color: #7d5bb5; }
+/* Shared-task lifecycle (mvp_pilot_shared_task_status_v2_60): a task any
+   one active assignee paused, and a task sent back to work after
+   completion/verification -- both are ongoing work, not a terminal state,
+   so they sit visually between RETURNED (warm/attention) and IN_PROGRESS
+   (active/green) rather than reusing either directly. */
+.badge.ON_HOLD { background: #fdf1e0; color: #a2642a; }
+.badge.REOPENED { background: #fdead2; color: var(--accent-dark); }
 /* Orange, reserved for "Revision Required" (Material Selection module) —
    the theme's own accent-dark, distinct from the ASSIGNED gold above. */
 .badge.REVISION { background: #fdead2; color: var(--accent-dark); }

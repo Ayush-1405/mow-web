@@ -30,13 +30,19 @@ export const TaskTimeline = React.memo(function TaskTimeline({ task, usersById, 
     value: userLabel(usersById, a.user_id),
     time: a.assigned_at,
   }));
+  // Shared-task lifecycle (mvp_pilot_shared_task_status_v2_60): each
+  // milestone now names WHICH active assignee actually performed it —
+  // any one of them, immediately shared by everyone — instead of a bare
+  // timestamp with no actor.
   const rows = [
     { label: t("createdBy", lang), value: userLabel(usersById, task.assigned_by), time: task.created_at },
     ...assigneeRows,
-    { label: t("acceptedAt", lang), value: null, time: task.accepted_at },
-    { label: t("startedAt", lang), value: null, time: task.started_at },
-    { label: t("completedAt", lang), value: null, time: task.completed_at },
+    { label: t("acceptedByLabel", lang), value: userLabel(usersById, task.accepted_by), time: task.accepted_at },
+    { label: t("startedByLabel", lang), value: userLabel(usersById, task.started_by), time: task.started_at },
+    { label: t("onHoldReasonLabel", lang), value: task.hold_reason ? `${userLabel(usersById, task.held_by)} — ${task.hold_reason}` : userLabel(usersById, task.held_by), time: task.held_at },
+    { label: t("completedByLabel", lang), value: userLabel(usersById, task.completed_by), time: task.completed_at },
     { label: t("verifiedAt", lang), value: userLabel(usersById, task.verified_by), time: task.verified_at },
+    { label: t("reopenReasonLabel", lang), value: task.reopen_reason ? `${userLabel(usersById, task.reopened_by)} — ${task.reopen_reason}` : userLabel(usersById, task.reopened_by), time: task.reopened_at },
     { label: t("closedAt", lang), value: userLabel(usersById, task.closed_by), time: task.closed_at },
   ].filter((r) => r.time);
 
@@ -70,15 +76,16 @@ export const TaskTimeline = React.memo(function TaskTimeline({ task, usersById, 
   );
 });
 
-// Second Assignee: "Assigned Team" section (spec §9) -- role, acceptance
-// status, individual work status, and timestamps per person, read straight
-// from their own staff_task_assignees row. Read-only display; status
-// changes happen via each person's own action buttons on the task card
+// Second Assignee: "Assigned Team" section -- who is on this shared task
+// and their role. mvp_pilot_shared_task_status_v2_60 moved the actual
+// lifecycle (accepted/started/completed by whom, and when) onto the task
+// itself, shown once in TaskTimeline above -- there is no more per-row
+// "Pending Acceptance"/"Partially Accepted" text here, since acceptance is
+// no longer a per-person thing to wait on. Read-only display; status
+// changes happen via the shared action buttons on the task card
 // (TodayTasks.jsx), never from here.
 export const AssignedTeamSection = React.memo(function AssignedTeamSection({ assignees, usersById, lang }) {
   if (!assignees || assignees.length === 0) return null;
-  const acceptanceLabel = (row) => (row.acceptance_status === "ACCEPTED" ? t("accept", lang) : row.acceptance_status === "REJECTED" ? t("rejectedStatusLabel", lang) : t("pendingAcceptanceLabel", lang));
-  const individualLabel = (row) => (row.individual_status === "BLOCKED" ? t("blockedStatusLabel", lang) : row.individual_status === "REJECTED" ? t("rejectedStatusLabel", lang) : row.individual_status);
   return (
     <div className="card" style={{ marginTop: 10 }}>
       <div className="section-title" style={{ fontSize: 14 }}>{t("assignedTeamLabel", lang)}</div>
@@ -86,11 +93,6 @@ export const AssignedTeamSection = React.memo(function AssignedTeamSection({ ass
         <div key={a.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0", flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>{userLabel(usersById, a.user_id)}</span>
           <span className="sub">{a.assignment_role === "primary" ? t("primaryAssigneeLabel", lang) : t("secondAssigneeShortLabel", lang)}</span>
-          <span className="sub">{t("acceptanceStatusLabel", lang)}: {acceptanceLabel(a)}</span>
-          <span className="sub">{t("individualStatusLabel", lang)}: {individualLabel(a)}</span>
-          {a.accepted_at && <span className="sub">{t("acceptedOnLabel", lang)}: {new Date(a.accepted_at).toLocaleString()}</span>}
-          {a.completed_at && <span className="sub">{t("completedOnLabel", lang)}: {new Date(a.completed_at).toLocaleString()}</span>}
-          {a.completion_note && <span className="sub">{t("completionNoteLabel", lang)}: {a.completion_note}</span>}
         </div>
       ))}
     </div>

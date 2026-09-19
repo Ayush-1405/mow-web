@@ -28,7 +28,7 @@ const today = () => kolkataDateStr();
 const tomorrow = () => addDaysToDateStr(kolkataDateStr(), 1);
 
 const CLOSED_STATUS_CODES = new Set(["COMPLETED", "VERIFIED", "CLOSED"]);
-const ACTIVE_MIDDLE_STATUS_CODES = new Set(["IN_PROGRESS", "ACCEPTED", "PARTIALLY_ACCEPTED", "PARTIALLY_COMPLETED"]);
+const ACTIVE_MIDDLE_STATUS_CODES = new Set(["IN_PROGRESS", "ACCEPTED", "ON_HOLD", "REOPENED", "PARTIALLY_ACCEPTED", "PARTIALLY_COMPLETED"]);
 const HISTORY_PAGE_SIZE = 25;
 const HISTORY_STORAGE_KEY = "interiorDailyUpdates.history.v1";
 

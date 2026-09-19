@@ -55,6 +55,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [busyId, setBusyId] = useState(null);
   const [returnReasonFor, setReturnReasonFor] = useState(null);
   const [returnReason, setReturnReason] = useState("");
+  const [holdReasonFor, setHoldReasonFor] = useState(null);
+  const [holdReason, setHoldReason] = useState("");
+  const [reopenReasonFor, setReopenReasonFor] = useState(null);
+  const [reopenReason, setReopenReason] = useState("");
   const [proofFor, setProofFor] = useState(null);
   const [detailsFor, setDetailsFor] = useState(null);
   const [reassignFor, setReassignFor] = useState(null);
@@ -360,6 +364,40 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
   }
 
+  async function submitHold(taskId) {
+    if (!holdReason.trim()) return;
+    setBusyId(taskId);
+    try {
+      const { error } = await supabase.rpc("staff_set_task_blocked", { p_task_id: taskId, p_blocked: true, p_note: holdReason.trim() });
+      if (error) throw error;
+      setHoldReasonFor(null);
+      setHoldReason("");
+      showToast("success", "Task put on hold / કાર્ય અટકાવાયું");
+      await load();
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function submitReopen(taskId) {
+    if (!reopenReason.trim()) return;
+    setBusyId(taskId);
+    try {
+      const { error } = await supabase.rpc("staff_reopen_task", { p_task_id: taskId, p_reason: reopenReason.trim() });
+      if (error) throw error;
+      setReopenReasonFor(null);
+      setReopenReason("");
+      showToast("success", "Task reopened / કાર્ય ફરીથી ખોલાયું");
+      await load();
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   // Matches exactly what staff_validate_task_transition's trigger checks
   // for each proof_types.code before it allows COMPLETED — the whole
   // point of this rewrite is that the upload actually satisfies the same
@@ -555,7 +593,6 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const status = statusOf(task.status_id);
     const statusCode = status?.code || "";
     const priority = priorityOf(task.priority_id);
-    const mine = task.current_owner_id === profile.id;
     const isAssignee = task.assigned_to === profile.id;
     const iAmVerifier = task.verifier_id === profile.id;
     const canManage = profile.isManagement || profile.isDeptHead;
@@ -575,25 +612,27 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const proofTypeCode = lookups.proofTypes?.find((pt) => pt.id === task.proof_type_id)?.code;
     const taskProject = task.project_id ? projectsById[task.project_id] : null;
 
-    // Second Assignee: staff_task_assignees rows for this task (RLS-
-    // scoped, same as the task itself). isMulti === false means this is
-    // an ordinary single-assignee task -- mine/isAssignee above (the
-    // shared scalar columns) remain the ENTIRE gating story for it,
-    // completely unchanged from before this feature existed. Only when
-    // isMulti is true do the *Mine booleans below take over, driven by
-    // the caller's own row instead of the shared columns (which, once
-    // there's a second person, are ambiguous as to whose "part" is done).
+    // Shared task lifecycle: staff_tasks.status_id is the single source of
+    // truth for EVERY assignee (single or multi) -- there is no more
+    // per-assignee acceptance/completion gate. Any active assignee (their
+    // own staff_task_assignees row, regardless of assignment_role) may
+    // Accept/Start/Complete/Hold/Resume once for the whole task; the
+    // server (staff_accept_task/staff_start_task/staff_complete_task/
+    // staff_set_task_blocked) re-validates all of this independently and
+    // returns a specific "already accepted/started/completed by X" error
+    // if two assignees act at the same time -- these booleans only decide
+    // what the button row looks like.
     const assignees = assigneesByTask[task.id] || [];
     const isMulti = assignees.length > 1;
     const myRow = assignees.find((a) => a.user_id === profile.id);
-    const canAcceptMine = !!myRow && myRow.acceptance_status !== "ACCEPTED" && myRow.individual_status !== "REJECTED";
-    const canStartMine = !!myRow && myRow.individual_status === "ACCEPTED";
-    const canCompleteMine = !!myRow && myRow.individual_status === "IN_PROGRESS";
-    const canReturnMine = !!myRow && !["COMPLETED", "REJECTED"].includes(myRow.individual_status);
-    const iAmBlockedMulti = myRow?.individual_status === "BLOCKED";
-    const canToggleBlockedMulti = !!myRow && ["IN_PROGRESS", "BLOCKED"].includes(myRow.individual_status);
-    const acceptanceLabel = (row) => (row.acceptance_status === "ACCEPTED" ? t("accept", lang) : row.acceptance_status === "REJECTED" ? t("rejectedStatusLabel", lang) : t("pendingAcceptanceLabel", lang));
-    const individualLabel = (row) => (row.individual_status === "BLOCKED" ? t("blockedStatusLabel", lang) : row.individual_status === "REJECTED" ? t("rejectedStatusLabel", lang) : row.individual_status);
+    const isSharedAssignee = !!myRow || isAssignee;
+    const canAccept = isSharedAssignee && ["ASSIGNED", "RETURNED", "REOPENED"].includes(statusCode);
+    const canStart = isSharedAssignee && ["ACCEPTED", "REOPENED"].includes(statusCode);
+    const canComplete = isSharedAssignee && statusCode === "IN_PROGRESS";
+    const canHold = isSharedAssignee && statusCode === "IN_PROGRESS";
+    const canResume = isSharedAssignee && statusCode === "ON_HOLD";
+    const canReturn = isSharedAssignee && ["ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD"].includes(statusCode);
+    const canReopen = statusCode === "COMPLETED" ? iAmVerifier : ["VERIFIED", "CLOSED"].includes(statusCode) && (canManage || iCreatedIt || iAmVerifier);
 
     return (
       <div className="task-card" id={`task-${task.id}`} key={task.id}>
@@ -620,12 +659,16 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           </div>
         )}
         <div className="task-meta" style={{ marginTop: 4, flexWrap: "wrap" }}>
+          {isMulti && <span className="badge ASSIGNED">{t("sharedTaskLabel", lang)}</span>}
           <span className="sub">{t("primaryAssigneeLabel", lang)}: {usersById[task.assigned_to]?.full_name || "—"}</span>
           {isMulti && assignees.filter((a) => a.user_id !== task.assigned_to).map((a) => (
-            <span key={a.id} className="sub">
-              {t("secondAssigneeFilterLabel", lang)}: {usersById[a.user_id]?.full_name || "—"} — {acceptanceLabel(a)}{a.individual_status !== "ASSIGNED" ? ` · ${individualLabel(a)}` : ""}
-            </span>
+            <span key={a.id} className="sub">{t("secondAssigneeFilterLabel", lang)}: {usersById[a.user_id]?.full_name || "—"}</span>
           ))}
+        </div>
+        <div className="task-meta" style={{ marginTop: 2, flexWrap: "wrap" }}>
+          {task.accepted_by && <span className="sub">{t("acceptedByLabel", lang)}: {usersById[task.accepted_by]?.full_name || "—"} — {new Date(task.accepted_at).toLocaleString()}</span>}
+          {task.started_by && <span className="sub">{t("startedByLabel", lang)}: {usersById[task.started_by]?.full_name || "—"} — {new Date(task.started_at).toLocaleString()}</span>}
+          {task.completed_by && <span className="sub">{t("completedByLabel", lang)}: {usersById[task.completed_by]?.full_name || "—"} — {new Date(task.completed_at).toLocaleString()}</span>}
         </div>
         {task.description && <div style={{ fontSize: 13, marginTop: 6 }}>{task.description}</div>}
         {task.requirement_text && (
@@ -654,58 +697,36 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
             {t("returnedReason", lang)}: {task.return_reason}
           </div>
         )}
+        {statusCode === "ON_HOLD" && task.hold_reason && (
+          <div className="msg info" style={{ marginTop: 8 }}>
+            {t("onHoldReasonLabel", lang)}: {task.hold_reason} — {usersById[task.held_by]?.full_name || "—"}
+          </div>
+        )}
+        {statusCode === "REOPENED" && task.reopen_reason && (
+          <div className="msg info" style={{ marginTop: 8 }}>
+            {t("reopenReasonLabel", lang)}: {task.reopen_reason} — {usersById[task.reopened_by]?.full_name || "—"}
+          </div>
+        )}
 
         <div className="btn-row">
-          {!isMulti && statusCode === "ASSIGNED" && isAssignee && (
-            <>
-              <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
-                {t("accept", lang)}
-              </button>
-              <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
-                {t("returnTask", lang)}
-              </button>
-            </>
-          )}
-          {!isMulti && statusCode === "RETURNED" && isAssignee && (
+          {/* Shared task lifecycle: any active assignee (isSharedAssignee)
+              sees exactly the same buttons regardless of assignment_role
+              or how many other people are on the task — the server is the
+              real gate (staff_accept_task/staff_start_task/etc. each
+              re-check the shared status_id and raise a specific "already
+              accepted/started/completed by X" error on a race), this is
+              only the matching UI. */}
+          {canAccept && (
             <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
               {t("accept", lang)}
             </button>
           )}
-          {!isMulti && statusCode === "ACCEPTED" && mine && (
-            <>
-              <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
-                {t("start", lang)}
-              </button>
-              <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
-                {t("returnTask", lang)}
-              </button>
-            </>
-          )}
-          {!isMulti && statusCode === "IN_PROGRESS" && mine && (
-            <button
-              className="btn btn-gold"
-              disabled={busy}
-              onClick={() => (proofTypeCode === "none" ? runAction("staff_complete_task", task.id) : setProofFor(task.id))}
-            >
-              {t("complete", lang)}
-            </button>
-          )}
-          {/* Second Assignee: each person's own buttons are gated on
-              THEIR OWN staff_task_assignees row, never on the other
-              assignee's — Employee A can never flip Employee B's status
-              from here since these RPCs only ever touch auth.uid()'s
-              own row (server-enforced, this is just the matching UI gate). */}
-          {isMulti && canAcceptMine && (
-            <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_accept_task", task.id)}>
-              {t("accept", lang)}
-            </button>
-          )}
-          {isMulti && canStartMine && (
+          {canStart && (
             <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
               {t("start", lang)}
             </button>
           )}
-          {isMulti && canCompleteMine && (
+          {canComplete && (
             <button
               className="btn btn-gold"
               disabled={busy}
@@ -714,22 +735,42 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               {t("complete", lang)}
             </button>
           )}
-          {isMulti && canReturnMine && (
+          {canHold && (
+            <button className="btn btn-outline" disabled={busy} onClick={() => setHoldReasonFor(task.id)}>
+              {t("putOnHoldAction", lang)}
+            </button>
+          )}
+          {canResume && (
+            <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_set_task_blocked", task.id, { p_blocked: false, p_note: null })}>
+              {t("resumeAction", lang)}
+            </button>
+          )}
+          {canReturn && (
             <button className="btn btn-outline" disabled={busy} onClick={() => setReturnReasonFor(task.id)}>
               {t("returnTask", lang)}
             </button>
           )}
           {statusCode === "COMPLETED" && iAmVerifier && (
-            <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_verify_task", task.id)}>
-              {t("verify", lang)}
-            </button>
+            <>
+              <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_verify_task", task.id)}>
+                {t("verify", lang)}
+              </button>
+              <button className="btn btn-outline" disabled={busy} onClick={() => setReopenReasonFor(task.id)}>
+                {t("rejectAction", lang)}
+              </button>
+            </>
           )}
           {statusCode === "VERIFIED" && (canManage || task.assigned_by === profile.id) && (
             <button className="btn btn-primary" disabled={busy} onClick={() => runAction("staff_close_task", task.id)}>
               {t("close", lang)}
             </button>
           )}
-          {!isMulti && !task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && mine && (
+          {canReopen && statusCode !== "COMPLETED" && (
+            <button className="btn btn-outline" disabled={busy} onClick={() => setReopenReasonFor(task.id)}>
+              {t("reopenAction", lang)}
+            </button>
+          )}
+          {!task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && isSharedAssignee && (
             <button
               className="btn btn-outline"
               disabled={busy}
@@ -738,16 +779,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               {t("requestHelp", lang)}
             </button>
           )}
-          {isMulti && canToggleBlockedMulti && (
-            <button
-              className="btn btn-outline"
-              disabled={busy}
-              onClick={() => runAction("staff_set_task_blocked", task.id, { p_blocked: !iAmBlockedMulti, p_note: "" })}
-            >
-              {iAmBlockedMulti ? t("start", lang) : t("requestHelp", lang)}
-            </button>
-          )}
-          {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "PARTIALLY_ACCEPTED", "PARTIALLY_COMPLETED"].includes(statusCode) && (
+          {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "REOPENED"].includes(statusCode) && (
             <button
               className="btn btn-outline"
               disabled={busy}
@@ -819,6 +851,36 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                 {t("submit", lang)}
               </button>
               <button className="btn btn-outline" onClick={() => { setReturnReasonFor(null); setReturnReason(""); }}>
+                {t("cancel", lang)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {holdReasonFor === task.id && (
+          <div style={{ marginTop: 10 }}>
+            <label>{t("holdReasonLabel", lang)}</label>
+            <textarea value={holdReason} onChange={(e) => setHoldReason(e.target.value)} />
+            <div className="btn-row">
+              <button className="btn btn-primary" disabled={busy || !holdReason.trim()} onClick={() => submitHold(task.id)}>
+                {t("submit", lang)}
+              </button>
+              <button className="btn btn-outline" onClick={() => { setHoldReasonFor(null); setHoldReason(""); }}>
+                {t("cancel", lang)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {reopenReasonFor === task.id && (
+          <div style={{ marginTop: 10 }}>
+            <label>{t("reopenReasonLabel", lang)}</label>
+            <textarea value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} />
+            <div className="btn-row">
+              <button className="btn btn-primary" disabled={busy || !reopenReason.trim()} onClick={() => submitReopen(task.id)}>
+                {t("submit", lang)}
+              </button>
+              <button className="btn btn-outline" onClick={() => { setReopenReasonFor(null); setReopenReason(""); }}>
                 {t("cancel", lang)}
               </button>
             </div>

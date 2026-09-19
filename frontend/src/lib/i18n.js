@@ -893,6 +893,19 @@ export const STRINGS = {
   inProgressBadgeLabel: { en: "IN PROGRESS", gu: "ચાલુ છે" },
   closedBadgeLabel: { en: "CLOSED", gu: "બંધ" },
   projectSiteLabel: { en: "Project / Site", gu: "પ્રોજેક્ટ / સાઇટ" },
+  // Shared-task lifecycle (mvp_pilot_shared_task_status_v2_60): one task,
+  // one status, any active assignee acts for everyone.
+  sharedTaskLabel: { en: "Shared Task", gu: "સહિયારું કાર્ય" },
+  acceptedByLabel: { en: "Accepted by", gu: "સ્વીકારનાર" },
+  startedByLabel: { en: "Started by", gu: "શરૂ કરનાર" },
+  completedByLabel: { en: "Completed by", gu: "પૂર્ણ કરનાર" },
+  putOnHoldAction: { en: "Put On Hold", gu: "અટકાવો" },
+  resumeAction: { en: "Resume", gu: "ફરી શરૂ કરો" },
+  holdReasonLabel: { en: "Reason for Hold", gu: "અટકાવવાનું કારણ" },
+  onHoldReasonLabel: { en: "On Hold", gu: "અટકાવેલું" },
+  rejectAction: { en: "Reject", gu: "નકારો" },
+  reopenAction: { en: "Reopen", gu: "ફરીથી ખોલો" },
+  reopenReasonLabel: { en: "Reason to Reopen", gu: "ફરીથી ખોલવાનું કારણ" },
 
   // Working Drawings — secure file delete / recycle bin / permanent delete
   deleteFileAction: { en: "Delete File", gu: "ફાઇલ કાઢો" },
