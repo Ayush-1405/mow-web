@@ -21,6 +21,19 @@ import { kolkataDateStr, addDaysToDateStr, daysBetweenDateStrs, kolkataDateOf } 
 // not a typed @name. Material Required / Any Issue / Remarks are
 // unchanged from the original flow.
 const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"];
+// Maps 1:1 onto the proof_types.code values staff_create_project_task/
+// staff_validate_task_transition understand (mvp_pilot_daily_update_proof_v2_61)
+// -- "File Required" reuses the existing "document" code (PDF/Word/Excel/
+// drawing) rather than inventing a parallel file-proof concept.
+const PROOF_TYPE_OPTIONS = [
+  { code: "none", en: "None", gu: "કંઈ નહીં" },
+  { code: "photo", en: "Photo Required", gu: "ફોટો જરૂરી" },
+  { code: "document", en: "File Required", gu: "ફાઇલ જરૂરી" },
+  { code: "note", en: "Note Required", gu: "નોંધ જરૂરી" },
+  { code: "photo_note", en: "Photo + Note Required", gu: "ફોટો + નોંધ જરૂરી" },
+  { code: "file_note", en: "File + Note Required", gu: "ફાઇલ + નોંધ જરૂરી" },
+];
+const PHOTO_PROOF_CODES = new Set(["photo", "photo_note"]);
 // "Today" must be Asia/Kolkata's calendar day, never `toISOString()`'s UTC
 // day — see lib/kolkataTime.js. A raw UTC compute here would show/save the
 // wrong date for roughly the first 5.5 hours of every IST day.
@@ -85,14 +98,19 @@ function ChipInput({ value, onChange, placeholder }) {
 }
 
 function emptyItem(dueDate) {
-  return { id: crypto.randomUUID(), title: "", assignedTo: "", dueDate, priority: "NORMAL" };
+  return {
+    id: crypto.randomUUID(), title: "", assignedTo: "", dueDate, priority: "NORMAL",
+    proofType: "none", proofInstructions: "", minPhotoCount: 1, allowMultiplePhotos: true, verificationRequired: true,
+  };
 }
 
-// One row: title / assign-to / due date / priority / remove — reused for
-// both Today's Work and Tomorrow's Plan.
-function WorkItemRow({ lang, item, candidates, onChange, onRemove, showError }) {
+// One row: title / assign-to / due date / priority / proof requirement /
+// remove — reused for both Today's Work and Tomorrow's Plan. The proof
+// fields mirror the main Assign Task module (mvp_pilot_daily_update_proof_v2_61)
+// so a Daily Update work item can require completion proof the same way.
+function WorkItemRow({ lang, item, candidates, onChange, onRemove, showError, showProofError }) {
   return (
-    <div className="card" style={{ padding: 10, marginBottom: 8, borderColor: showError ? "var(--danger)" : undefined }}>
+    <div className="card" style={{ padding: 10, marginBottom: 8, borderColor: (showError || showProofError) ? "var(--danger)" : undefined }}>
       <div className="form-grid">
         <div className="field full">
           <label>{t("workTitleLabel", lang)}</label>
@@ -124,11 +142,51 @@ function WorkItemRow({ lang, item, candidates, onChange, onRemove, showError }) 
             {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
+        <div className="field">
+          <label>{t("proofRequiredLabel", lang)}</label>
+          <select value={item.proofType} onChange={(e) => onChange({ ...item, proofType: e.target.value })}>
+            {PROOF_TYPE_OPTIONS.map((p) => <option key={p.code} value={p.code}>{lang === "gu" ? p.gu : p.en}</option>)}
+          </select>
+        </div>
         <div className="field" style={{ display: "flex", alignItems: "flex-end" }}>
           <button type="button" className="btn btn-outline" style={{ marginTop: 0 }} onClick={onRemove}>✕ {t("removeItemAction", lang)}</button>
         </div>
+        {item.proofType !== "none" && (
+          <div className="field full">
+            <label>{t("proofInstructionsLabel", lang)} *</label>
+            <textarea value={item.proofInstructions} onChange={(e) => onChange({ ...item, proofInstructions: e.target.value })} placeholder={t("proofInstructionsPlaceholder", lang)} />
+          </div>
+        )}
+        {PHOTO_PROOF_CODES.has(item.proofType) && (
+          <>
+            <div className="field">
+              <label>{t("minPhotoCountLabel", lang)}</label>
+              <input
+                type="number" min={1} max={10} value={item.minPhotoCount}
+                onChange={(e) => onChange({ ...item, minPhotoCount: Math.max(1, Math.min(10, Number(e.target.value) || 1)) })}
+              />
+            </div>
+            <div className="field">
+              <label>{t("allowMultiplePhotosLabel", lang)}</label>
+              <div className="btn-row" style={{ marginTop: 0 }}>
+                <button type="button" className={`btn ${item.allowMultiplePhotos ? "btn-primary" : "btn-outline"}`} onClick={() => onChange({ ...item, allowMultiplePhotos: true })}>{t("yesLabel", lang)}</button>
+                <button type="button" className={`btn ${!item.allowMultiplePhotos ? "btn-primary" : "btn-outline"}`} onClick={() => onChange({ ...item, allowMultiplePhotos: false })}>{t("noLabel", lang)}</button>
+              </div>
+            </div>
+          </>
+        )}
+        {item.proofType !== "none" && (
+          <div className="field">
+            <label>{t("proofVerificationRequiredLabel", lang)}</label>
+            <div className="btn-row" style={{ marginTop: 0 }}>
+              <button type="button" className={`btn ${item.verificationRequired ? "btn-primary" : "btn-outline"}`} onClick={() => onChange({ ...item, verificationRequired: true })}>{t("yesLabel", lang)}</button>
+              <button type="button" className={`btn ${!item.verificationRequired ? "btn-primary" : "btn-outline"}`} onClick={() => onChange({ ...item, verificationRequired: false })}>{t("noLabel", lang)}</button>
+            </div>
+          </div>
+        )}
       </div>
       {showError && <div className="msg error" style={{ marginTop: 6 }}>{t("assignWorkRequiredMsg", lang)}</div>}
+      {showProofError && <div className="msg error" style={{ marginTop: 6 }}>{t("proofInstructionsRequiredMsg", lang)}</div>}
     </div>
   );
 }
@@ -144,9 +202,11 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   const [teamIds, setTeamIds] = useState([]);
   const [statusById, setStatusById] = useState({});
   const [priorityById, setPriorityById] = useState({});
+  const [proofTypesById, setProofTypesById] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [invalidIds, setInvalidIds] = useState(new Set());
+  const [invalidProofIds, setInvalidProofIds] = useState(new Set());
 
   const [todaysWork, setTodaysWork] = useState([emptyItem(today())]);
   const [tomorrowPlan, setTomorrowPlan] = useState([emptyItem(tomorrow())]);
@@ -170,6 +230,12 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   const [historyAssigneeFilter, setHistoryAssigneeFilter] = useState(savedHistory.historyAssigneeFilter || "");
   const [historySearchInput, setHistorySearchInput] = useState(savedHistory.historySearchInput || "");
   const historySearchText = useDebouncedValue(historySearchInput, 250);
+  // Mobile layout fix: the full filter form is a collapsible panel in
+  // normal document flow (never sticky, never positioned over the task
+  // list) — only the compact toolbar above it (date nav + a "Filters"
+  // toggle) stays visible. Closed by default on every screen size so the
+  // task list is never pushed down or covered by an expanded form.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [rows, setRows] = useState([]);
   const [reportTasks, setReportTasks] = useState([]);
@@ -207,6 +273,9 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
     });
     supabase.from("priority_master").select("id, code, name_en, name_gu").then(({ data }) => {
       setPriorityById(Object.fromEntries((data || []).map((p) => [p.id, p])));
+    });
+    supabase.from("proof_types").select("id, code, name_en, name_gu").then(({ data }) => {
+      setProofTypesById(Object.fromEntries((data || []).map((p) => [p.id, p])));
     });
   }, []);
 
@@ -345,6 +414,14 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
     setHistorySearchInput("");
   }
 
+  // "After Apply: close the panel, scroll results to top" — the filters
+  // themselves are already live (the useMemo below reacts immediately),
+  // this button is purely the requested UX affordance.
+  function handleApplyFilters() {
+    setFiltersOpen(false);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }
+
   useEffect(() => {
     if (!projectId) return undefined;
     const handleChange = () => {
@@ -380,6 +457,16 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
       return;
     }
     setInvalidIds(new Set());
+
+    const missingProof = new Set(
+      [...activeToday, ...activeTomorrow].filter((it) => it.proofType !== "none" && !it.proofInstructions.trim()).map((it) => it.id),
+    );
+    if (missingProof.size > 0) {
+      setInvalidProofIds(missingProof);
+      setSaveMsg(t("proofInstructionsRequiredMsg", lang));
+      return;
+    }
+    setInvalidProofIds(new Set());
 
     setSaving(true);
     setSaveMsg(t("savingUpdateMsg", lang));
@@ -423,6 +510,8 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
       const { error: taskErr } = await createProjectTask({
         projectId, title: it.title.trim(), assignedTo: assignee?.auth_id, dueDate: it.dueDate || today(),
         priorityCode: it.priority, sourceSiteReportId: report.id, sourceWorkItemId: it.id, sourceType: it.sourceType,
+        proofTypeCode: it.proofType, proofInstructions: it.proofInstructions?.trim() || null,
+        minimumPhotoCount: it.minPhotoCount, allowMultiplePhotos: it.allowMultiplePhotos, proofVerificationRequired: it.verificationRequired,
       });
       if (taskErr) taskErrors.push(`${it.title}: ${taskErr.message}`);
     }
@@ -522,6 +611,25 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
 
   const totalHistoryShown = historyGroups.reduce((sum, g) => sum + g.tasks.length + g.reportsWithoutTasks.length, 0);
 
+  const activeFilterChips = useMemo(() => {
+    const chips = [];
+    if (dateMode === "date") {
+      chips.push({ key: "date", label: selectedDate === kolkataDateStr() ? t("todayLabel", lang) : formatDisplayDate(selectedDate, lang), onClear: () => setDateMode("all") });
+    }
+    if (historyStatusFilter) {
+      const s = Object.values(statusById).find((x) => x.code === historyStatusFilter);
+      chips.push({ key: "status", label: (s && (lang === "gu" ? s.name_gu : s.name_en)) || historyStatusFilter, onClear: () => setHistoryStatusFilter("") });
+    }
+    if (historyAssigneeFilter) {
+      const p = people.find((x) => x.auth_id === historyAssigneeFilter);
+      chips.push({ key: "assignee", label: p?.name || "—", onClear: () => setHistoryAssigneeFilter("") });
+    }
+    if (historySearchText.trim()) {
+      chips.push({ key: "search", label: `"${historySearchText.trim()}"`, onClear: () => setHistorySearchInput("") });
+    }
+    return chips;
+  }, [dateMode, selectedDate, historyStatusFilter, historyAssigneeFilter, historySearchText, statusById, people, lang]);
+
   function taskBadge(tsk) {
     const todayStr = kolkataDateStr();
     const scode = statusById[tsk.status_id]?.code;
@@ -557,7 +665,13 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
           {t("statusLabel", lang)}: <span className={`badge ${statusById[tsk.status_id]?.code || "ASSIGNED"}`}>{lang === "gu" ? statusById[tsk.status_id]?.name_gu : statusById[tsk.status_id]?.name_en || tsk.status_id}</span>
         </div>
         {tsk.description && <div className="sub">{tsk.description}</div>}
-        <button className="btn btn-outline" style={{ marginTop: 8, width: "100%" }} onClick={() => navigate(`/tasks?focus=${tsk.id}`)}>
+        {tsk.proof_type_id && proofTypesById[tsk.proof_type_id]?.code !== "none" && (
+          <div className="sub">
+            <span className="badge REVISION">{t("proofRequiredBadgeLabel", lang)}</span>
+            {" "}{lang === "gu" ? proofTypesById[tsk.proof_type_id]?.name_gu : proofTypesById[tsk.proof_type_id]?.name_en}
+          </div>
+        )}
+        <button className="btn btn-outline" style={{ marginTop: 8, width: "100%", minHeight: 44 }} onClick={() => navigate(`/tasks?focus=${tsk.id}`)}>
           {t("openTaskAction", lang)}{unread ? ` (${unread})` : ""}
         </button>
       </div>
@@ -628,7 +742,7 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
 
           <h3>{t("todaysWorkStep", lang)}</h3>
           {todaysWork.map((item) => (
-            <WorkItemRow key={item.id} lang={lang} item={item} candidates={candidates} showError={invalidIds.has(item.id)}
+            <WorkItemRow key={item.id} lang={lang} item={item} candidates={candidates} showError={invalidIds.has(item.id)} showProofError={invalidProofIds.has(item.id)}
               onChange={(next) => updateItem(todaysWork, setTodaysWork, item.id, next)}
               onRemove={() => setTodaysWork(todaysWork.filter((it) => it.id !== item.id))} />
           ))}
@@ -657,7 +771,7 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
 
           <h3 style={{ marginTop: 16 }}>{t("tomorrowPlanStep", lang)}</h3>
           {tomorrowPlan.map((item) => (
-            <WorkItemRow key={item.id} lang={lang} item={item} candidates={candidates} showError={invalidIds.has(item.id)}
+            <WorkItemRow key={item.id} lang={lang} item={item} candidates={candidates} showError={invalidIds.has(item.id)} showProofError={invalidProofIds.has(item.id)}
               onChange={(next) => updateItem(tomorrowPlan, setTomorrowPlan, item.id, next)}
               onRemove={() => setTomorrowPlan(tomorrowPlan.filter((it) => it.id !== item.id))} />
           ))}
@@ -679,64 +793,105 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
         </form>
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "12px 14px 0" }}>
+      <div className="card daily-updates-card">
+        {/* Header — normal document flow, never sticky/overlapping. */}
+        <div className="daily-updates-header">
           <h3 style={{ margin: 0 }}>{t("dailyTasksUpdatesHeading", lang)}</h3>
-          <div className="sub">{t("showingCountLabel", lang).replace("{n}", String(totalHistoryShown))}</div>
         </div>
 
-        <div className="daily-updates-scroll" ref={scrollRef} onScroll={handleHistoryScroll} style={{ marginTop: 10 }}>
-          <div className="daily-updates-sticky-filters">
-            <div className="btn-row" style={{ flexWrap: "wrap", marginTop: 0 }}>
-              <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => shiftDay(-1)}>{t("previousDayLabel", lang)}</button>
-              <input type="date" value={selectedDate} onChange={(e) => { setDateMode("date"); setSelectedDate(e.target.value); }} style={{ width: "auto" }} />
-              <button type="button" className={`btn ${dateMode === "date" && selectedDate === kolkataDateStr() ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={handleClickToday}>{t("todayLabel", lang)}</button>
-              <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => shiftDay(1)}>{t("nextDayLabel", lang)}</button>
-              <button type="button" className={`btn ${dateMode === "all" ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("all")}>{t("allDatesLabel", lang)}</button>
+        {/* Compact filter controls — small, always in normal flow (no
+            sticky-over-cards risk since it's now entirely outside the
+            scrollable results container below). */}
+        <div className="daily-updates-toolbar">
+          <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => shiftDay(-1)}>{t("previousDayLabel", lang)}</button>
+          <button type="button" className={`btn ${dateMode === "date" && selectedDate === kolkataDateStr() ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={handleClickToday}>
+            {dateMode === "date" ? formatDisplayDate(selectedDate, lang) : t("todayLabel", lang)}
+          </button>
+          <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => shiftDay(1)}>{t("nextDayLabel", lang)}</button>
+          <button type="button" className={`btn ${dateMode === "all" ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("all")}>{t("allDatesLabel", lang)}</button>
+          <button type="button" className={`btn ${filtersOpen ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setFiltersOpen((v) => !v)}>
+            {t("filtersToggleLabel", lang)}{activeFilterChips.length > 0 ? ` (${activeFilterChips.length})` : ""}
+          </button>
+        </div>
+
+        {/* Expanded filter panel — collapsible, normal document flow.
+            Only rendered when open, so it takes zero space otherwise and
+            can never sit on top of the task list underneath it. */}
+        {filtersOpen && (
+          <div className="daily-updates-filter-panel">
+            <div className="field">
+              <label>{t("dueDateLabel", lang)}</label>
+              <input type="date" value={selectedDate} onChange={(e) => { setDateMode("date"); setSelectedDate(e.target.value); }} />
             </div>
-            <div className="btn-row" style={{ flexWrap: "wrap", marginTop: 8 }}>
-              <select value={historyStatusFilter} onChange={(e) => setHistoryStatusFilter(e.target.value)} style={{ width: "auto" }}>
-                <option value="">{t("statusLabel", lang)}</option>
+            <div className="field">
+              <label>{t("statusLabel", lang)}</label>
+              <select value={historyStatusFilter} onChange={(e) => setHistoryStatusFilter(e.target.value)}>
+                <option value="">—</option>
                 {Object.values(statusById).map((s) => <option key={s.id} value={s.code}>{lang === "gu" ? s.name_gu : s.name_en}</option>)}
               </select>
-              <select value={historyAssigneeFilter} onChange={(e) => setHistoryAssigneeFilter(e.target.value)} style={{ width: "auto" }}>
-                <option value="">{t("assignToLabel", lang)}</option>
+            </div>
+            <div className="field">
+              <label>{t("assignToLabel", lang)}</label>
+              <select value={historyAssigneeFilter} onChange={(e) => setHistoryAssigneeFilter(e.target.value)}>
+                <option value="">—</option>
                 {people.map((p) => <option key={p.id} value={p.auth_id}>{p.name}</option>)}
               </select>
-              <input value={historySearchInput} onChange={(e) => setHistorySearchInput(e.target.value)} placeholder={t("searchLabel", lang)} style={{ width: "auto", flex: "1 1 160px" }} />
-              <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleClearHistoryFilters}>{t("clearFiltersAction", lang)}</button>
+            </div>
+            <div className="field">
+              <label>{t("searchLabel", lang)}</label>
+              <input value={historySearchInput} onChange={(e) => setHistorySearchInput(e.target.value)} placeholder={t("searchLabel", lang)} />
+            </div>
+            <div className="btn-row">
+              <button type="button" className="btn btn-primary" onClick={handleApplyFilters}>{t("applyFiltersAction", lang)}</button>
+              <button type="button" className="btn btn-outline" onClick={handleClearHistoryFilters}>{t("clearFiltersAction", lang)}</button>
+              <button type="button" className="btn btn-outline" onClick={() => setFiltersOpen(false)}>{t("closeFiltersAction", lang)}</button>
             </div>
           </div>
+        )}
 
-          {newUpdateAvailable && (
-            <button type="button" className="daily-updates-new-pill" onClick={handleShowNewUpdate}>
-              {t("newUpdateReceivedLabel", lang)}
-            </button>
+        {activeFilterChips.length > 0 && (
+          <div className="daily-updates-chip-row">
+            {activeFilterChips.map((c) => (
+              <span key={c.key} className="daily-updates-chip">
+                {c.label}
+                <button type="button" onClick={c.onClear} aria-label={t("clearFiltersAction", lang)}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Results summary, then the ONLY scrollable element — task cards
+            start immediately below, with no filter UI inside it. */}
+        <div className="daily-updates-summary sub">{t("showingCountLabel", lang).replace("{n}", String(totalHistoryShown))}</div>
+
+        {newUpdateAvailable && (
+          <button type="button" className="daily-updates-new-pill" onClick={handleShowNewUpdate}>
+            {t("newUpdateReceivedLabel", lang)}
+          </button>
+        )}
+
+        <div className="daily-updates-scroll" ref={scrollRef} onScroll={handleHistoryScroll}>
+          {dateMode === "date" && (
+            <h4 style={{ margin: "0 0 8px" }}>{t("tasksUpdatesForHeading", lang)} {formatDisplayDate(selectedDate, lang)}</h4>
           )}
 
-          <div style={{ padding: "10px 14px 14px" }}>
-            {dateMode === "date" && (
-              <h4 style={{ margin: "0 0 8px" }}>{t("tasksUpdatesForHeading", lang)} {formatDisplayDate(selectedDate, lang)}</h4>
-            )}
+          {historyGroups.length === 0 && (
+            <div className="msg info">{dateMode === "date" ? t("noTasksOrUpdatesForDateMsg", lang) : t("noRecordsYet", lang)}</div>
+          )}
 
-            {historyGroups.length === 0 && (
-              <div className="msg info">{dateMode === "date" ? t("noTasksOrUpdatesForDateMsg", lang) : t("noRecordsYet", lang)}</div>
-            )}
+          {historyGroups.map((g) => (
+            <div key={g.dateKey} style={{ marginTop: 14 }}>
+              {dateMode === "all" && <div style={{ fontWeight: 700, marginBottom: 6 }}>{dateGroupHeading(g.dateKey, kolkataDateStr(), lang)}</div>}
+              {g.tasks.map((tsk) => renderTaskCard(tsk, g.dateKey))}
+              {g.reportsWithoutTasks.map((r) => renderReportFallbackCard(r))}
+            </div>
+          ))}
 
-            {historyGroups.map((g) => (
-              <div key={g.dateKey} style={{ marginTop: 14 }}>
-                {dateMode === "all" && <div style={{ fontWeight: 700, marginBottom: 6 }}>{dateGroupHeading(g.dateKey, kolkataDateStr(), lang)}</div>}
-                {g.tasks.map((tsk) => renderTaskCard(tsk, g.dateKey))}
-                {g.reportsWithoutTasks.map((r) => renderReportFallbackCard(r))}
-              </div>
-            ))}
-
-            {dateMode === "all" && hasMoreReports && (
-              <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 12 }} disabled={loadingMore} onClick={handleLoadMore}>
-                {loadingMore ? t("savingUpdateMsg", lang) : t("loadMoreAction", lang)}
-              </button>
-            )}
-          </div>
+          {dateMode === "all" && hasMoreReports && (
+            <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 12 }} disabled={loadingMore} onClick={handleLoadMore}>
+              {loadingMore ? t("savingUpdateMsg", lang) : t("loadMoreAction", lang)}
+            </button>
+          )}
         </div>
       </div>
     </div>

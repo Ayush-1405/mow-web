@@ -406,16 +406,24 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   async function completeWithProof(task, proofTypeCode, file, confirmationText, voiceDurationSeconds) {
     setBusyId(task.id);
     try {
-      if (proofTypeCode === "photo" || proofTypeCode === "barcode") {
-        if (!file) throw new Error("A photo is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે ફોટો જરૂરી છે.");
+      if (proofTypeCode === "photo" || proofTypeCode === "photo_note") {
+        // Photos for these two types are already uploaded progressively by
+        // PhotoProofField (with per-photo retry) before Complete is even
+        // enabled — nothing left to upload here. The DB trigger re-checks
+        // the actual attachment count regardless, as the real enforcement.
+      } else if (proofTypeCode === "barcode") {
+        if (!file) throw new Error("A barcode evidence photo is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે બારકોડ પુરાવો જરૂરી છે.");
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "image" });
-      } else if (proofTypeCode === "document") {
+      } else if (proofTypeCode === "document" || proofTypeCode === "file_note") {
         if (!file) throw new Error("A document (PDF/Word/Excel/Drawing) is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે દસ્તાવેજ જરૂરી છે.");
         const detected = detectFileType(resolveMimeType(file));
         if (!detected || detected === "image") {
           throw new Error("Please attach a PDF, Word, Excel, or DWG/DXF drawing file — not a photo. / કૃપા કરીને PDF, Word, Excel અથવા DWG/DXF ડ્રોઈંગ ફાઇલ જોડો — ફોટો નહીં.");
         }
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: detected });
+        if (proofTypeCode === "file_note" && !confirmationText?.trim()) {
+          throw new Error("A completion note is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે પૂર્ણતા નોંધ જરૂરી છે.");
+        }
       } else if (proofTypeCode === "voice") {
         if (!file) throw new Error("A voice note is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે વોઇસ નોંધ જરૂરી છે.");
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "voice", durationSeconds: voiceDurationSeconds });
@@ -427,6 +435,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           const detected = detectFileType(resolveMimeType(file)) || "image";
           await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: detected });
         }
+      } else if (proofTypeCode === "note" || proofTypeCode === "photo_note") {
+        if (!confirmationText?.trim()) {
+          throw new Error("A completion note is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે પૂર્ણતા નોંધ જરૂરી છે.");
+        }
       } else if (proofTypeCode !== "none") {
         // Covers any proof_type_id the active lookup no longer recognizes
         // — the DB trigger would reject this transition unconditionally
@@ -436,13 +448,18 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
 
       const { error } = await supabase.rpc("staff_complete_task", {
         p_task_id: task.id,
-        p_customer_confirmation_text: proofTypeCode === "customer_confirmation" ? (confirmationText?.trim() || null) : null,
+        p_customer_confirmation_text: ["customer_confirmation", "note", "photo_note", "file_note"].includes(proofTypeCode) ? (confirmationText?.trim() || null) : null,
       });
       if (error) throw error;
       setProofFor(null);
       showToast("success", "Task completed / કાર્ય પૂર્ણ થયું");
       await load();
     } catch (err) {
+      // Recoverable failure: already-uploaded photos/notes stay exactly as
+      // the user left them (ProofUploader's own state is untouched, proof
+      // already recorded in staff_attachments is a real durable row, not a
+      // temp/orphaned one) — a retry needs no re-upload, and "note" text
+      // survives since this component only clears on success.
       showToast("error", err.message);
     } finally {
       setBusyId(null);
@@ -891,6 +908,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           <ProofUploader
             lang={lang}
             busy={busy}
+            task={task}
             proofTypeCode={proofTypeCode}
             onCancel={() => setProofFor(null)}
             onSubmit={(file, confirmationText, voiceDurationSeconds) => completeWithProof(task, proofTypeCode, file, confirmationText, voiceDurationSeconds)}
@@ -923,7 +941,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                 onChanged={load}
               />
             )}
-            <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
+            <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} usersById={usersById} />
             <div id={`conversation-${task.id}`}>
               <TaskConversation
                 taskId={task.id}
@@ -1129,19 +1147,120 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
 const DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf,application/dxf,application/dwg,image/vnd.dwg,image/vnd.dxf,application/x-dwg,application/x-dxf,application/acad";
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif";
 
-const SUPPORTED_PROOF_CODES = new Set(["photo", "barcode", "document", "voice", "customer_confirmation", "none"]);
+const SUPPORTED_PROOF_CODES = new Set(["photo", "barcode", "document", "voice", "customer_confirmation", "none", "note", "photo_note", "file_note"]);
+const PHOTO_PROOF_CODES = new Set(["photo", "photo_note"]);
+const NOTE_PROOF_CODES = new Set(["note", "photo_note", "file_note"]);
+
+// Best-effort only — compression never blocks an upload. Downscales to a
+// sane max dimension and re-encodes as JPEG when a photo is clearly larger
+// than needed for a completion-proof record; createImageBitmap's
+// imageOrientation:"from-image" applies the file's EXIF rotation itself,
+// which is what keeps a phone-camera photo right-side-up here without any
+// manual EXIF parsing.
+async function compressImageIfNeeded(file) {
+  if (!file.type?.startsWith("image/") || file.size <= 1.5 * 1024 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const maxDim = 1920;
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob.slice(0, blob.size, "image/jpeg")], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
+// Multi-photo capture: Take Photo (camera-first via capture="environment")
+// and Choose from Gallery are two separate inputs — mobile browsers show
+// the OS camera/gallery chooser either way, this just hints which one to
+// default to. Each photo uploads immediately on selection (progress is
+// this per-photo pending/uploading/done/error state, since the underlying
+// signed-URL upload has no byte-level progress event to surface) so a
+// failure is caught and retried per-photo, never silently blocking the
+// whole batch or losing the photos that did succeed.
+function PhotoProofField({ lang, taskId, minCount, allowMultiple, photos, setPhotos }) {
+  async function uploadOne(id, file) {
+    setPhotos((cur) => cur.map((p) => (p.id === id ? { ...p, status: "uploading" } : p)));
+    try {
+      const compressed = await compressImageIfNeeded(file);
+      await uploadTaskProof({ entityType: "task", entityId: taskId, file: compressed, fileType: "image" });
+      setPhotos((cur) => cur.map((p) => (p.id === id ? { ...p, status: "done" } : p)));
+    } catch (err) {
+      setPhotos((cur) => cur.map((p) => (p.id === id ? { ...p, status: "error", errorMsg: err.message } : p)));
+    }
+  }
+
+  function addFiles(fileList) {
+    const picked = Array.from(fileList || []);
+    if (!picked.length) return;
+    const capped = allowMultiple ? picked : picked.slice(0, 1);
+    const entries = capped.map((file) => ({ id: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file), status: "pending", errorMsg: "" }));
+    setPhotos((cur) => (allowMultiple ? [...cur, ...entries] : entries));
+    entries.forEach((entry) => uploadOne(entry.id, entry.file));
+  }
+
+  function removePhoto(id) {
+    setPhotos((cur) => {
+      const target = cur.find((p) => p.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return cur.filter((p) => p.id !== id);
+    });
+  }
+
+  const doneCount = photos.filter((p) => p.status === "done").length;
+  const firstError = photos.find((p) => p.status === "error");
+
+  return (
+    <div className="proof-photo-field">
+      <div className="btn-row" style={{ marginTop: 0 }}>
+        <label className="file-input-label">
+          {t("takePhotoAction", lang)}
+          <input type="file" accept={IMAGE_ACCEPT} capture="environment" style={{ display: "none" }} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+        </label>
+        <label className="file-input-label">
+          {t("chooseFromGalleryAction", lang)}
+          <input type="file" accept={IMAGE_ACCEPT} multiple={allowMultiple} style={{ display: "none" }} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+        </label>
+      </div>
+      {photos.length > 0 && (
+        <div className="proof-photo-grid">
+          {photos.map((p) => (
+            <div className="proof-photo-thumb" key={p.id}>
+              <img src={p.previewUrl} alt="" />
+              {p.status === "uploading" && <div className="proof-photo-overlay">…</div>}
+              {p.status === "done" && <div className="proof-photo-badge">✓</div>}
+              {p.status === "error" && (
+                <button type="button" className="proof-photo-retry" onClick={() => uploadOne(p.id, p.file)}>{t("retryUploadAction", lang)}</button>
+              )}
+              <button type="button" className="proof-photo-remove" onClick={() => removePhoto(p.id)} aria-label={t("removePhotoAction", lang)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="sub" style={{ marginTop: 6 }}>{doneCount} / {minCount} {t("minPhotoCountLabel", lang)}</div>
+      {firstError && <div className="msg error" style={{ marginTop: 6 }}>{firstError.errorMsg}</div>}
+    </div>
+  );
+}
 
 // Adapts to the task's actual proof_type_code — matching what the DB
 // trigger is about to check, instead of always assuming "attach a photo"
 // regardless of what proof was actually configured (photo/barcode need an
 // image, document needs a PDF/Word/Excel, voice needs a recorded note,
-// customer_confirmation needs text and/or evidence, and any type this
-// pilot doesn't recognize gets a clear message instead of a picker that
-// can only ever fail).
-function ProofUploader({ lang, busy, proofTypeCode, onCancel, onSubmit }) {
+// customer_confirmation needs text and/or evidence, note/photo_note/
+// file_note need a completion note — mvp_pilot_daily_update_proof_v2_61 —
+// and any type this pilot doesn't recognize gets a clear message instead
+// of a picker that can only ever fail).
+function ProofUploader({ lang, busy, task, proofTypeCode, onCancel, onSubmit }) {
   const [file, setFile] = useState(null);
   const [confirmationText, setConfirmationText] = useState("");
   const [voiceDuration, setVoiceDuration] = useState(0);
+  const [photos, setPhotos] = useState([]);
 
   if (!SUPPORTED_PROOF_CODES.has(proofTypeCode)) {
     return (
@@ -1156,22 +1275,42 @@ function ProofUploader({ lang, busy, proofTypeCode, onCancel, onSubmit }) {
     );
   }
 
-  const accept = proofTypeCode === "document" ? DOCUMENT_ACCEPT : IMAGE_ACCEPT;
+  const isPhotoType = PHOTO_PROOF_CODES.has(proofTypeCode);
+  const minPhotos = Math.max(1, Math.min(10, task?.minimum_photo_count || 1));
+  const allowMultiple = task?.allow_multiple_photos !== false;
+  const donePhotoCount = photos.filter((p) => p.status === "done").length;
+  const anyPhotoUploading = photos.some((p) => p.status === "uploading");
+  const accept = (proofTypeCode === "document" || proofTypeCode === "file_note") ? DOCUMENT_ACCEPT : IMAGE_ACCEPT;
+
+  let canSubmit = true;
+  if (isPhotoType) canSubmit = canSubmit && !anyPhotoUploading && donePhotoCount >= minPhotos;
+  if (NOTE_PROOF_CODES.has(proofTypeCode)) canSubmit = canSubmit && !!confirmationText.trim();
+  if (proofTypeCode === "file_note" || proofTypeCode === "document" || proofTypeCode === "barcode") canSubmit = canSubmit && !!file;
+  if (proofTypeCode === "voice") canSubmit = canSubmit && !!file;
+  if (proofTypeCode === "customer_confirmation") canSubmit = canSubmit && (!!confirmationText.trim() || !!file);
 
   return (
     <div style={{ marginTop: 10 }}>
-      {proofTypeCode === "customer_confirmation" && (
+      {task?.proof_instructions && <div className="msg info" style={{ marginBottom: 8 }}>{task.proof_instructions}</div>}
+
+      {isPhotoType && (
+        <PhotoProofField lang={lang} taskId={task.id} minCount={minPhotos} allowMultiple={allowMultiple} photos={photos} setPhotos={setPhotos} />
+      )}
+
+      {(proofTypeCode === "customer_confirmation" || NOTE_PROOF_CODES.has(proofTypeCode)) && (
         <div className="field">
-          <label>{t("customerConfirmationLabel", lang)}</label>
+          <label>{proofTypeCode === "customer_confirmation" ? t("customerConfirmationLabel", lang) : t("completionNoteLabel", lang)}</label>
           <textarea value={confirmationText} onChange={(e) => setConfirmationText(e.target.value)} />
         </div>
       )}
+
       {proofTypeCode === "voice" && (
         <VoiceRecorder lang={lang} disabled={busy} onRecorded={(f, duration) => { setFile(f); setVoiceDuration(duration); }} />
       )}
-      {proofTypeCode !== "none" && proofTypeCode !== "voice" && (
+
+      {(proofTypeCode === "document" || proofTypeCode === "barcode" || proofTypeCode === "file_note") && (
         <label className="file-input-label">
-          {file ? file.name : (proofTypeCode === "document" ? t("attachDocument", lang) : t("attachProof", lang))}
+          {file ? file.name : (proofTypeCode === "barcode" ? t("attachProof", lang) : t("attachDocument", lang))}
           <input
             type="file"
             accept={accept}
@@ -1180,8 +1319,9 @@ function ProofUploader({ lang, busy, proofTypeCode, onCancel, onSubmit }) {
           />
         </label>
       )}
+
       <div className="btn-row">
-        <button className="btn btn-primary" disabled={busy} onClick={() => onSubmit(file, confirmationText, voiceDuration)}>
+        <button className="btn btn-primary" disabled={busy || !canSubmit} onClick={() => onSubmit(file, confirmationText, voiceDuration)}>
           {busy ? t("uploading", lang) : t("complete", lang)}
         </button>
         <button className="btn btn-outline" onClick={onCancel}>{t("cancel", lang)}</button>

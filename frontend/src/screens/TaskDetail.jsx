@@ -239,12 +239,14 @@ export function detectFileType(mimeType) {
 // (staff_attachments_select_matches_parent decides visibility), plus a
 // generic "attach a file" control usable any time — not only at Complete,
 // unlike the existing photo-proof uploader on TodayTasks.
-export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lang, showToast }) {
+export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lang, showToast, usersById }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [playing, setPlaying] = useState(null);
   const [voiceKey, setVoiceKey] = useState(0);
+  const [thumbUrls, setThumbUrls] = useState({});
+  const [lightboxUrl, setLightboxUrl] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -261,6 +263,25 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
   }, [taskId, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // "Completion Proof" thumbnails — one signed URL per image attachment,
+  // fetched lazily and best-effort (a failure here just means no inline
+  // thumbnail; the Download button below still works independently).
+  useEffect(() => {
+    const missing = items.filter((a) => a.file_type === "image" && !thumbUrls[a.id]);
+    if (!missing.length) return;
+    let cancelled = false;
+    (async () => {
+      for (const a of missing) {
+        try {
+          const res = await downloadTaskProof(a.id);
+          if (!cancelled) setThumbUrls((cur) => ({ ...cur, [a.id]: res.signed_url }));
+        } catch { /* best-effort thumbnail only */ }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   async function handleUpload(file) {
     if (!file) return;
@@ -319,17 +340,39 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
     }
   }
 
+  const imageItems = items.filter((a) => a.file_type === "image");
+
   return (
     <div style={{ marginTop: 10 }}>
       <label>{t("attachments", lang)}</label>
       {loading && <div className="msg info">…</div>}
       {!loading && items.length === 0 && <div className="msg info">{t("noAttachments", lang)}</div>}
+
+      {imageItems.length > 0 && (
+        <div className="proof-thumb-grid">
+          {imageItems.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className="proof-thumb"
+              onClick={() => (thumbUrls[a.id] ? setLightboxUrl(thumbUrls[a.id]) : handleDownload(a.id))}
+              title={a.original_filename}
+            >
+              {thumbUrls[a.id] ? <img src={thumbUrls[a.id]} alt={a.original_filename} /> : "…"}
+            </button>
+          ))}
+        </div>
+      )}
+
       {items.map((a) => (
         <div key={a.id}>
           <div className="notif-row">
             <div>
               <div className="n-title">{a.file_type === "voice" ? `🎙️ ${t("voiceNote", lang)}` : a.original_filename}</div>
-              <div className="n-time">{new Date(a.created_at).toLocaleString()}{a.duration_seconds ? ` · ${a.duration_seconds}s` : ""}</div>
+              <div className="n-time">
+                {new Date(a.created_at).toLocaleString()}{a.duration_seconds ? ` · ${a.duration_seconds}s` : ""}
+                {usersById?.[a.uploaded_by]?.full_name ? ` · ${t("uploadedByLabel", lang)}: ${usersById[a.uploaded_by].full_name}` : ""}
+              </div>
             </div>
             {a.file_type === "voice" ? (
               <button
@@ -367,6 +410,12 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
           onChange={(e) => { handleUpload(e.target.files?.[0] || null); e.target.value = ""; }}
         />
       </label>
+
+      {lightboxUrl && (
+        <div className="proof-lightbox" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="" />
+        </div>
+      )}
     </div>
   );
 });

@@ -906,6 +906,25 @@ export const STRINGS = {
   rejectAction: { en: "Reject", gu: "નકારો" },
   reopenAction: { en: "Reopen", gu: "ફરીથી ખોલો" },
   reopenReasonLabel: { en: "Reason to Reopen", gu: "ફરીથી ખોલવાનું કારણ" },
+  // Daily Update task creation — completion proof requirement
+  // (mvp_pilot_daily_update_proof_v2_61), mirrors the main Assign Task module.
+  proofRequiredLabel: { en: "Proof Required?", gu: "પુરાવો જરૂરી છે?" },
+  proofInstructionsLabel: { en: "Proof Instructions", gu: "પુરાવા સૂચનાઓ" },
+  proofInstructionsPlaceholder: { en: "e.g. Upload completed headboard fitting photo.", gu: "દા.ત. પૂર્ણ થયેલ હેડબોર્ડ ફિટિંગનો ફોટો અપલોડ કરો." },
+  proofInstructionsRequiredMsg: { en: "Proof instructions are required when proof is required.", gu: "જ્યારે પુરાવો જરૂરી હોય ત્યારે પુરાવા સૂચનાઓ જરૂરી છે." },
+  minPhotoCountLabel: { en: "Minimum Photo Count", gu: "ન્યૂનતમ ફોટો સંખ્યા" },
+  allowMultiplePhotosLabel: { en: "Allow Multiple Photos", gu: "બહુવિધ ફોટો મંજૂર કરો" },
+  proofVerificationRequiredLabel: { en: "Proof Verification Required?", gu: "પુરાવા ચકાસણી જરૂરી છે?" },
+  proofRequiredBadgeLabel: { en: "Proof Required", gu: "પુરાવો જરૂરી" },
+  takePhotoAction: { en: "Take Photo", gu: "ફોટો લો" },
+  chooseFromGalleryAction: { en: "Choose from Gallery", gu: "ગેલેરીમાંથી પસંદ કરો" },
+  removePhotoAction: { en: "Remove", gu: "દૂર કરો" },
+  retryUploadAction: { en: "Retry", gu: "ફરી પ્રયાસ કરો" },
+  photosRequiredMsg: { en: "At least {n} photo(s) are required.", gu: "ઓછામાં ઓછા {n} ફોટો જરૂરી છે." },
+  completionNoteRequiredMsg: { en: "A completion note is required.", gu: "પૂર્ણતા નોંધ જરૂરી છે." },
+  applyFiltersAction: { en: "Apply Filters", gu: "ફિલ્ટર લાગુ કરો" },
+  closeFiltersAction: { en: "Close", gu: "બંધ કરો" },
+  filtersToggleLabel: { en: "Filters", gu: "ફિલ્ટર" },
 
   // Working Drawings — secure file delete / recycle bin / permanent delete
   deleteFileAction: { en: "Delete File", gu: "ફાઇલ કાઢો" },

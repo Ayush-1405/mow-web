@@ -579,6 +579,88 @@ textarea { min-height: 84px; resize: vertical; }
 }
 .file-input-label:hover { border-color: var(--accent); background: var(--info-bg); }
 
+/* ---------- Completion-proof photo capture (mvp_pilot_daily_update_proof_v2_61)
+   — multi-photo upload with live per-photo status, used by PhotoProofField
+   in TodayTasks.jsx for the "photo"/"photo_note" proof types. ---------- */
+.proof-photo-field .btn-row .file-input-label { width: auto; flex: 1 1 160px; margin-top: 0; }
+.proof-photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.proof-photo-thumb {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.proof-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.proof-photo-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 18px;
+}
+.proof-photo-badge {
+  position: absolute; bottom: 2px; left: 2px;
+  background: #1a7a5a;
+  color: #fff;
+  border-radius: 50%;
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+}
+.proof-photo-remove {
+  position: absolute; top: 2px; right: 2px;
+  width: 22px; height: 22px;
+  min-height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.proof-photo-retry {
+  position: absolute; inset: 0;
+  border: none;
+  background: rgba(162, 52, 52, 0.75);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ---------- Full-screen proof image preview (lightbox), used by
+   AttachmentsList's thumbnail grid in TaskDetail.jsx. ---------- */
+.proof-thumb-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.proof-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  background: var(--surface-2);
+}
+.proof-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.proof-lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  padding: 24px;
+  cursor: zoom-out;
+}
+.proof-lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+
 .section-title {
   font-size: 12.5px;
   font-weight: 800;
@@ -1166,18 +1248,102 @@ textarea { min-height: 84px; resize: vertical; }
 .col-chart-value { font-size: 10px; color: var(--ink-soft); margin-bottom: 2px; font-variant-numeric: tabular-nums; }
 .col-chart-label { font-size: 9px; color: var(--ink-soft); margin-top: 4px; white-space: nowrap; }
 
-/* ---------- Daily Updates — independently scrollable task/update
-   history, with its own sticky filter header, separate from the page's
-   own scroll (the submission form above it, and the sidebar, never move
-   just because the user scrolls through old records). ---------- */
+/* ---------- Daily Updates — independently scrollable task list, with
+   filter controls kept STRICTLY outside the scroll container in normal
+   document flow (never position:sticky/absolute over the cards below —
+   that combination is exactly what previously hid the first card's title
+   behind an overlapping filter panel on mobile). Only the results list
+   itself scrolls; the submission form above it and the sidebar never move
+   just because the user scrolls through old records. ---------- */
+.daily-updates-card {
+  padding: 0;
+  /* No overflow:hidden here — the scroll container below owns its own
+     clipping; clipping this outer card too can hide legitimate content
+     (e.g. a focus ring) for no benefit. .dept-dashboard is a column flex
+     container, so without min-height:0 a flex child defaults to
+     min-height:auto and refuses to shrink below its content's natural
+     size — this is what lets the inner .daily-updates-scroll actually
+     constrain itself instead of the whole card silently growing past it. */
+  min-height: 0;
+}
+.daily-updates-header {
+  padding: 12px 14px 0;
+}
+.daily-updates-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px;
+  min-height: 0;
+}
+.daily-updates-toolbar .btn {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.daily-updates-filter-panel {
+  padding: 4px 14px 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.daily-updates-filter-panel .btn-row { margin-top: 4px; }
+.daily-updates-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+.daily-updates-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.daily-updates-chip button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 700;
+  min-width: 24px;
+  min-height: 24px;
+  line-height: 1;
+}
+.daily-updates-summary {
+  padding: 0 14px 8px;
+}
+.daily-updates-new-pill {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 0 14px 8px;
+  text-align: center;
+  padding: 8px 10px;
+  background: var(--accent);
+  color: #2a1a08;
+  font-weight: 700;
+  font-size: 12.5px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
 .daily-updates-scroll {
   overflow-y: auto;
   overflow-x: hidden;
   max-height: 650px;
-  min-height: 400px;
+  min-height: 300px;
+  margin: 0 14px 14px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
+  scroll-padding-top: 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--accent) var(--surface-2);
 }
@@ -1186,33 +1352,14 @@ textarea { min-height: 84px; resize: vertical; }
 .daily-updates-scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
 .daily-updates-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent-dark); }
 
-.daily-updates-sticky-filters {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 10px;
-}
-
-.daily-updates-new-pill {
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  display: block;
-  width: 100%;
-  text-align: center;
-  padding: 6px 10px;
-  background: var(--accent);
-  color: #2a1a08;
-  font-weight: 700;
-  font-size: 12.5px;
-  border: none;
-  cursor: pointer;
+@media (min-width: 900px) {
+  .daily-updates-filter-panel { grid-template-columns: repeat(4, 1fr); align-items: end; }
+  .daily-updates-filter-panel .btn-row { grid-column: 1 / -1; }
+  .daily-updates-scroll { max-height: 700px; }
 }
 
 @media (max-width: 899px) {
-  .daily-updates-scroll { max-height: 65vh; }
+  .daily-updates-scroll { max-height: 65vh; min-height: 260px; }
 }
 
 /* ---------- Project Master Report — print / PDF export ---------- */

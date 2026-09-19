@@ -458,11 +458,17 @@ export async function listAssignableInteriorPeople() {
   return supabase.from("profiles").select("id, name, role, auth_id").eq("active", true).not("auth_id", "is", null).order("name");
 }
 
-export async function createProjectTask({ projectId, title, description, assignedTo, dueDate, priorityCode, sourceSiteReportId, sourceWorkItemId, sourceType }) {
+export async function createProjectTask({
+  projectId, title, description, assignedTo, dueDate, priorityCode, sourceSiteReportId, sourceWorkItemId, sourceType,
+  proofTypeCode, proofInstructions, minimumPhotoCount, allowMultiplePhotos, proofVerificationRequired,
+}) {
   const { data, error } = await supabase.rpc("staff_create_project_task", {
     p_project_id: projectId, p_title: title, p_description: description || null, p_assigned_to: assignedTo,
     p_due_date: dueDate, p_priority_code: priorityCode || "NORMAL",
     p_source_site_report_id: sourceSiteReportId, p_source_work_item_id: sourceWorkItemId, p_source_type: sourceType,
+    p_proof_type_code: proofTypeCode || "none", p_proof_instructions: proofInstructions || null,
+    p_minimum_photo_count: minimumPhotoCount || 1, p_allow_multiple_photos: allowMultiplePhotos !== false,
+    p_proof_verification_required: proofVerificationRequired !== false,
   });
   const row = Array.isArray(data) ? data[0] : data;
   return { data: row, error };
