@@ -1200,6 +1200,44 @@ textarea { min-height: 84px; resize: vertical; }
   padding: 4px;
 }
 
+/* ---------- Collapsible filter bar (Factory Control Dashboard / Master Report) ---------- */
+/* Desktop/tablet: filters always visible, toggle button hidden. Mobile
+   (<=640px): filters collapse behind a "Filters" button; active selections
+   still show as removable chips regardless of screen size. */
+
+.filter-toggle-btn { display: none; }
+
+.filter-chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-soft);
+  color: var(--brand-dark);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.filter-chip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--brand-dark);
+  padding: 0;
+  line-height: 1;
+  min-width: 18px;
+  min-height: 18px;
+}
+
+@media (max-width: 640px) {
+  .filter-toggle-btn { display: inline-flex; }
+  .collapsible-filters:not(.filters-open) { display: none; }
+}
+
 /* ---------- Skeleton loading ---------- */
 
 .skeleton-block {

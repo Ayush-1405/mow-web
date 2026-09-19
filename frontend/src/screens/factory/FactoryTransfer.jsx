@@ -7,6 +7,8 @@ import {
   factoryCreateTransfer, factoryUpdateTransferStatus, uploadFactoryAttachment,
 } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 const STATUSES = ["Draft", "Dispatched", "In Transit", "Partially Received", "Received", "Disputed"];
@@ -35,12 +37,13 @@ export default function FactoryTransfer({ lang, profile }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     const [trRes, locRes, jobRes, fgRes] = await Promise.all([
-      listAllFactoryTransfers(), listFactoryLocationsAll(), listAllInhouseProductionRequests(), listAllFactoryFinishedGoods(),
+      listAllFactoryTransfers(includeTestData), listFactoryLocationsAll(), listAllInhouseProductionRequests(includeTestData), listAllFactoryFinishedGoods(includeTestData),
     ]);
     if (trRes.error || locRes.error || jobRes.error || fgRes.error) { setError(true); setLoading(false); return; }
     setTransfers(trRes.data || []);
@@ -48,7 +51,7 @@ export default function FactoryTransfer({ lang, profile }) {
     setJobs(jobRes.data || []);
     setFinishedGoods(fgRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_transfers_board", "factory_transfers", null, load), [load]);
@@ -120,6 +123,7 @@ export default function FactoryTransfer({ lang, profile }) {
           </select>
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleExport}>Export</button>
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>{showForm ? "Cancel" : "New Transfer"}</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} transfer{filtered.length === 1 ? "" : "s"}</div>
       </div>

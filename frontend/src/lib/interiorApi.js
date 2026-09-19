@@ -127,8 +127,14 @@ export async function assignActivityToProject(auditLogId, projectId) {
   return supabase.from("interior_pilot_audit_log").update({ project_id: projectId }).eq("id", auditLogId).select().single();
 }
 
-export async function listProjects() {
-  return supabase.from("projects").select("*").eq("archived", false).order("created_at", { ascending: false });
+// includeTestData=true surfaces the UAT-FACTORY-TEST project (and its 100
+// linked UAT jobs) -- reserved for the Super-Admin-only "Include Test
+// Data" toggle; every normal call site keeps getting exactly what it got
+// before this parameter existed.
+export async function listProjects(includeTestData = false) {
+  let q = supabase.from("projects").select("*").eq("archived", false).order("created_at", { ascending: false });
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 // Server-side gated: staff_delete_interior_project (SECURITY DEFINER)
@@ -260,6 +266,120 @@ export async function uploadWorkingDrawingFile({ projectId, title, fileCategory,
     storagePath: path, fileType: file.type, fileSize: file.size, uploadedBy,
     fileCategory, customCategory,
   });
+}
+
+// "Send to Factory" from a Working Drawing upload -- reuses the exact same
+// real chain InteriorPurchaseManagement.jsx already uses (createPurchaseRequest
+// -> submitToFactory -> staff_submit_to_factory RPC), so this creates one
+// genuine inhouse_production_requests row, not a second disconnected
+// "factory_requirements" record. The just-uploaded file's own storage_path
+// (already in the interior-attachments bucket) is reused as-is for
+// factory_upload_drawing -- no second upload, no duplicate storage.
+//
+// Only categories with a real 1:1 equivalent in Factory's own drawing
+// category vocabulary (factory_drawings_category_check) are eligible.
+const FACTORY_DRAWING_CATEGORY_MAP = {
+  "Furniture Detail Working Drawing": "Furniture Detail Drawing",
+  "Production Drawing": "Production Drawing",
+  "Job Card": "Job Card",
+  "Material Specification": "Material Specification",
+};
+export const FACTORY_ELIGIBLE_DRAWING_CATEGORIES = Object.keys(FACTORY_DRAWING_CATEGORY_MAP);
+
+// Looks for a still-current (not yet Superseded) Factory drawing with this
+// exact title already sent from this project -- if one exists, the caller
+// should treat the next "Send to Factory" as a REVISION of that same job
+// (one linked source record) instead of creating a brand-new, disconnected
+// job for what is really the same piece of furniture.
+export async function findFactoryDrawingForRevision(projectId, title) {
+  if (!projectId || !title?.trim()) return { data: null, error: null };
+  const { data, error } = await supabase
+    .from("factory_drawings")
+    .select("id, version_number, status, job_id, inhouse_production_requests!inner(id, job_order_number, project_id, current_stage)")
+    .eq("title", title.trim())
+    .eq("inhouse_production_requests.project_id", projectId)
+    .neq("status", "Superseded")
+    .order("version_number", { ascending: false })
+    .limit(1);
+  if (error) return { data: null, error };
+  return { data: data?.[0] || null, error: null };
+}
+
+export async function sendWorkingDrawingToFactory({
+  projectId, storagePath, title, fileCategory, roomArea, productItem, quantity, dimensions,
+  material, finish, hardware, requiredByDate, assignedFactoryCoordinator, notes,
+  approvedForProduction, overrideReason, requestedBy, revisionOf, revisionReason,
+}) {
+  const mappedCategory = FACTORY_DRAWING_CATEGORY_MAP[fileCategory];
+  if (!mappedCategory) return { data: null, error: { message: "This drawing category cannot be sent to Factory." } };
+  if (!approvedForProduction && !overrideReason?.trim()) {
+    return { data: null, error: { message: "Only an approved drawing can be sent to Factory — enter an override reason to send an unapproved one." } };
+  }
+  if (revisionOf && !revisionReason?.trim()) {
+    return { data: null, error: { message: "A revision reason is required when this drawing supersedes one already sent to Factory." } };
+  }
+
+  // Revision path: reuse the SAME job (one linked source record) -- no new
+  // purchase_request/inhouse_production_requests row, just a new drawing
+  // version on the existing job, marking the old one Superseded.
+  if (revisionOf) {
+    const { error: drawErr } = await factoryUploadDrawing(revisionOf.job_id, mappedCategory, title, storagePath, {
+      revisionReason: revisionReason.trim(), parentDrawingId: revisionOf.id,
+    });
+    if (drawErr) return { data: null, error: drawErr };
+    return {
+      data: {
+        job_id: revisionOf.job_id, job_order_number: revisionOf.inhouse_production_requests.job_order_number,
+        alreadySubmitted: false, isRevision: true,
+      }, error: null,
+    };
+  }
+
+  if (!productItem?.trim() || !requiredByDate || !assignedFactoryCoordinator) {
+    return { data: null, error: { message: "Product/Item, Required-by Date and Factory Assignee are all required to send to Factory." } };
+  }
+
+  const combinedProductItem = roomArea?.trim() ? `${roomArea.trim()} — ${productItem.trim()}` : productItem.trim();
+  const instructionParts = [];
+  if (dimensions?.trim()) instructionParts.push(`Dimensions: ${dimensions.trim()}`);
+  if (material?.trim()) instructionParts.push(`Material: ${material.trim()}`);
+  if (!approvedForProduction) instructionParts.push(`UNAPPROVED DRAWING OVERRIDE: ${overrideReason.trim()}`);
+  if (notes?.trim()) instructionParts.push(notes.trim());
+
+  const { data: pr, error: prErr } = await createPurchaseRequest({
+    project_id: projectId, area_id: null, purchase_source: "in_house", priority: "Normal",
+    purpose: title, notes: "Created from Working Drawings — Send to Factory", status: "Draft",
+    requested_by: requestedBy || null,
+  }, requestedBy || null);
+  if (prErr) return { data: null, error: prErr };
+
+  const { data: submission, error: subErr, alreadySubmitted } = await submitToFactory(projectId, pr.id, {
+    product_item: combinedProductItem, quantity: quantity || null, required_completion_date: requiredByDate,
+    assigned_factory_coordinator: assignedFactoryCoordinator, special_instructions: instructionParts.join(" | ") || null,
+    finishing_requirements: [finish, hardware].filter(Boolean).join(" / ") || null,
+  }, null);
+  if (subErr) return { data: null, error: subErr };
+
+  const { error: drawErr } = await factoryUploadDrawing(submission.job_id, mappedCategory, title, storagePath, {});
+  if (drawErr) return { data: submission, error: drawErr };
+
+  return { data: { ...submission, alreadySubmitted }, error: null };
+}
+
+// Lets Interior see real, live Factory status for a drawing it sent --
+// matched by storage_path (the same file row, not a copy) -- rather than
+// nothing at all until a much larger cross-department sync feature exists.
+export async function getFactoryDrawingStatusMap(storagePaths) {
+  if (!storagePaths?.length) return { data: new Map(), error: null };
+  const { data, error } = await supabase.from("factory_drawings")
+    .select("storage_path, status, job_id, inhouse_production_requests(job_order_number, status)")
+    .in("storage_path", storagePaths);
+  if (error) return { data: new Map(), error };
+  const m = new Map();
+  (data || []).forEach((row) => m.set(row.storage_path, {
+    drawingStatus: row.status, jobOrderNumber: row.inhouse_production_requests?.job_order_number, jobStatus: row.inhouse_production_requests?.status,
+  }));
+  return { data: m, error: null };
 }
 
 // Merges the new simplified uploads with both legacy sources so nothing
@@ -1457,6 +1577,8 @@ export async function submitToFactory(projectId, purchaseRequestId, payload, sec
     p_packing_requirements: payload.packing_requirements || null,
     p_installation_requirement: payload.installation_requirement || null,
     p_production_department: payload.production_department || null,
+    p_no_drawing_reason: payload.no_drawing_reason || null,
+    p_expected_drawing_date: payload.expected_drawing_date || null,
   });
   if (error) return { data: null, error, alreadySubmitted: false };
   const row = Array.isArray(data) ? data[0] : data;
@@ -1483,10 +1605,17 @@ export async function updateInhouseProductionStatus(projectId, id, patch) {
 // Department Head is granted access to their own jobs via a genuine
 // Factory-staff RLS branch (staff_is_factory_staff()), not just Interior's
 // org-wide check.
-export async function listAllInhouseProductionRequests() {
-  return supabase.from("inhouse_production_requests")
+// UAT test-data isolation: every Factory board defaults to excluding
+// is_test_data rows (the 100-job TEST-FJ-2026-#### UAT batch and its
+// dependents) so normal Factory users never see them mixed in with real
+// jobs. Pass includeTestData=true only from the Super-Admin-only "Include
+// Test Data" toggle.
+export async function listAllInhouseProductionRequests(includeTestData = false) {
+  let q = supabase.from("inhouse_production_requests")
     .select("*, purchase_requests(request_number, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(300);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 // ---------- factory production stage / QC / rework ----------
@@ -1497,6 +1626,10 @@ export async function listProductionStageUpdates(jobId) {
 export async function factoryUpdateStage(jobId, stage, status, extra = {}) {
   return supabase.rpc("factory_update_stage", {
     p_job_id: jobId, p_stage: stage, p_status: status,
+    // Must be a user_profiles.id (production_stage_updates_assigned_to_fkey's
+    // own space) -- the RPC itself also safely resolves a profiles.id as a
+    // fallback and raises a friendly error if neither resolves, but callers
+    // should still prefer passing the correct space directly.
     p_assigned_to: extra.assignedTo || null,
     p_quantity_completed: extra.quantityCompleted ?? null,
     p_quantity_pending: extra.quantityPending ?? null,
@@ -1504,11 +1637,25 @@ export async function factoryUpdateStage(jobId, stage, status, extra = {}) {
     p_delay_reason: extra.delayReason || null,
     p_planned_start: extra.plannedStart || null,
     p_planned_end: extra.plannedEnd || null,
+    p_stage_data: extra.stageData || null,
   });
 }
 
 export async function listFactoryQualityChecks(jobId) {
   return supabase.from("factory_quality_checks").select("*").eq("job_id", jobId).order("created_at", { ascending: false });
+}
+
+// Per-stage photo/proof gallery for the simplified stage accordion — reuses
+// the existing working_drawing_attachments table (same one QC/rework/
+// clarification/breakdown photos already use) with module='factory_stage'
+// and file_category set to the exact real stage name, rather than adding a
+// new photos column to production_stage_updates.
+export async function listFactoryStagePhotos(jobId) {
+  return supabase.from("working_drawing_attachments").select("*").eq("module", "factory_stage").eq("related_record_id", jobId).eq("is_deleted", false).order("uploaded_at", { ascending: false });
+}
+
+export async function factorySetClientAcknowledged(jobId, stage, acknowledged) {
+  return supabase.rpc("factory_set_client_acknowledged", { p_job_id: jobId, p_stage: stage, p_acknowledged: acknowledged });
 }
 
 export async function factoryRecordQualityCheck(jobId, checklist, result, extra = {}) {
@@ -1524,30 +1671,37 @@ export async function factoryRecordQualityCheck(jobId, checklist, result, extra 
 }
 
 // ---------- factory cross-job boards (WIP Stages / In-process QC / Final QC / Rework / Rejection cards) ----------
-export async function listAllProductionStageUpdates() {
-  return supabase.from("production_stage_updates")
+export async function listAllProductionStageUpdates(includeTestData = false) {
+  let q = supabase.from("production_stage_updates")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("updated_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
-export async function listAllFactoryQualityChecks(qcStage) {
+export async function listAllFactoryQualityChecks(qcStage, includeTestData = false) {
   let q = supabase.from("factory_quality_checks")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(500);
   if (qcStage) q = q.eq("qc_stage", qcStage);
+  if (!includeTestData) q = q.eq("is_test_data", false);
   return q;
 }
 
-export async function listAllFactoryReworkRecords() {
-  return supabase.from("factory_rework_records")
+export async function listAllFactoryReworkRecords(includeTestData = false) {
+  let q = supabase.from("factory_rework_records")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
-export async function listAllFactoryRejectionRecords() {
-  return supabase.from("factory_rejection_records")
+export async function listAllFactoryRejectionRecords(includeTestData = false) {
+  let q = supabase.from("factory_rejection_records")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("rejected_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factoryRecordRejection(jobId, rejectedQuantity, reason, extra = {}) {
@@ -1559,10 +1713,12 @@ export async function factoryRecordRejection(jobId, rejectedQuantity, reason, ex
 }
 
 // ---------- factory Phase 2: Production Planning / BOM / Cutting Lists / Wastage / Finished Goods / Packing / Costing / Productivity ----------
-export async function listAllFactoryProductionPlans() {
-  return supabase.from("factory_production_plans")
+export async function listAllFactoryProductionPlans(includeTestData = false) {
+  let q = supabase.from("factory_production_plans")
     .select("*, projects(project_code, customer), inhouse_production_requests(job_order_number)")
     .order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factorySaveProductionPlan(planId, fields) {
@@ -1581,10 +1737,12 @@ export async function factoryUpdateProductionPlanStatus(planId, status, reason) 
   return supabase.rpc("factory_update_production_plan_status", { p_plan_id: planId, p_status: status, p_reason: reason || null });
 }
 
-export async function listAllFactoryBoms() {
-  return supabase.from("factory_boms")
+export async function listAllFactoryBoms(includeTestData = false) {
+  let q = supabase.from("factory_boms")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function listFactoryBomItems(bomId) {
@@ -1603,10 +1761,12 @@ export async function factoryDecideBom(bomId, decision, reason) {
   return supabase.rpc("factory_decide_bom", { p_bom_id: bomId, p_decision: decision, p_reason: reason || null });
 }
 
-export async function listAllFactoryCuttingLists() {
-  return supabase.from("factory_cutting_lists")
+export async function listAllFactoryCuttingLists(includeTestData = false) {
+  let q = supabase.from("factory_cutting_lists")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function listFactoryCuttingListItems(listId) {
@@ -1621,10 +1781,12 @@ export async function factoryCopyCuttingListAsRevision(listId) {
   return supabase.rpc("factory_copy_cutting_list_as_revision", { p_list_id: listId });
 }
 
-export async function listAllFactoryWastageRecords() {
-  return supabase.from("factory_wastage_records")
+export async function listAllFactoryWastageRecords(includeTestData = false) {
+  let q = supabase.from("factory_wastage_records")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factoryRecordWastage(jobId, materialName, wastageQuantity, reason, extra = {}) {
@@ -1636,10 +1798,12 @@ export async function factoryRecordWastage(jobId, materialName, wastageQuantity,
   });
 }
 
-export async function listAllFactoryFinishedGoods() {
-  return supabase.from("factory_finished_goods")
+export async function listAllFactoryFinishedGoods(includeTestData = false) {
+  let q = supabase.from("factory_finished_goods")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factoryRecordFinishedGoods(jobId, completedQuantity, extra = {}) {
@@ -1649,10 +1813,12 @@ export async function factoryRecordFinishedGoods(jobId, completedQuantity, extra
   });
 }
 
-export async function listAllFactoryPackingRecords() {
-  return supabase.from("factory_packing_records")
+export async function listAllFactoryPackingRecords(includeTestData = false) {
+  let q = supabase.from("factory_packing_records")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factorySavePacking(jobId, packingId, fields) {
@@ -1669,6 +1835,19 @@ export async function getFactoryProductCosting(jobId) {
   return supabase.from("factory_product_costing").select("*").eq("job_id", jobId).maybeSingle();
 }
 
+// Bulk costing rows for the Factory Master Report's restricted Costing
+// section -- RLS on factory_product_costing already restricts this to
+// authorized roles (Management/Super Admin/Factory Head/Accounts); a
+// non-authorized caller simply gets zero rows back, same as every other
+// list function here, never a client-side-only hide.
+export async function listAllFactoryProductCosting(includeTestData = false) {
+  let q = supabase.from("factory_product_costing")
+    .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
+    .order("updated_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
+}
+
 export async function factorySaveProductCosting(jobId, fields) {
   return supabase.rpc("factory_save_product_costing", {
     p_job_id: jobId, p_material_cost: fields.materialCost || 0, p_hardware_cost: fields.hardwareCost || 0,
@@ -1678,12 +1857,12 @@ export async function factorySaveProductCosting(jobId, fields) {
   });
 }
 
-export async function factoryWorkerProductivity(from, to) {
-  return supabase.rpc("factory_worker_productivity", { p_from: from || null, p_to: to || null });
+export async function factoryWorkerProductivity(from, to, includeTestData = false) {
+  return supabase.rpc("factory_worker_productivity", { p_from: from || null, p_to: to || null, p_include_test_data: includeTestData });
 }
 
-export async function factoryShiftProductivity(from, to) {
-  return supabase.rpc("factory_shift_productivity", { p_from: from || null, p_to: to || null });
+export async function factoryShiftProductivity(from, to, includeTestData = false) {
+  return supabase.rpc("factory_shift_productivity", { p_from: from || null, p_to: to || null, p_include_test_data: includeTestData });
 }
 
 export async function factoryProductTimeTracking(jobId) {
@@ -1691,8 +1870,10 @@ export async function factoryProductTimeTracking(jobId) {
 }
 
 // ---------- factory Phase 3: Materials/Stock/Issue, Machines, Transfer, Inventory Costing, Drawings ----------
-export async function listFactoryMaterials() {
-  return supabase.from("factory_materials").select("*").eq("is_active", true).order("material_name");
+export async function listFactoryMaterials(includeTestData = false) {
+  let q = supabase.from("factory_materials").select("*").eq("is_active", true).order("material_name");
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factoryUpsertMaterial(materialId, fields) {
@@ -1706,8 +1887,10 @@ export async function listFactoryLocationsAll() {
   return supabase.from("factory_locations").select("*").eq("active", true).order("name");
 }
 
-export async function listFactoryMaterialStock() {
-  return supabase.from("factory_material_stock").select("*, factory_materials(material_code, material_name, category, unit, reorder_level), factory_locations(name)").order("updated_at", { ascending: false });
+export async function listFactoryMaterialStock(includeTestData = false) {
+  let q = supabase.from("factory_material_stock").select("*, factory_materials(material_code, material_name, category, unit, reorder_level), factory_locations(name)").order("updated_at", { ascending: false });
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function listFactoryMaterialTransactions(materialId) {
@@ -1741,12 +1924,14 @@ export async function factoryReleaseReservation(materialId, locationId, jobId, q
   return supabase.rpc("factory_release_reservation", { p_material_id: materialId, p_location_id: locationId, p_job_id: jobId, p_quantity: quantity });
 }
 
-export async function factoryInventoryCosting(from, to) {
-  return supabase.rpc("factory_inventory_costing", { p_from: from || null, p_to: to || null });
+export async function factoryInventoryCosting(from, to, includeTestData = false) {
+  return supabase.rpc("factory_inventory_costing", { p_from: from || null, p_to: to || null, p_include_test_data: includeTestData });
 }
 
-export async function listFactoryMachines() {
-  return supabase.from("factory_machines").select("*, factory_locations(name)").order("machine_name");
+export async function listFactoryMachines(includeTestData = false) {
+  let q = supabase.from("factory_machines").select("*, factory_locations(name)").order("machine_name");
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factoryUpsertMachine(machineId, fields) {
@@ -1777,8 +1962,10 @@ export async function factoryStopMachineJob(logId, fields) {
   });
 }
 
-export async function listAllFactoryTransfers() {
-  return supabase.from("factory_transfers").select("*, projects(project_code, customer), inhouse_production_requests(job_order_number)").order("created_at", { ascending: false }).limit(500);
+export async function listAllFactoryTransfers(includeTestData = false) {
+  let q = supabase.from("factory_transfers").select("*, projects(project_code, customer), inhouse_production_requests(job_order_number)").order("created_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function listFactoryTransferItems(transferId) {
@@ -1801,18 +1988,56 @@ export async function factoryUpdateTransferStatus(transferId, status, extra = {}
   });
 }
 
-export async function listAllFactoryDrawings() {
-  return supabase.from("factory_drawings")
+export async function listAllFactoryDrawings(includeTestData = false) {
+  let q = supabase.from("factory_drawings")
     .select("*, inhouse_production_requests(job_order_number, product_item, project_id, projects(project_code, customer))")
     .order("uploaded_at", { ascending: false }).limit(500);
+  if (!includeTestData) q = q.eq("is_test_data", false);
+  return q;
 }
 
 export async function factoryUploadDrawing(jobId, category, title, storagePath, extra = {}) {
   return supabase.rpc("factory_upload_drawing", {
     p_job_id: jobId, p_category: category, p_title: title, p_storage_path: storagePath,
     p_custom_category_name: extra.customCategoryName || null, p_revision_reason: extra.revisionReason || null,
-    p_parent_drawing_id: extra.parentDrawingId || null,
+    p_parent_drawing_id: extra.parentDrawingId || null, p_note: extra.note || null, p_drawing_date: extra.drawingDate || null,
   });
+}
+
+// Shared drawing-type vocabulary — matches factory_drawings_category_check
+// exactly (mvp_pilot_factory_drawing_notes_v2_68.sql). Used by every screen
+// that uploads a Factory drawing so the dropdown can never offer a value
+// the database will reject.
+export const FACTORY_DRAWING_TYPES = [
+  "3D Drawing", "Normal Drawing", "Reference Drawing", "Working Drawing", "Production Drawing",
+  "Furniture Detail Drawing", "Cutting Drawing", "Approved Design", "Material Specification",
+  "Site Measurement", "Job Card", "PDF/Document", "Reference Photo", "RCP", "Electrical Drawing", "MEP Drawing", "Others",
+];
+
+export async function listFactoryDrawingsForJob(jobId) {
+  return supabase.from("factory_drawings").select("*").eq("job_id", jobId).order("title").order("version_number", { ascending: false });
+}
+
+// Uploads one or more Factory reference files against an already-created
+// job (used right after submitToFactory() creates it) -- each file reuses
+// the same interior-attachments storage bucket + factory_upload_drawing RPC
+// every other Factory drawing upload uses, so there is no second/parallel
+// upload path and no physical duplicate: one upload, one factory_drawings
+// row, linked to the one real job.
+export async function submitInhouseFactoryFiles({ projectId, jobId, files, uploadedBy }) {
+  const results = [];
+  for (const f of files) {
+    const { path, error: uploadErr } = await uploadFactoryAttachment({
+      projectId, module: "factory_drawing", relatedRecordId: jobId, file: f.file, fileCategory: f.fileType, uploadedBy,
+    });
+    if (uploadErr) return { data: results, error: uploadErr };
+    const { error: drawErr } = await factoryUploadDrawing(jobId, f.fileType, f.title, path, {
+      customCategoryName: f.fileType === "Others" ? f.customFileType : null, note: f.note || null, drawingDate: f.drawingDate || null,
+    });
+    if (drawErr) return { data: results, error: drawErr };
+    results.push(f.title);
+  }
+  return { data: results, error: null };
 }
 
 export async function factoryDecideDrawing(drawingId, decision, notes) {
@@ -1821,6 +2046,12 @@ export async function factoryDecideDrawing(drawingId, decision, notes) {
 
 export async function factoryIssueDrawing(drawingId) {
   return supabase.rpc("factory_issue_drawing", { p_drawing_id: drawingId });
+}
+
+// Factory-side acknowledgment of a drawing revision -- restricted server-side
+// to Factory staff/Management/Super Admin (factory_acknowledge_drawing RPC).
+export async function factoryAcknowledgeDrawing(drawingId) {
+  return supabase.rpc("factory_acknowledge_drawing", { p_drawing_id: drawingId });
 }
 
 export async function listFactoryReworkRecords(jobId) {
@@ -1849,6 +2080,16 @@ export async function uploadFactoryAttachment({ projectId, module, relatedRecord
     storage_path: path, file_type: file.type, file_size: file.size, description: description || null, uploaded_by: uploadedBy || null,
   }).select().single();
   return { data, error, path };
+}
+
+// Best-effort orphan cleanup for uploadFactoryAttachment() -- used when a
+// step AFTER the Storage upload fails, so the file isn't left dangling with
+// no database row pointing at it. Storage's own delete RLS on this bucket
+// intentionally restricts physical removal to management/sysadmin (the
+// soft-delete/purge workflow), so this can no-op for other roles; that is
+// safe here since an unreferenced object is already invisible everywhere.
+export async function removeFactoryAttachmentFile(storagePath) {
+  return supabase.storage.from("interior-attachments").remove([storagePath]);
 }
 
 export async function listJobClarifications(jobId) {
@@ -2149,4 +2390,186 @@ export async function deletePurchaseAttachment(projectId, id) {
   const { error } = await supabase.from("purchase_attachments").delete().eq("id", id).eq("project_id", projectId);
   if (!error) await logAudit("purchase_attachments", id, "delete", null, projectId);
   return { error };
+}
+
+// =====================================================================
+// AI Factory intake (Phase 1) -- see mvp_pilot_factory_ai_intake_v2_75.sql
+// and backend/supabase/functions/factory-ai-extract. Every mutation goes
+// through a SECURITY DEFINER RPC; the Claude call itself only ever happens
+// inside the Edge Function (the browser holds no AI credentials).
+// =====================================================================
+export const FACTORY_AI_BUCKET = "factory-ai-attachments";
+export const FACTORY_AI_ALLOWED_EXTS = ["xlsx", "xls", "csv", "pdf", "docx", "jpg", "jpeg", "png", "webp", "txt"];
+export const FACTORY_AI_MAX_FILE_MB = 15;
+export const FACTORY_AI_MAX_FILES = 5;
+
+async function sha256HexOfFile(file) {
+  const buf = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function factoryAiRunExtraction(requestId) {
+  return supabase.functions.invoke("factory-ai-extract", { body: { request_id: requestId } });
+}
+
+// One call for the whole "Send to Factory" button: create (idempotent on
+// idempotencyKey) -> upload each file -> record it -> trigger extraction.
+// Returns { requestId, requestNumber, alreadySubmitted, step, error } --
+// `step` says how far it got so the UI can show a precise, friendly message
+// and a retry never duplicates the request.
+export async function factoryAiSubmit({ idempotencyKey, projectId, workTitle, workDescription, requiredDate, priority, files }) {
+  const { data, error } = await supabase.rpc("factory_ai_submit_request", {
+    p_idempotency_key: idempotencyKey, p_project_id: projectId || null, p_work_title: workTitle,
+    p_work_description: workDescription || null, p_required_date: requiredDate || null, p_priority: priority || "Normal",
+  });
+  if (error) return { step: "create", error };
+  const row = Array.isArray(data) ? data[0] : data;
+  const requestId = row.request_id;
+  const out = { requestId, requestNumber: row.request_number, alreadySubmitted: row.already_submitted };
+
+  const existing = await supabase.from("factory_ai_attachments").select("checksum, original_file_name").eq("request_id", requestId);
+  const done = new Set((existing.data || []).map((a) => `${a.original_file_name}:${a.checksum}`));
+
+  for (const file of files || []) {
+    const checksum = await sha256HexOfFile(file);
+    if (done.has(`${file.name}:${checksum}`)) continue;
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-140);
+    const path = `${requestId}/${crypto.randomUUID()}-${safeName}`;
+    const { error: upErr } = await supabase.storage.from(FACTORY_AI_BUCKET).upload(path, file);
+    if (upErr) return { ...out, step: "upload", error: upErr };
+    const { error: recErr } = await supabase.rpc("factory_ai_add_attachment", {
+      p_request_id: requestId, p_storage_path: path, p_original_file_name: file.name,
+      p_mime_type: file.type || null, p_file_size: file.size, p_checksum: checksum,
+    });
+    if (recErr) {
+      await supabase.storage.from(FACTORY_AI_BUCKET).remove([path]);
+      return { ...out, step: "record", error: recErr };
+    }
+  }
+
+  // Extraction runs server-side; a failure here never loses the request or its
+  // files -- it just lands as status "failed" for a reviewer (and Retry).
+  const { error: fnErr } = await factoryAiRunExtraction(requestId);
+  return { ...out, step: fnErr ? "extract" : "done", error: fnErr || null };
+}
+
+export async function listFactoryAiRequests() {
+  return supabase
+    .from("factory_ai_requests")
+    .select("*, projects(project_code, customer, location), departments:source_department_id(name_en, code)")
+    .order("created_at", { ascending: false })
+    .limit(300);
+}
+
+export async function getFactoryAiRequest(id) {
+  return supabase
+    .from("factory_ai_requests")
+    .select("*, projects(project_code, customer, location, lead_executive_id), departments:source_department_id(name_en, code)")
+    .eq("id", id)
+    .maybeSingle();
+}
+
+export async function listFactoryAiAttachments(requestId) {
+  return supabase.from("factory_ai_attachments").select("*").eq("request_id", requestId).order("uploaded_at");
+}
+
+export async function listFactoryAiCorrections(requestId) {
+  return supabase.from("factory_ai_request_corrections").select("*").eq("request_id", requestId).order("corrected_at", { ascending: false });
+}
+
+export async function getFactoryAiFileUrl(storagePath) {
+  const { data, error } = await supabase.storage.from(FACTORY_AI_BUCKET).createSignedUrl(storagePath, 3600);
+  return { url: data?.signedUrl || null, error };
+}
+
+export async function factoryAiCorrect(requestId, correctedFields) {
+  return supabase.rpc("factory_ai_correct_extraction", { p_request_id: requestId, p_corrected_fields: correctedFields });
+}
+
+export async function factoryAiAccept(requestId, { coordinatorProfileId, secondAssigneeProfileId, productItem, quantity, unit, requiredDate }) {
+  return supabase.rpc("factory_ai_accept_request", {
+    p_request_id: requestId, p_assigned_factory_coordinator: coordinatorProfileId,
+    p_second_assignee: secondAssigneeProfileId || null, p_product_item: productItem || null,
+    p_quantity: quantity === "" || quantity == null ? null : Number(quantity), p_unit: unit || null,
+    p_required_completion_date: requiredDate || null,
+  });
+}
+
+export async function factoryAiReject(requestId, reason) {
+  return supabase.rpc("factory_ai_reject_request", { p_request_id: requestId, p_reason: reason });
+}
+
+export async function factoryAiRequestClarification(requestId, note) {
+  return supabase.rpc("factory_ai_request_clarification", { p_request_id: requestId, p_note: note });
+}
+
+// =====================================================================
+// AI Task Assistant -- see backend/supabase/functions/ai-task-draft and
+// mvp_pilot_ai_task_drafts_v2_78.sql. Claude only PROPOSES; tasks are
+// created by the caller through the existing staff_create_task RPC.
+// =====================================================================
+export const AI_TASK_MAX_FILES = 3;
+export const AI_TASK_MAX_FILE_MB = 4;
+export const AI_TASK_ALLOWED_EXTS = ["jpg", "jpeg", "png", "webp", "pdf", "xlsx", "xls", "csv", "docx", "txt"];
+
+async function fileToBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+// Turns a supabase.functions.invoke error into a safe, user-readable reason.
+// FunctionsHttpError carries the function's own JSON body ({ ok:false,
+// error, code }) on error.context; a FunctionsFetchError/relay error means
+// the browser could not reach the function at all (not deployed, blocked by
+// CORS, offline). Never surfaces stack traces or secrets.
+async function functionErrorReason(error, fallbackReach) {
+  try {
+    const body = await error?.context?.json?.();
+    if (body && typeof body.error === "string") return { reason: body.error, code: body.code || "error" };
+    if (body?.error?.en) return { reason: body.error.en, code: "error" };
+  } catch {
+    // body was not JSON -- fall through
+  }
+  console.error("[AI function] request failed", { name: error?.name, message: error?.message });
+  return { reason: fallbackReach, code: "unreachable" };
+}
+
+export async function aiDraftTasks({ text, files }) {
+  const trimmed = (text || "").trim();
+  if (!trimmed && (!files || files.length === 0)) {
+    return { ok: false, reason: "Paste a message or attach a file first.", code: "empty_request" };
+  }
+  const payloadFiles = [];
+  for (const f of files || []) payloadFiles.push({ name: f.name, mime: f.type || "", data_b64: await fileToBase64(f) });
+  const { data, error } = await supabase.functions.invoke("ai-task-draft", { body: { text: trimmed, files: payloadFiles } });
+  if (error) {
+    const { reason, code } = await functionErrorReason(error, "Could not reach the AI service. Please try again.");
+    return { ok: false, reason, code, error };
+  }
+  if (!data?.ok) return { ok: false, reason: data?.error || "The AI could not read this.", code: data?.code || "error" };
+  return { ok: true, draft_id: data.draft_id, tasks: data.drafts || [], notes: data.notes ?? null, warnings: data.warnings || [] };
+}
+
+export async function aiTaskDraftRecordOutcome(draftId, createdTaskIds, totalProposed) {
+  return supabase.rpc("ai_task_draft_record_outcome", {
+    p_draft_id: draftId, p_created_task_ids: createdTaskIds, p_total_proposed: totalProposed,
+  });
+}
+
+// Factory shop-floor AI (photo / short note -> proposed stage updates). The
+// proposal is only a draft: each accepted item is applied by the existing
+// factoryUpdateStage() under the worker's own permissions.
+export async function aiDraftStageUpdates(jobId, { text, files }) {
+  const payloadFiles = [];
+  for (const f of files || []) payloadFiles.push({ name: f.name, mime: f.type || "", data_b64: await fileToBase64(f) });
+  const { data, error } = await supabase.functions.invoke("factory-ai-stage-update", { body: { job_id: jobId, text: text || "", files: payloadFiles } });
+  if (error) return { ok: false, reason: "Could not reach the AI service. Please use the stage buttons.", error };
+  return data;
+}
+
+export async function aiStageDraftRecordOutcome(draftId, applied, total) {
+  return supabase.rpc("ai_stage_draft_record_outcome", { p_draft_id: draftId, p_applied: applied, p_total: total });
 }

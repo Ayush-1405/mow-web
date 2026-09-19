@@ -11,9 +11,9 @@ import {
   listPurchaseChecklistItems, listPurchaseRequests, listAllPurchaseRequests,
   createPurchaseRequest, updatePurchaseRequest, archivePurchaseRequest,
   listPurchaseRequestItems, createPurchaseRequestItem, updatePurchaseRequestItem,
-  getInhouseProductionRequest, submitToFactory, updateInhouseProductionStatus,
-  listJobClarifications, listClarificationRevisions, interiorUploadClarificationRevision,
-  uploadFactoryAttachment, interiorConfirmCompletion, interiorRaiseCompletionIssue,
+  getInhouseProductionRequest, submitToFactory,
+  submitInhouseFactoryFiles, FACTORY_DRAWING_TYPES, listFactoryDrawingsForJob, factoryUploadDrawing, getAttachmentUrl,
+  uploadFactoryAttachment, removeFactoryAttachmentFile, deleteWorkingDrawingAttachment,
   getOutsourceRequirement, upsertOutsourceRequirement,
   listVendorQuotations, createVendorQuotation, listPurchaseVendorSelections, selectPurchaseVendor,
   listPurchaseApprovals, decidePurchaseApproval,
@@ -34,11 +34,6 @@ const OUTSOURCE_TYPES = [
   "Direct-to-Site Vendor Supply", "Vendor Supply to Warehouse", "Other",
 ];
 const PRIORITIES = ["Normal", "High", "Urgent", "Emergency"];
-const INHOUSE_STATUSES = [
-  "Draft", "Submitted to Factory", "Factory Accepted", "Material Check Pending", "Raw Material Pending",
-  "Ready for Production", "Production Started", "Work in Progress", "QC Pending", "QC Failed", "Rework",
-  "QC Passed", "Packing", "Ready for Dispatch", "Dispatched", "Delivered", "Installed", "Completed", "On Hold", "Cancelled",
-];
 const APPROVAL_LEVELS = [
   "Purchase Review Pending", "Department Head Approval Pending", "Management Approval Pending", "Accounts Review Pending",
 ];
@@ -67,6 +62,15 @@ const STATUS_BADGE = {
 
 function personName(people, id) {
   return people.find((p) => p.id === id)?.name || "—";
+}
+
+// Several Factory tables (factory_drawings.uploaded_by, production_stage_updates
+// actor columns, etc.) store the auth-space id (user_profiles.id), not the
+// Interior-roster profiles.id that `people` is normally keyed by — resolve
+// through the auth_id field listInteriorPeople() already returns for exactly
+// this reason (see FactoryJobOrders.jsx's identical helper).
+function personNameByAuthId(people, authId) {
+  return people.find((p) => p.auth_id === authId)?.name || "—";
 }
 
 const emptyRequestForm = {
@@ -175,23 +179,46 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
     if (!projectId) return undefined;
     const unsubR = subscribeTable(`project-${projectId}-purchase_requests`, "purchase_requests", `project_id=eq.${projectId}`, () => refreshAll());
     const unsubA = subscribeTable(`project-${projectId}-purchase_attachments`, "purchase_attachments", `project_id=eq.${projectId}`, () => refreshDetail());
-    return () => { unsubR(); unsubA(); };
+    // Factory Job stage/status changes -- so the Factory Reference summary
+    // (current stage, status, completion) updates live without a reload.
+    const unsubJob = subscribeTable(`project-${projectId}-inhouse_production_requests`, "inhouse_production_requests", `project_id=eq.${projectId}`, () => refreshDetail());
+    return () => { unsubR(); unsubA(); unsubJob(); };
   }, [projectId, refreshAll, refreshDetail]);
+
+  useEffect(() => {
+    // New/updated Factory reference attachments for the currently-open job --
+    // separate effect since the job id is only known once detail has loaded.
+    const jobId = detail?.inhouse?.id;
+    if (!jobId) return undefined;
+    const unsubDrawings = subscribeTable(`inhouse-${jobId}-factory_drawings`, "factory_drawings", `job_id=eq.${jobId}`, () => refreshDetail());
+    return () => { unsubDrawings(); };
+  }, [detail?.inhouse?.id, refreshDetail]);
 
   useForegroundRefresh(refreshAll);
 
   const currentRequest = requests.find((r) => r.id === requestId) || boardRequests.find((r) => r.id === requestId) || null;
 
+  // In-house/Factory requests get ONE simplified "Factory / In-house" tab and
+  // nothing else (Request/Checklist/GRN-QC/Payment Coordination/Attachments/
+  // Activity History/Archive are all hidden here, per explicit request — none
+  // of their underlying tables/records are touched, only this page's
+  // navigation). Outsourced requests are completely unaffected: same full
+  // tab set as before.
+  const isInHouseOnly = currentRequest?.purchase_source === "in_house";
   const tabs = useMemo(() => {
+    if (isInHouseOnly) return [["inhouse", "Factory / In-house"]];
     const base = [["request", "Request"], ["checklist", "Checklist"]];
-    if (currentRequest?.purchase_source === "in_house") base.splice(1, 0, ["inhouse", "In-house / Factory"]);
     if (currentRequest?.purchase_source === "outsourced") {
       base.splice(1, 0, ["outsource", "Outsource / Vendor"]);
       base.push(["followup", "Vendor Follow-up"]);
     }
     base.push(["grn", "GRN / QC"], ["payment", "Payment Coordination"], ["files", "All Attachments"], ["activity", "Activity History"]);
     return base;
-  }, [currentRequest]);
+  }, [currentRequest, isInHouseOnly]);
+
+  useEffect(() => {
+    if (isInHouseOnly && activeTab !== "inhouse") setActiveTab("inhouse");
+  }, [isInHouseOnly, activeTab]);
 
   async function handleCreateRequest(e) {
     e.preventDefault();
@@ -325,7 +352,7 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
             <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
               <span style={{ fontWeight: 700 }}>{currentRequest?.request_number}</span>
               <span className={`badge ${STATUS_BADGE[currentRequest?.status] || "CLOSED"}`}>{currentRequest?.status}</span>
-              {isElevated && (
+              {isElevated && !isInHouseOnly && (
                 <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }}
                   onClick={async () => { await archivePurchaseRequest(projectId, requestId); setRequestId(""); setView("list"); refreshAll(); }}>
                   {t("archiveAction", lang)}
@@ -347,8 +374,8 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
                   profile={profile} isElevated={isElevated} onChanged={refreshAll} />
               )}
               {activeTab === "inhouse" && (
-                <InhousePanel lang={lang} projectId={projectId} request={currentRequest} inhouse={detail.inhouse} costing={detail.costing}
-                  factoryLocations={factoryLocations} people={people} profile={profile} isOrgWide={isOrgWide} onChanged={refreshAll} />
+                <InhousePanel lang={lang} projectId={projectId} project={project} request={currentRequest} inhouse={detail.inhouse}
+                  factoryLocations={factoryLocations} people={people} profile={profile} onChanged={refreshAll} />
               )}
               {activeTab === "outsource" && (
                 <OutsourcePanel lang={lang} projectId={projectId} request={currentRequest} outsource={detail.outsource}
@@ -506,152 +533,257 @@ function RequestPanel({ lang, projectId, request, items, people, profile, isElev
   );
 }
 
-// Clarifications raised by Factory + the Completion confirm/raise-issue gate
-// -- shown inside the existing "In-house Production Status" card, not a
-// separate page, since both are just more facts about the same job.
-function InhouseCompletionAndClarifications({ projectId, inhouse, profile, onChanged }) {
-  const [clarifications, setClarifications] = useState([]);
-  const [revisionsByClar, setRevisionsByClar] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [revisionFiles, setRevisionFiles] = useState({});
-  const [revisionNotes, setRevisionNotes] = useState({});
-  const [saving, setSaving] = useState(null);
-  const [issueNotes, setIssueNotes] = useState("");
-  const [msg, setMsg] = useState("");
+// =======================================================================
+// In-house workflow
+// =======================================================================
+const EMPTY_FACTORY_FILE = { title: "", fileType: "", customFileType: "", note: "", drawingDate: "", file: null };
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data: clars } = await listJobClarifications(inhouse.id);
-    const list = clars || [];
-    setClarifications(list);
-    const revMap = {};
-    await Promise.all(list.map(async (c) => {
-      const { data: revs } = await listClarificationRevisions(c.id);
-      revMap[c.id] = revs || [];
-    }));
-    setRevisionsByClar(revMap);
-    setLoading(false);
-  }, [inhouse.id]);
+// The only categories shown/uploadable on the simplified Purchase Request
+// screen -- a subset of the full FACTORY_DRAWING_TYPES vocabulary (all 7
+// values are already valid per factory_drawings_category_check, so no
+// schema change is needed to restrict this page to them). The full 17-type
+// list, revisions and approvals still live on the Factory Drawings screen.
+const FACTORY_REFERENCE_CATEGORIES = [
+  "Working Drawing", "Production Drawing", "3D Drawing", "Reference Photo",
+  "Material Specification", "Job Card", "Others",
+];
+const REF_IMAGE_EXTS = ["jpg", "jpeg", "png", "webp", "gif"];
+// What the Upload Factory Reference form itself accepts (a stricter subset of
+// what the wider Working Drawings screen allows) -- matches FILE SUPPORT.
+const FACTORY_REFERENCE_ALLOWED_EXTS = ["jpg", "jpeg", "png", "webp", "pdf", "dwg", "dxf"];
+const FACTORY_REFERENCE_MAX_SIZE_MB = 15;
+const FACTORY_REFERENCE_MAX_SIZE_BYTES = FACTORY_REFERENCE_MAX_SIZE_MB * 1024 * 1024;
+function refExtOf(name) {
+  const m = /\.([a-z0-9]+)$/i.exec(name || "");
+  return m ? m[1].toLowerCase() : "";
+}
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => subscribeTable(`inhouse_${inhouse.id}_clar`, "factory_clarification_requests", `job_id=eq.${inhouse.id}`, load), [inhouse.id, load]);
-  useEffect(() => subscribeTable(`inhouse_${inhouse.id}_clarrev`, "factory_clarification_revisions", null, load), [inhouse.id, load]);
-
-  async function handleUploadRevision(clarId) {
-    const file = revisionFiles[clarId];
-    if (!file) { setMsg("Select a revised document first."); return; }
-    setSaving(clarId);
-    setMsg("");
-    const { path, error: uploadErr } = await uploadFactoryAttachment({
-      projectId, module: "factory_clarification_revision", relatedRecordId: clarId, file,
-      fileCategory: "Revised Document", uploadedBy: profile?.id,
-    });
-    if (uploadErr) { setSaving(null); setMsg(uploadErr.message); return; }
-    const { error } = await interiorUploadClarificationRevision(clarId, path, revisionNotes[clarId] || null);
-    setSaving(null);
-    if (error) { setMsg(error.message); return; }
-    setRevisionFiles((f) => ({ ...f, [clarId]: null }));
-    setRevisionNotes((n) => ({ ...n, [clarId]: "" }));
-    load();
-    onChanged();
+function ReferenceAttachmentThumb({ storagePath, title }) {
+  const [url, setUrl] = useState(null);
+  const isImage = REF_IMAGE_EXTS.includes(refExtOf(storagePath));
+  useEffect(() => {
+    let active = true;
+    if (isImage) {
+      getAttachmentUrl(storagePath).then((res) => { if (active) setUrl(res?.url || null); });
+    }
+    return () => { active = false; };
+  }, [storagePath, isImage]);
+  if (isImage && url) {
+    return <img src={url} alt={title} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)", flexShrink: 0 }} />;
   }
-
-  async function handleConfirmCompletion() {
-    setSaving("confirm");
-    const { error } = await interiorConfirmCompletion(inhouse.id, null);
-    setSaving(null);
-    if (error) { setMsg(error.message); return; }
-    onChanged();
-  }
-
-  async function handleRaiseIssue() {
-    if (!issueNotes.trim()) { setMsg("Describe the issue before raising it."); return; }
-    setSaving("issue");
-    const { error } = await interiorRaiseCompletionIssue(inhouse.id, issueNotes);
-    setSaving(null);
-    if (error) { setMsg(error.message); return; }
-    setIssueNotes("");
-    onChanged();
-  }
-
-  const openClarifications = clarifications.filter((c) => c.status === "open" || c.status === "rejected");
-
   return (
-    <div style={{ marginTop: 10 }}>
-      {msg && <div className="msg error">{msg}</div>}
-
-      {inhouse.completed_at && !inhouse.final_closed_at && (
-        <div className="card" style={{ marginTop: 8, borderColor: "var(--gold, #b45309)" }}>
-          <h3 style={{ marginTop: 0 }}>Factory Completion — Awaiting Your Confirmation</h3>
-          <div className="sub">Completed {new Date(inhouse.completed_at).toLocaleDateString()} — actual qty {inhouse.actual_completed_quantity}.</div>
-          {inhouse.completion_notes && <div className="sub">Notes: {inhouse.completion_notes}</div>}
-          <div className="btn-row" style={{ marginTop: 8 }}>
-            <button type="button" className="btn btn-primary" disabled={saving === "confirm"} onClick={handleConfirmCompletion}>
-              {saving === "confirm" ? "Confirming…" : "Confirm Completion"}
-            </button>
-          </div>
-          <div className="field" style={{ marginTop: 8 }}>
-            <label>Or raise an issue instead</label>
-            <input value={issueNotes} onChange={(e) => setIssueNotes(e.target.value)} placeholder="Describe the issue" />
-            <button type="button" className="btn btn-outline" style={{ marginTop: 6, width: "auto" }} disabled={saving === "issue"} onClick={handleRaiseIssue}>
-              {saving === "issue" ? "Raising…" : "Raise Issue"}
-            </button>
-          </div>
-        </div>
-      )}
-      {inhouse.final_closed_at && <div className="msg success" style={{ marginTop: 8 }}>Completion confirmed and closed on {new Date(inhouse.final_closed_at).toLocaleDateString()}.</div>}
-
-      {!loading && clarifications.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          <h3>Factory Clarification Requests</h3>
-          {clarifications.map((c) => (
-            <div key={c.id} className="card" style={{ marginBottom: 6 }}>
-              <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-                <span>{c.reason}{c.related_reference ? ` (${c.related_reference})` : ""}</span>
-                <span className={`badge ${c.status === "resolved" ? "VERIFIED" : c.status === "rejected" ? "RETURNED" : "ASSIGNED"}`}>{c.status}</span>
-              </div>
-              {(revisionsByClar[c.id] || []).map((r) => (
-                <div key={r.id} className="sub" style={{ padding: "2px 0" }}>
-                  Rev {r.revision_number} ({new Date(r.uploaded_at).toLocaleDateString()}) — {r.decision}{r.decision_notes ? `: ${r.decision_notes}` : ""}
-                </div>
-              ))}
-              {openClarifications.includes(c) && (
-                <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", marginTop: 6 }}>
-                  <div className="field"><label>Upload Revised Document</label>
-                    <input type="file" onChange={(e) => setRevisionFiles((f) => ({ ...f, [c.id]: e.target.files?.[0] || null }))} />
-                  </div>
-                  <div className="field"><label>Notes</label>
-                    <input value={revisionNotes[c.id] || ""} onChange={(e) => setRevisionNotes((n) => ({ ...n, [c.id]: e.target.value }))} />
-                  </div>
-                  <button type="button" className="btn btn-primary" disabled={saving === c.id} onClick={() => handleUploadRevision(c.id)}>
-                    {saving === c.id ? "Uploading…" : "Upload Revision"}
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+    <div style={{ width: 56, height: 56, borderRadius: 6, border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }} aria-hidden="true">
+      📄
     </div>
   );
 }
 
-// =======================================================================
-// In-house workflow
-// =======================================================================
-function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocations, people, profile, isOrgWide, onChanged }) {
+// The entire simplified Purchase Request detail screen for In-house/Factory
+// requests: Factory Reference summary, Reference Attachments and an Upload
+// button -- nothing else. Reuses the exact same factory_drawings table +
+// factory_upload_drawing RPC + interior-attachments bucket the full Factory
+// Drawings screen and Job Card already use, so nothing new is created and no
+// duplicate Factory Job can ever result (submitToFactory's own
+// already-submitted guard, upstream of this screen, is what prevents that).
+function FactoryReferenceView({ lang, project, request, inhouse, people, profile, onChanged, projectId }) {
+  const [drawings, setDrawings] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadForm, setUploadForm] = useState({ title: "", category: FACTORY_REFERENCE_CATEGORIES[0], notes: "", file: null });
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [msgType, setMsgType] = useState("error");
+
+  const loadFiles = useCallback(async () => {
+    setLoadingFiles(true);
+    const { data } = await listFactoryDrawingsForJob(inhouse.id);
+    setDrawings((data || []).filter((d) => FACTORY_REFERENCE_CATEGORIES.includes(d.category)));
+    setLoadingFiles(false);
+  }, [inhouse.id]);
+
+  useEffect(() => { loadFiles(); }, [loadFiles]);
+  useEffect(() => subscribeTable(`pr-factoryref-${inhouse.id}-drawings`, "factory_drawings", `job_id=eq.${inhouse.id}`, loadFiles), [inhouse.id, loadFiles]);
+
+  function fail(text) {
+    setMsgType("error");
+    setMsg(text);
+  }
+
+  async function handleUpload(e) {
+    e.preventDefault();
+    // Guards against a double-click/double-submit re-entering while the
+    // first request is still in flight (the Save button is also disabled
+    // below, but the form's own onSubmit can still fire twice on a fast
+    // double-click before React re-renders the disabled state).
+    if (uploading) return;
+    setMsg("");
+
+    // 1. Validate -- every check the request lists, in order, each with its
+    // own user-facing message (no raw Supabase error reaches the UI here).
+    const title = uploadForm.title.trim();
+    if (!title) { fail("Please enter a title."); return; }
+    if (!uploadForm.category) { fail("Please select a category."); return; }
+    if (!uploadForm.file) { fail("Please select a file."); return; }
+    if (!request?.id) { fail("This purchase request could not be found. Please reload the page."); return; }
+    if (request.purchase_source !== "in_house") { fail("Factory references can only be uploaded for In-house/Factory requests."); return; }
+    if (!profile?.id) { fail("You must be signed in to upload a file."); return; }
+    if (!inhouse?.id) { fail("No Factory job exists yet for this request."); return; }
+
+    const ext = refExtOf(uploadForm.file.name);
+    if (!FACTORY_REFERENCE_ALLOWED_EXTS.includes(ext)) {
+      fail("This file type is not supported. Allowed: JPG, PNG, WEBP, PDF, DWG, DXF.");
+      return;
+    }
+    if (uploadForm.file.size > FACTORY_REFERENCE_MAX_SIZE_BYTES) {
+      fail(`This file is too large. Maximum size is ${FACTORY_REFERENCE_MAX_SIZE_MB} MB.`);
+      return;
+    }
+
+    setUploading(true);
+
+    // 2. Upload the file to Storage.
+    const { data: attachmentRow, path, error: uploadErr } = await uploadFactoryAttachment({
+      projectId, module: "factory_drawing", relatedRecordId: inhouse.id, file: uploadForm.file,
+      fileCategory: uploadForm.category, description: uploadForm.notes.trim() || null, uploadedBy: profile.id,
+    });
+    if (uploadErr) {
+      console.error("[FactoryReferenceView] uploadFactoryAttachment failed", uploadErr);
+      setUploading(false);
+      if (uploadErr.code === "42501" || uploadErr.status === 403) fail("You do not have permission to upload.");
+      else fail("Upload failed. Please try again.");
+      return;
+    }
+
+    // 3. Insert the reference metadata row (factory_drawings -- the real,
+    // existing table every Job Card / Factory Drawings screen already reads
+    // reference files from; uploaded_by is resolved server-side from
+    // auth.uid(), so no client-supplied id can ever be wrong here).
+    const { error: drawErr } = await factoryUploadDrawing(inhouse.id, uploadForm.category, title, path, {
+      note: uploadForm.notes.trim() || null,
+    });
+    if (drawErr) {
+      console.error("[FactoryReferenceView] factoryUploadDrawing failed", drawErr);
+      // Atomic failure handling: the Storage object + the working_drawing_attachments
+      // row above already succeeded, but the actual reference record didn't --
+      // best-effort cleanup of both so no orphan is left behind. This can
+      // itself be blocked by storage/table RLS for non-management accounts
+      // (physical purge is intentionally an elevated-only action in this
+      // app); when that happens the row/file are simply invisible (nothing
+      // references them) rather than truly removed, which is safe.
+      if (attachmentRow?.id) {
+        deleteWorkingDrawingAttachment(projectId, attachmentRow.id).catch((cleanupErr) => console.error("[FactoryReferenceView] orphan row cleanup failed", cleanupErr));
+      }
+      removeFactoryAttachmentFile(path).catch((cleanupErr) => console.error("[FactoryReferenceView] orphan file cleanup failed", cleanupErr));
+      setUploading(false);
+      fail("Could not save the reference file. Please try again.");
+      return;
+    }
+
+    // 5. Success -- close, clear, refresh, and confirm.
+    setUploading(false);
+    setUploadForm({ title: "", category: FACTORY_REFERENCE_CATEGORIES[0], notes: "", file: null });
+    setUploadOpen(false);
+    setMsgType("success");
+    setMsg("Factory reference uploaded successfully.");
+    loadFiles();
+    onChanged();
+  }
+
+  return (
+    <div className="card">
+      <h2>Factory / In-house</h2>
+
+      <h3 style={{ marginTop: 0 }}>Factory Reference</h3>
+      <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+        <div className="field"><label>Factory Reference Number</label><div className="sub" style={{ fontWeight: 700 }}>{request?.request_number || "—"}</div></div>
+        <div className="field"><label>Factory Job/Order Number</label><div className="sub" style={{ fontWeight: 700 }}>{inhouse.job_order_number || "—"}</div></div>
+        <div className="field"><label>Project / Site</label><div className="sub">{project ? `${project.project_code} — ${project.customer}` : "—"}</div></div>
+        <div className="field"><label>Product / Item</label><div className="sub">{inhouse.product_item || "—"}</div></div>
+        <div className="field"><label>Quantity</label><div className="sub">{inhouse.quantity != null ? `${inhouse.quantity} ${inhouse.unit || ""}`.trim() : "—"}</div></div>
+        <div className="field"><label>Required Date</label><div className="sub">{inhouse.required_completion_date || "—"}</div></div>
+        <div className="field"><label>Current Stage</label><div className="sub">{inhouse.current_stage || "—"}</div></div>
+        <div className="field"><label>Factory Status</label><div><span className={`badge ${STATUS_BADGE[inhouse.status] || "ASSIGNED"}`}>{inhouse.status || "—"}</span></div></div>
+        <div className="field"><label>Assigned Factory Person</label><div className="sub">{personName(people, inhouse.assigned_factory_coordinator)}</div></div>
+        <div className="field"><label>Created By</label><div className="sub">{personName(people, inhouse.submitted_by)}</div></div>
+        <div className="field"><label>Created Date</label><div className="sub">{inhouse.submitted_at ? new Date(inhouse.submitted_at).toLocaleString() : "—"}</div></div>
+        <div className="field full"><label>Notes</label><div className="sub">{inhouse.special_instructions || "—"}</div></div>
+      </div>
+
+      <h3>Reference Attachments</h3>
+      {loadingFiles ? (
+        <div className="skeleton-block" style={{ height: 60 }} />
+      ) : drawings.length === 0 ? (
+        <div className="msg info">{t("noFileAttachedLabel", lang)}</div>
+      ) : (
+        drawings.map((d) => (
+          <div key={d.id} className="task-meta" style={{ justifyContent: "space-between", padding: "8px 0", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <ReferenceAttachmentThumb storagePath={d.storage_path} title={d.title} />
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontWeight: 700 }}>{d.title}</div>
+              <div className="sub">
+                {d.category === "Others" && d.custom_category_name ? d.custom_category_name : d.category}
+                {" · "}{personNameByAuthId(people, d.uploaded_by)}
+                {" · "}{d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString() : "—"}
+              </div>
+              {d.note && <div className="sub">{d.note}</div>}
+            </div>
+            <ViewDownloadButton lang={lang} storagePath={d.storage_path} fileName={d.title} />
+          </div>
+        ))
+      )}
+
+      {!uploadOpen ? (
+        <button type="button" className="btn btn-primary" style={{ marginTop: 10, width: "auto" }} onClick={() => setUploadOpen(true)}>
+          Upload Factory Reference
+        </button>
+      ) : (
+        <form onSubmit={handleUpload} className="form-grid" style={{ marginTop: 10, border: "1px dashed var(--border)", padding: 10 }}>
+          <div className="field"><label>Title *</label><input value={uploadForm.title} onChange={(e) => setUploadForm((f) => ({ ...f, title: e.target.value }))} required disabled={uploading} /></div>
+          <div className="field"><label>Category *</label>
+            <select value={uploadForm.category} onChange={(e) => setUploadForm((f) => ({ ...f, category: e.target.value }))} required disabled={uploading}>
+              {FACTORY_REFERENCE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>File *</label>
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.dwg,.dxf" onChange={(e) => setUploadForm((f) => ({ ...f, file: e.target.files?.[0] || null }))} required disabled={uploading} />
+            <div className="sub" style={{ marginTop: 4 }}>JPG, PNG, WEBP, PDF, DWG or DXF — max {FACTORY_REFERENCE_MAX_SIZE_MB} MB.</div>
+          </div>
+          <div className="field full"><label>Notes</label><textarea rows={2} value={uploadForm.notes} onChange={(e) => setUploadForm((f) => ({ ...f, notes: e.target.value }))} disabled={uploading} /></div>
+          <div className="btn-row">
+            <button type="submit" className="btn btn-primary" disabled={uploading}>{uploading ? "Saving…" : t("save", lang)}</button>
+            <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={uploading} onClick={() => { setUploadOpen(false); setMsg(""); }}>{t("cancel", lang)}</button>
+          </div>
+        </form>
+      )}
+      {msg && <div className={`msg ${msgType}`} style={{ marginTop: 8 }}>{msg}</div>}
+    </div>
+  );
+}
+
+function InhousePanel({ lang, projectId, project, request, inhouse, factoryLocations, people, profile, onChanged }) {
   const [form, setForm] = useState({
     factory_location_id: "", production_department: "", product_item: "", bom_reference: "", quantity: "", unit: "",
     required_completion_date: "", delivery_site_date: "", assigned_factory_coordinator: "", second_assignee: "", special_instructions: "",
     quality_requirements: "", finishing_requirements: "", packing_requirements: "", installation_requirement: "",
   });
   const [msg, setMsg] = useState("");
-  const [costForm, setCostForm] = useState({});
   const [newLocationName, setNewLocationName] = useState("");
 
-  useEffect(() => { if (costing) setCostForm(costing); }, [costing]);
+  // Factory Reference Drawings & Files -- always shown here (this whole
+  // panel only ever renders for purchase_source = 'in_house' in the first
+  // place, so no extra visibility condition is needed on top of that).
+  const [factoryFiles, setFactoryFiles] = useState([{ ...EMPTY_FACTORY_FILE }]);
+  const [noDrawingYet, setNoDrawingYet] = useState(false);
+  const [noDrawingReason, setNoDrawingReason] = useState("");
+  const [expectedDrawingDate, setExpectedDrawingDate] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const factoryPeople = people.filter((p) => p.department_name === "Factory/Manufacturing");
+
+  function updateFileRow(i, patch) {
+    setFactoryFiles((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+  const validFileRows = factoryFiles.filter((r) => r.file);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -659,16 +791,65 @@ function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocat
       setMsg(lang === "gu" ? "કોઓર્ડિનેટર અને બીજી જવાબદાર વ્યક્તિ અલગ હોવી જોઈએ." : "Coordinator and Second Assignee must be different people.");
       return;
     }
-    setMsg(t("saving", lang));
-    const { error: err, alreadySubmitted } = await submitToFactory(projectId, request.id, {
-      ...form, quantity: form.quantity || null, assigned_factory_coordinator: form.assigned_factory_coordinator || null,
-    }, form.second_assignee || null);
-    setMsg(err ? (err.message || t("errorSaving", lang)) : alreadySubmitted ? t("alreadySubmittedMsg", lang) : t("saved", lang));
-    if (!err) onChanged();
-  }
+    if (!form.special_instructions.trim()) {
+      setMsg("Overall Factory Notes / Production Instructions is required.");
+      return;
+    }
+    if (noDrawingYet) {
+      if (!noDrawingReason.trim() || !expectedDrawingDate) {
+        setMsg("A reason and expected drawing date are required when no drawing is available yet.");
+        return;
+      }
+    } else {
+      if (validFileRows.length === 0) {
+        setMsg("At least one reference drawing/file is required, or check \"No Drawing Available Yet\".");
+        return;
+      }
+      for (const r of validFileRows) {
+        if (!r.title.trim() || !r.fileType || (r.fileType === "Others" && !r.customFileType.trim())) {
+          setMsg("Every file needs a Title and a Drawing/File Type (and a Custom Type if \"Other\").");
+          return;
+        }
+      }
+    }
 
-  async function handleStatusChange(status) {
-    await updateInhouseProductionStatus(projectId, inhouse.id, { status });
+    setSubmitting(true);
+    setMsg(t("saving", lang));
+    const { data: submission, error: err, alreadySubmitted } = await submitToFactory(projectId, request.id, {
+      ...form, quantity: form.quantity || null, assigned_factory_coordinator: form.assigned_factory_coordinator || null,
+      no_drawing_reason: noDrawingYet ? noDrawingReason.trim() : null, expected_drawing_date: noDrawingYet ? expectedDrawingDate : null,
+    }, form.second_assignee || null);
+    if (err) {
+      setSubmitting(false);
+      setMsg(err.message || t("errorSaving", lang));
+      return;
+    }
+    if (alreadySubmitted) {
+      setSubmitting(false);
+      setMsg(t("alreadySubmittedMsg", lang));
+      onChanged();
+      return;
+    }
+
+    if (!noDrawingYet) {
+      for (let i = 0; i < validFileRows.length; i++) {
+        setMsg(`Uploading file ${i + 1} of ${validFileRows.length}…`);
+        const { error: fileErr } = await submitInhouseFactoryFiles({
+          projectId, jobId: submission.job_id, files: [validFileRows[i]], uploadedBy: profile?.id,
+        });
+        if (fileErr) {
+          setSubmitting(false);
+          setMsg(`Job ${submission.job_order_number} created, but a file upload failed: ${fileErr.message || fileErr}. You can upload it from the Factory Drawings screen.`);
+          onChanged();
+          return;
+        }
+      }
+    }
+
+    setSubmitting(false);
+    setMsg(`${t("saved", lang)} — Job ${submission.job_order_number}.`);
+    setFactoryFiles([{ ...EMPTY_FACTORY_FILE }]);
+    setNoDrawingYet(false); setNoDrawingReason(""); setExpectedDrawingDate("");
     onChanged();
   }
 
@@ -679,59 +860,15 @@ function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocat
     onChanged();
   }
 
-  async function handleSaveCosting(e) {
-    e.preventDefault();
-    await upsertPurchaseCosting(projectId, request.id, costForm, profile?.id);
-    onChanged();
-  }
-
+  // Everything costing/status-update/completion-related that used to live
+  // here moved to the Factory Job Card itself (FactoryJobOrders.jsx) — per
+  // explicit request this page now shows only the Factory Reference summary
+  // + reference attachments once a job exists. Nothing was deleted: the same
+  // inhouse_production_requests row, same factory_drawings rows, same
+  // history are all still there and still fully manageable from the Job
+  // Card / Factory Drawings screens.
   if (inhouse) {
-    return (
-      <div className="card">
-        <h2>In-house Production Status</h2>
-        <div className="dept-meta-grid">
-          <div className="card dept-meta-tile"><div className="label">Job Order</div><div className="value">{inhouse.job_order_number}</div></div>
-          <div className="card dept-meta-tile"><div className="label">Factory</div><div className="value">{factoryLocations.find((f) => f.id === inhouse.factory_location_id)?.name || "—"}</div></div>
-          <div className="card dept-meta-tile"><div className="label">Coordinator</div><div className="value">{personName(people, inhouse.assigned_factory_coordinator)}</div></div>
-          <div className="card dept-meta-tile"><div className="label">Second Assignee</div><div className="value">{inhouse.second_assignee_coordinator ? personName(people, inhouse.second_assignee_coordinator) : "—"}</div></div>
-          <div className="card dept-meta-tile"><div className="label">Status</div><div className="value">{inhouse.status}</div></div>
-          <div className="card dept-meta-tile"><div className="label">Production Stage</div><div className="value">{inhouse.current_stage || "—"} ({inhouse.completion_percentage ?? 0}%)</div></div>
-        </div>
-        {inhouse.linked_task_id && <div className="sub" style={{ marginTop: 4 }}>Linked task: open Today's Tasks or Bridges to view the full conversation and history for this job.</div>}
-        <InhouseCompletionAndClarifications projectId={projectId} inhouse={inhouse} profile={profile} onChanged={onChanged} />
-        <div className="field" style={{ marginTop: 8 }}>
-          <label>Update Status</label>
-          <select value={inhouse.status} onChange={(e) => handleStatusChange(e.target.value)}>
-            {INHOUSE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div className="task-meta" style={{ flexWrap: "wrap", marginTop: 6 }}>
-          <span className="sub">QC: {inhouse.qc_status || "—"}</span>
-          <span className="sub">Packing: {inhouse.packing_status || "—"}</span>
-          <span className="sub">Dispatch: {inhouse.dispatch_readiness || "—"}</span>
-          <span className="sub">Delivery: {inhouse.delivery_status || "—"}</span>
-          <span className="sub">Installation: {inhouse.installation_status || "—"}</span>
-        </div>
-        {isOrgWide && (
-          <form onSubmit={handleSaveCosting} className="form-grid" style={{ marginTop: 14 }}>
-            <h3>{t("costingLabel", lang) || "Costing"}</h3>
-            {["raw_material_estimated", "raw_material_actual", "hardware_cost", "labour_estimated", "labour_actual",
-              "machine_cost", "finishing_cost", "packing_cost", "transport_cost", "installation_cost", "wastage_cost", "rework_cost", "other_cost"].map((k) => (
-              <div className="field" key={k}><label>{k.replace(/_/g, " ")}</label>
-                <input type="number" value={costForm[k] ?? ""} onChange={(e) => setCostForm((f) => ({ ...f, [k]: e.target.value }))} /></div>
-            ))}
-            <button type="submit" className="btn btn-primary">{t("save", lang)}</button>
-            {costing && (
-              <div className="sub" style={{ marginTop: 6 }}>
-                {t("totalCostLabel", lang)}: {t("estimatedLabel", lang) || "Estimated"} {formatCurrency(costing.total_estimated_cost)} · {t("actualLabel", lang) || "Actual"} {formatCurrency(costing.total_actual_cost)}
-                {" · "}Variance {formatCurrency((costing.total_actual_cost || 0) - (costing.total_estimated_cost || 0))}
-              </div>
-            )}
-          </form>
-        )}
-        {!isOrgWide && <div className="msg info" style={{ marginTop: 10 }}>{t("costingRestrictedMsg", lang)}</div>}
-      </div>
-    );
+    return <FactoryReferenceView lang={lang} projectId={projectId} project={project} request={request} inhouse={inhouse} people={people} profile={profile} onChanged={onChanged} />;
   }
 
   return (
@@ -768,12 +905,59 @@ function InhousePanel({ lang, projectId, request, inhouse, costing, factoryLocat
             {factoryPeople.filter((p) => p.id !== form.assigned_factory_coordinator).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.employee_code || "—"}</option>)}
           </select>
         </div>
-        <div className="field"><label>Special Instructions</label><textarea rows={2} value={form.special_instructions} onChange={(e) => setForm((f) => ({ ...f, special_instructions: e.target.value }))} /></div>
+        <div className="field full"><label>Overall Factory Notes / Production Instructions *</label>
+          <textarea rows={2} value={form.special_instructions} onChange={(e) => setForm((f) => ({ ...f, special_instructions: e.target.value }))} required />
+          <div className="sub" style={{ marginTop: 4 }}>Visible to Factory in the Requirement Inbox and Job Card.</div>
+        </div>
         <div className="field"><label>Quality Requirements</label><textarea rows={2} value={form.quality_requirements} onChange={(e) => setForm((f) => ({ ...f, quality_requirements: e.target.value }))} /></div>
         <div className="field"><label>Finishing Requirements</label><textarea rows={2} value={form.finishing_requirements} onChange={(e) => setForm((f) => ({ ...f, finishing_requirements: e.target.value }))} /></div>
         <div className="field"><label>Packing Requirements</label><textarea rows={2} value={form.packing_requirements} onChange={(e) => setForm((f) => ({ ...f, packing_requirements: e.target.value }))} /></div>
         <div className="field"><label>Installation Requirement</label><textarea rows={2} value={form.installation_requirement} onChange={(e) => setForm((f) => ({ ...f, installation_requirement: e.target.value }))} /></div>
-        <button type="submit" className="btn btn-primary">{t("submitToFactoryLabel", lang)}</button>
+
+        <div className="field full" style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}>
+          <h3 style={{ margin: "0 0 4px" }}>Factory Reference Drawings &amp; Files</h3>
+          <label className="sub" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={noDrawingYet} onChange={(e) => setNoDrawingYet(e.target.checked)} />
+            No Drawing Available Yet
+          </label>
+        </div>
+
+        {noDrawingYet ? (
+          <>
+            <div className="field"><label>Reason *</label><input value={noDrawingReason} onChange={(e) => setNoDrawingReason(e.target.value)} required /></div>
+            <div className="field"><label>Expected Drawing Date *</label><input type="date" value={expectedDrawingDate} onChange={(e) => setExpectedDrawingDate(e.target.value)} required /></div>
+            <div className="msg info full" style={{ gridColumn: "1 / -1" }}>This job will start at stage "Drawing Pending" — Factory will see it flagged as awaiting a drawing.</div>
+          </>
+        ) : (
+          <div className="field full">
+            {factoryFiles.map((row, i) => (
+              <div key={i} className="form-grid" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                <div className="field"><label>File Title {row.file ? "*" : ""}</label><input value={row.title} onChange={(e) => updateFileRow(i, { title: e.target.value })} placeholder="e.g. Kitchen Working Drawing" /></div>
+                <div className="field"><label>Drawing/File Type {row.file ? "*" : ""}</label>
+                  <select value={row.fileType} onChange={(e) => updateFileRow(i, { fileType: e.target.value })}>
+                    <option value="">—</option>
+                    {FACTORY_DRAWING_TYPES.map((ft) => <option key={ft} value={ft}>{ft}</option>)}
+                  </select>
+                </div>
+                {row.fileType === "Others" && (
+                  <div className="field"><label>Custom File Type *</label><input value={row.customFileType} onChange={(e) => updateFileRow(i, { customFileType: e.target.value })} /></div>
+                )}
+                <div className="field"><label>File {row.title || row.fileType ? "*" : ""}</label>
+                  <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.dwg,.dxf,.xls,.xlsx,.doc,.docx" onChange={(e) => updateFileRow(i, { file: e.target.files?.[0] || null })} />
+                  {row.file && <div className="sub" style={{ marginTop: 4 }}>{row.file.name}</div>}
+                </div>
+                <div className="field"><label>Drawing Date</label><input type="date" value={row.drawingDate} onChange={(e) => updateFileRow(i, { drawingDate: e.target.value })} /></div>
+                <div className="field full"><label>Note / Factory Instruction for this file</label><textarea rows={2} value={row.note} onChange={(e) => updateFileRow(i, { note: e.target.value })} /></div>
+                {factoryFiles.length > 1 && (
+                  <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setFactoryFiles((rows) => rows.filter((_, idx) => idx !== i))}>Remove File</button>
+                )}
+              </div>
+            ))}
+            <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setFactoryFiles((rows) => [...rows, { ...EMPTY_FACTORY_FILE }])}>+ Add Another File</button>
+          </div>
+        )}
+
+        <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Submitting…" : t("submitToFactoryLabel", lang)}</button>
         {msg && <div className="sub">{msg}</div>}
       </form>
     </div>

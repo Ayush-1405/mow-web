@@ -1,0 +1,27 @@
+-- mvp_pilot_factory_attachment_area_fix_v2_74
+--
+-- Root cause of "Upload Factory Reference" (and, it turns out, every other
+-- Factory-module "upload proof/photo/POD" button that calls the shared
+-- uploadFactoryAttachment() helper in interiorApi.js -- FactoryJobOrders,
+-- FactoryTransfer, FactoryRework, FactoryDrawings, FactoryRejection,
+-- FactoryQcBoardShared, FactoryMachineTracking) silently failing to save:
+--
+-- working_drawing_attachments.area_id is NOT NULL with no default, but
+-- uploadFactoryAttachment() always inserts area_id: null (Factory-context
+-- attachments -- a job reference file, a QC photo, a rework proof photo --
+-- have no Interior "working drawing area" (room/zone) to attach to; that
+-- concept only applies to the original Working Drawings screen this table
+-- was first built for). Every such insert has therefore always violated the
+-- NOT NULL constraint and rolled back -- confirmed live: the table has zero
+-- rows despite eight+ call sites across the app calling this helper.
+-- Because the Storage upload happens BEFORE this insert, the file itself
+-- lands in the bucket but the database record (and therefore the file)
+-- never appears anywhere in the UI -- exactly the reported symptom.
+--
+-- Fix: area_id becomes nullable. This is purely additive/relaxing -- no
+-- existing row is touched (there are none violating this to begin with),
+-- no RLS policy references area_id, and every future insert that DOES pass
+-- a real area_id (the original Working Drawings screen's own flow) is
+-- completely unaffected.
+
+alter table public.working_drawing_attachments alter column area_id drop not null;

@@ -24,8 +24,30 @@ function routeFor(n) {
     case "retail_lead": return "/retail/leads";
     case "retail_complaint": return "/retail/complaints";
     case "retail_vm_task": return "/retail/display";
+    case "FACTORY_AI_REQUEST": return "/factory-inbox";
     default: return null;
   }
+}
+
+// Module grouping for the filter chips. Anything unrecognised still shows
+// under "All" (and "Other"), so a new notification type is never hidden.
+const GROUPS = {
+  tasks: ["task", "task_message"],
+  interior: ["project", "snag", "interior_task", "site_report"],
+  retail: ["retail_lead", "retail_complaint", "retail_vm_task"],
+  factory: ["FACTORY_AI_REQUEST"],
+  reminders: ["daily_reminder"],
+};
+const FILTERS = [
+  ["all", "All"], ["unread", "Unread"], ["tasks", "Tasks"], ["interior", "Interior"],
+  ["retail", "Retail"], ["factory", "Factory"], ["reminders", "Reminders"], ["other", "Other"],
+];
+const KNOWN = new Set(Object.values(GROUPS).flat());
+function matchesFilter(n, f) {
+  if (f === "all") return true;
+  if (f === "unread") return !n.is_read;
+  if (f === "other") return !KNOWN.has(n.entity_type);
+  return (GROUPS[f] || []).includes(n.entity_type);
 }
 
 const PAGE_SIZE = 20;
@@ -36,6 +58,8 @@ export default function Notifications({ lang, showToast }) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const [markingAll, setMarkingAll] = useState(false);
 
   // First page only, on demand — "Load More" fetches older pages rather
   // than the previous flat limit(100), so a long-lived account with
@@ -96,6 +120,14 @@ export default function Notifications({ lang, showToast }) {
     setItems((cur) => cur.map((n) => (n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)));
   }
 
+  async function markAllRead() {
+    setMarkingAll(true);
+    const { error } = await supabase.rpc("staff_mark_all_notifications_read");
+    setMarkingAll(false);
+    if (error) { showToast("error", error.message); return; }
+    setItems((cur) => cur.map((n) => (n.is_read ? n : { ...n, is_read: true, read_at: new Date().toISOString() })));
+  }
+
   function openNotification(n) {
     const route = routeFor(n);
     if (!route) return;
@@ -106,12 +138,27 @@ export default function Notifications({ lang, showToast }) {
   return (
     <div>
       <div className="section-title">{t("notifications", lang)}</div>
-      <button className="btn btn-outline" style={{ marginBottom: 10 }} onClick={load} disabled={loading}>
-        {t("refresh", lang)}
-      </button>
+      <div className="btn-row" style={{ marginBottom: 10 }}>
+        <button className="btn btn-outline" onClick={load} disabled={loading}>
+          {t("refresh", lang)}
+        </button>
+        <button className="btn btn-outline" onClick={markAllRead} disabled={markingAll || !items.some((n) => !n.is_read)}>
+          {markingAll ? "…" : "Mark all read"}
+        </button>
+      </div>
+      <div className="filter-bar" style={{ flexWrap: "wrap", marginBottom: 10 }}>
+        {FILTERS.map(([k, label]) => (
+          <button key={k} type="button" className={`btn ${filter === k ? "btn-primary" : "btn-outline"}`} style={{ marginTop: 0, width: "auto" }} onClick={() => setFilter(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="card" style={{ padding: 0 }}>
         {!loading && items.length === 0 && <div className="msg info" style={{ margin: 12 }}>{t("noNotifications", lang)}</div>}
-        {items.map((n) => {
+        {!loading && items.length > 0 && !items.some((n) => matchesFilter(n, filter)) && (
+          <div className="msg info" style={{ margin: 12 }}>Nothing in this filter{hasMore ? " among the loaded notifications — try Load More" : ""}.</div>
+        )}
+        {items.filter((n) => matchesFilter(n, filter)).map((n) => {
           const route = routeFor(n);
           return (
             <div

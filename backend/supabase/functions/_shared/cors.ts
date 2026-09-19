@@ -26,6 +26,7 @@
 const rawOrigins = Deno.env.get("ALLOWED_ORIGINS") ?? "";
 
 const DEFAULT_PROD_ORIGINS = [
+  "https://staff.themow.in",
   "https://staff.moodofwood.app",
   "https://mood-of-wood-staff-pilot-ee3f.vercel.app",
   "https://mood-of-wood-staff-pilot-mow3.vercel.app",
@@ -81,4 +82,36 @@ export function handlePreflight(req: Request): Response | null {
     return new Response(null, { status: 204, headers: buildCorsHeaders(req.headers.get("origin")) });
   }
   return null;
+}
+
+export function isOriginAllowed(origin: string | null): boolean {
+  return !!origin && isAllowedOrigin(origin);
+}
+
+/**
+ * Strict variant for functions that must refuse unknown browser origins
+ * outright: a preflight from an allowed origin gets 204 + CORS headers, a
+ * preflight from anything else gets a clear 403 JSON body (never an echoed
+ * origin, never a wildcard). Requests with NO Origin header (curl, server to
+ * server) are not browser cross-origin requests and are passed through.
+ * Additive: handlePreflight() above is unchanged for the functions using it.
+ */
+export function handlePreflightStrict(req: Request): Response | null {
+  if (req.method !== "OPTIONS") return null;
+  const origin = req.headers.get("origin");
+  if (origin && !isAllowedOrigin(origin)) return originForbiddenResponse();
+  return new Response(null, { status: 204, headers: buildCorsHeaders(origin) });
+}
+
+/** Non-preflight requests: returns a 403 JSON response if the browser Origin is present and not allowed, else null. */
+export function rejectDisallowedOrigin(req: Request): Response | null {
+  const origin = req.headers.get("origin");
+  return origin && !isAllowedOrigin(origin) ? originForbiddenResponse() : null;
+}
+
+function originForbiddenResponse(): Response {
+  return new Response(
+    JSON.stringify({ ok: false, error: "This origin is not allowed to call this function.", code: "origin_not_allowed" }),
+    { status: 403, headers: { "Content-Type": "application/json", "Vary": "Origin" } },
+  );
 }

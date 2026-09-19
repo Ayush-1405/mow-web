@@ -4,6 +4,8 @@ import { subscribeTable } from "../../lib/realtime";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { listAllInhouseProductionRequests, listAllFactoryRejectionRecords, factoryRecordRejection, uploadFactoryAttachment } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 const DISPOSITIONS = [["scrap", "Scrap"], ["return_to_vendor", "Return to Vendor"], ["other", "Other"]];
@@ -25,16 +27,17 @@ export default function FactoryRejection({ lang, profile }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [recRes, jobRes] = await Promise.all([listAllFactoryRejectionRecords(), listAllInhouseProductionRequests()]);
+    const [recRes, jobRes] = await Promise.all([listAllFactoryRejectionRecords(includeTestData), listAllInhouseProductionRequests(includeTestData)]);
     if (recRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setRecords(recRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_rejection_board", "factory_rejection_records", null, load), [load]);
@@ -122,6 +125,7 @@ export default function FactoryRejection({ lang, profile }) {
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "Record Rejection"}
           </button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
       </div>
 

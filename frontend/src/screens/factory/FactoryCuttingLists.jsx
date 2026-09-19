@@ -7,11 +7,13 @@ import {
   factorySaveCuttingList, factoryCopyCuttingListAsRevision,
 } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 const EMPTY_ROW = { part_name: "", material: "", length: "", width: "", thickness: "", quantity: "1", edge_band_sides: "", grain_direction: "", machine_process: "" };
 
-export default function FactoryCuttingLists({ lang }) {
+export default function FactoryCuttingLists({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [lists, setLists] = useState([]);
@@ -26,16 +28,17 @@ export default function FactoryCuttingLists({ lang }) {
   const [msg, setMsg] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [listRes, jobRes] = await Promise.all([listAllFactoryCuttingLists(), listAllInhouseProductionRequests()]);
+    const [listRes, jobRes] = await Promise.all([listAllFactoryCuttingLists(includeTestData), listAllInhouseProductionRequests(includeTestData)]);
     if (listRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setLists(listRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_cutting_lists_board", "factory_cutting_lists", null, load), [load]);
@@ -112,6 +115,7 @@ export default function FactoryCuttingLists({ lang }) {
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "New Cutting List"}
           </button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} list{filtered.length === 1 ? "" : "s"}</div>
       </div>

@@ -4,12 +4,14 @@ import { subscribeTable } from "../../lib/realtime";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { listAllFactoryPackingRecords, listAllInhouseProductionRequests, factorySavePacking } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 const STATUSES = ["Pending", "In Progress", "Packed", "Ready for Transfer"];
 const STATUS_BADGE = { Pending: "ASSIGNED", "In Progress": "IN_PROGRESS", Packed: "VERIFIED", "Ready for Transfer": "VERIFIED" };
 
-export default function FactoryPacking({ lang }) {
+export default function FactoryPacking({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [records, setRecords] = useState([]);
@@ -22,16 +24,17 @@ export default function FactoryPacking({ lang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [recRes, jobRes] = await Promise.all([listAllFactoryPackingRecords(), listAllInhouseProductionRequests()]);
+    const [recRes, jobRes] = await Promise.all([listAllFactoryPackingRecords(includeTestData), listAllInhouseProductionRequests(includeTestData)]);
     if (recRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setRecords(recRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_packing_board", "factory_packing_records", null, load), [load]);
@@ -112,6 +115,7 @@ export default function FactoryPacking({ lang }) {
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "New Packing Record"}
           </button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} record{filtered.length === 1 ? "" : "s"}</div>
       </div>

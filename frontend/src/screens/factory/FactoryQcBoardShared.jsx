@@ -7,6 +7,8 @@ import {
   uploadFactoryAttachment,
 } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 
@@ -31,19 +33,20 @@ export default function FactoryQcBoardShared({ lang, profile, qcStage, titleKey,
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     const [checkRes, jobRes, peopleRes] = await Promise.all([
-      listAllFactoryQualityChecks(qcStage), listAllInhouseProductionRequests(), listInteriorPeople(),
+      listAllFactoryQualityChecks(qcStage, includeTestData), listAllInhouseProductionRequests(includeTestData), listInteriorPeople(),
     ]);
     if (checkRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setChecks(checkRes.data || []);
     setJobs(jobRes.data || []);
     setForm((f) => ({ ...f, factoryPeople: (peopleRes.data || []).filter((p) => p.department_name === "Factory/Manufacturing") }));
     setLoading(false);
-  }, [qcStage]);
+  }, [qcStage, includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable(`factory_qc_board_${qcStage}`, "factory_quality_checks", `qc_stage=eq.${qcStage}`, load), [qcStage, load]);
@@ -132,6 +135,7 @@ export default function FactoryQcBoardShared({ lang, profile, qcStage, titleKey,
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "Record QC"}
           </button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} record{filtered.length === 1 ? "" : "s"}</div>
       </div>

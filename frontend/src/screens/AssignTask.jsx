@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof } from "../lib/api";
 import { t } from "../lib/i18n";
@@ -43,6 +44,7 @@ const NO_ACTIVE_STAFF_MESSAGE = {
 // load and reloaded together by Retry, so neither can silently go stale
 // relative to the other.
 export default function AssignTask({ lang, profile, lookups, showToast }) {
+  const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [directoryLoading, setDirectoryLoading] = useState(true);
@@ -345,6 +347,9 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   return (
     <div>
       <div className="section-title">{t("assignTask", lang)}</div>
+      <button type="button" className="btn btn-outline" style={{ marginBottom: 10 }} onClick={() => navigate("/ai-tasks")}>
+        ✨ Draft tasks with AI (paste a message or upload a file)
+      </button>
       <div className="card">
         <form onSubmit={handleSubmit} className="form-grid">
           <div className="field full">

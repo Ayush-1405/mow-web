@@ -30,3 +30,15 @@ verify_jwt = false
 
 [functions.staff-reset-password]
 verify_jwt = true
+
+# AI drafting functions: called only by logged-in employees, so the gateway
+# keeps verifying the JWT (a browser preflight OPTIONS is exempt from that
+# check by design, which is why CORS still works).
+[functions.ai-task-draft]
+verify_jwt = true
+
+[functions.factory-ai-extract]
+verify_jwt = true
+
+[functions.factory-ai-stage-update]
+verify_jwt = true

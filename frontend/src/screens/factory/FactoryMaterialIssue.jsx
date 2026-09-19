@@ -7,13 +7,15 @@ import {
   factoryIssueMaterial, factoryReturnMaterial,
 } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 
 // Every issue/return here is a real, safety-checked inventory transaction
 // (factory_issue_material / factory_return_material) -- over-issue and
 // negative stock are rejected server-side, not just discouraged in the UI.
-export default function FactoryMaterialIssue({ lang }) {
+export default function FactoryMaterialIssue({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [transactions, setTransactions] = useState([]);
@@ -28,12 +30,13 @@ export default function FactoryMaterialIssue({ lang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     const [txRes, matRes, locRes, jobRes] = await Promise.all([
-      listFactoryMaterialTransactions(null), listFactoryMaterials(), listFactoryLocationsAll(), listAllInhouseProductionRequests(),
+      listFactoryMaterialTransactions(null), listFactoryMaterials(includeTestData), listFactoryLocationsAll(), listAllInhouseProductionRequests(includeTestData),
     ]);
     if (txRes.error || matRes.error || locRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setTransactions((txRes.data || []).filter((tx) => tx.transaction_type === "issue" || tx.transaction_type === "return"));
@@ -41,7 +44,7 @@ export default function FactoryMaterialIssue({ lang }) {
     setLocations(locRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_material_issue_board", "factory_material_transactions", null, load), [load]);
@@ -110,6 +113,7 @@ export default function FactoryMaterialIssue({ lang }) {
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleExport}>Export</button>
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setMode(mode === "return" ? null : "return")}>{mode === "return" ? "Cancel" : "Return Material"}</button>
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setMode(mode === "issue" ? null : "issue")}>{mode === "issue" ? "Cancel" : "Issue Material"}</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} transaction{filtered.length === 1 ? "" : "s"}</div>
       </div>

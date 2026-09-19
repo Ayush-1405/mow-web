@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { factoryInventoryCosting } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 // Opening/received/issued/adjustment/closing computed purely from
 // factory_material_transactions (never a manually-typed total). A live
@@ -10,21 +12,22 @@ import { exportRowsToExcel } from "../../lib/exportExcel";
 // ledger and double-counted everything (verified: 100 received showed as
 // closing 160 instead of 100 -- fixed and re-verified live). Restricted to
 // the same authorized roles as Mandatory Product Costing.
-export default function FactoryInventoryCosting({ lang }) {
+export default function FactoryInventoryCosting({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rows, setRows] = useState([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const { data, error: err } = await factoryInventoryCosting(from || null, to || null);
+    const { data, error: err } = await factoryInventoryCosting(from || null, to || null, includeTestData);
     if (err) { setError(true); setLoading(false); return; }
     setRows(data || []);
     setLoading(false);
-  }, [from, to]);
+  }, [from, to, includeTestData]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -62,6 +65,7 @@ export default function FactoryInventoryCosting({ lang }) {
           <div className="field" style={{ width: "auto" }}><label>To</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <button type="button" className="btn btn-outline" style={{ width: "auto", alignSelf: "flex-end" }} onClick={() => { setFrom(""); setTo(""); }}>Clear Filters</button>
           <button type="button" className="btn btn-outline" style={{ width: "auto", alignSelf: "flex-end" }} onClick={handleExport}>Export</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
       </div>
 

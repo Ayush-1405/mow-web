@@ -119,6 +119,7 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Complaints & Service", "ફરિયાદો અને સેવા"],
     ["Sales Targets", "વેચાણ લક્ષ્યાંક"],
     ["Sales Performance", "વેચાણ કામગીરી"],
+    ["Send to Factory", "ફેક્ટરીને મોકલો"],
   ),
   FRANCHISE: cards(
     ["Franchise Leads", "ફ્રેન્ચાઇઝી લીડ્સ"],
@@ -179,6 +180,7 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Payment Follow-up", "ચુકવણી ફોલો-અપ"],
     ["Project Completion", "પ્રોજેક્ટ પૂર્ણતા"],
     ["Project Master Report", "પ્રોજેક્ટ સંપૂર્ણ રિપોર્ટ"],
+    ["Send to Factory", "ફેક્ટરીને મોકલો"],
   ),
   B2B_B2G: cards(
     ["Lead & Enquiry", "લીડ અને પૂછપરછ"],
@@ -269,6 +271,8 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Customer Happiness", "ગ્રાહક ખુશી"],
   ),
   FACTORY: cards(
+    ["AI Factory Inbox", "AI ફેક્ટરી ઇનબોક્સ"],
+    ["Send to Factory", "ફેક્ટરીને મોકલો"],
     ["Production Planning", "ઉત્પાદન આયોજન"],
     ["Job Orders", "જોબ ઓર્ડર"],
     ["BOM", "BOM"],

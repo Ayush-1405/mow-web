@@ -4,16 +4,15 @@ import { subscribeTable } from "../../lib/realtime";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import {
   listAllFactoryDrawings, listAllInhouseProductionRequests, factoryUploadDrawing, factoryDecideDrawing,
-  factoryIssueDrawing, uploadFactoryAttachment,
+  factoryIssueDrawing, uploadFactoryAttachment, factoryAcknowledgeDrawing, FACTORY_DRAWING_TYPES,
 } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
-const CATEGORIES = [
-  "Working Drawing", "Production Drawing", "Furniture Detail Drawing", "Cutting Drawing", "RCP",
-  "Electrical Drawing", "MEP Drawing", "Material Specification", "Job Card", "Others",
-];
-const STATUS_BADGE = { Draft: "CLOSED", Submitted: "ASSIGNED", "Revision Required": "RETURNED", Approved: "VERIFIED", "Issued for Production": "VERIFIED" };
+const CATEGORIES = FACTORY_DRAWING_TYPES;
+const STATUS_BADGE = { Draft: "CLOSED", Submitted: "ASSIGNED", "Revision Required": "RETURNED", Approved: "VERIFIED", "Issued for Production": "VERIFIED", Superseded: "CLOSED" };
 
 // Every upload is a new row (factory_upload_drawing never updates an
 // existing one) -- old approved versions are never lost, verified live via
@@ -27,20 +26,21 @@ export default function FactoryDrawings({ lang, profile }) {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ jobId: "", category: CATEGORIES[0], customCategoryName: "", title: "", file: null, revisionReason: "", parentDrawingId: "" });
+  const [form, setForm] = useState({ jobId: "", category: CATEGORIES[0], customCategoryName: "", title: "", file: null, revisionReason: "", parentDrawingId: "", note: "", drawingDate: "" });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [drRes, jobRes] = await Promise.all([listAllFactoryDrawings(), listAllInhouseProductionRequests()]);
+    const [drRes, jobRes] = await Promise.all([listAllFactoryDrawings(includeTestData), listAllInhouseProductionRequests(includeTestData)]);
     if (drRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setDrawings(drRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_drawings_board", "factory_drawings", null, load), [load]);
@@ -75,10 +75,11 @@ export default function FactoryDrawings({ lang, profile }) {
     if (uploadErr) { setSaving(false); setMsg(uploadErr.message); return; }
     const { error: err } = await factoryUploadDrawing(form.jobId, form.category, form.title, path, {
       customCategoryName: form.customCategoryName || null, revisionReason: form.revisionReason || null, parentDrawingId: form.parentDrawingId || null,
+      note: form.note || null, drawingDate: form.drawingDate || null,
     });
     setSaving(false);
     if (err) { setMsg(err.message); return; }
-    setForm({ jobId: "", category: CATEGORIES[0], customCategoryName: "", title: "", file: null, revisionReason: "", parentDrawingId: "" });
+    setForm({ jobId: "", category: CATEGORIES[0], customCategoryName: "", title: "", file: null, revisionReason: "", parentDrawingId: "", note: "", drawingDate: "" });
     setShowForm(false);
     load();
   }
@@ -98,6 +99,13 @@ export default function FactoryDrawings({ lang, profile }) {
   async function handleIssue(drawing) {
     setMsg("");
     const { error: err } = await factoryIssueDrawing(drawing.id);
+    if (err) { setMsg(err.message); return; }
+    load();
+  }
+
+  async function handleAcknowledge(drawing) {
+    setMsg("");
+    const { error: err } = await factoryAcknowledgeDrawing(drawing.id);
     if (err) { setMsg(err.message); return; }
     load();
   }
@@ -138,6 +146,7 @@ export default function FactoryDrawings({ lang, profile }) {
           </select>
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleExport}>Export</button>
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>{showForm ? "Cancel" : "Upload Drawing"}</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} drawing{filtered.length === 1 ? "" : "s"}</div>
       </div>
@@ -169,7 +178,9 @@ export default function FactoryDrawings({ lang, profile }) {
                 {drawings.filter((d) => d.job_id === form.jobId).map((d) => <option key={d.id} value={d.id}>{d.title} (v{d.version_number})</option>)}
               </select>
             </div>
-            {form.parentDrawingId && <div className="field"><label>Revision Reason</label><input value={form.revisionReason} onChange={(e) => setForm((f) => ({ ...f, revisionReason: e.target.value }))} /></div>}
+            {form.parentDrawingId && <div className="field"><label>Revision Reason (required)</label><input value={form.revisionReason} onChange={(e) => setForm((f) => ({ ...f, revisionReason: e.target.value }))} /></div>}
+            <div className="field"><label>Drawing Date</label><input type="date" value={form.drawingDate} onChange={(e) => setForm((f) => ({ ...f, drawingDate: e.target.value }))} /></div>
+            <div className="field full"><label>Note / Factory Instruction</label><textarea rows={2} value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} /></div>
             <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? "Uploading…" : "Upload"}</button>
           </form>
         </div>
@@ -179,16 +190,27 @@ export default function FactoryDrawings({ lang, profile }) {
         {visible.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
         {visible.map((d) => {
           const job = d.inhouse_production_requests;
+          const isCriticalUnacknowledged = d.parent_drawing_id && !d.acknowledged_at;
           return (
-            <div key={d.id} className="task-meta" style={{ justifyContent: "space-between", padding: "8px 0", flexWrap: "wrap", gap: 6, borderBottom: "1px solid var(--border, #e5e7eb)" }}>
-              <span style={{ fontWeight: 700 }}>{d.title}</span>
-              <span className="sub">{job?.job_order_number} — {job?.projects?.project_code}</span>
-              <span className="sub">{d.category === "Others" ? d.custom_category_name : d.category}</span>
-              <span className="sub">v{d.version_number}</span>
-              <span className={`badge ${STATUS_BADGE[d.status] || "CLOSED"}`}>{d.status}</span>
-              {d.status === "Draft" && <button type="button" className="btn btn-outline" onClick={() => handleDecide(d, "Approved")}>Approve</button>}
-              {d.status === "Draft" && <button type="button" className="btn btn-outline" onClick={() => handleDecide(d, "Revision Required")}>Request Revision</button>}
-              {d.status === "Approved" && <button type="button" className="btn btn-primary" onClick={() => handleIssue(d)}>Issue for Production</button>}
+            <div key={d.id} style={{ borderBottom: "1px solid var(--border, #e5e7eb)", padding: "8px 0" }}>
+              <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                <span style={{ fontWeight: 700 }}>{d.title}</span>
+                <span className="sub">{job?.job_order_number} — {job?.projects?.project_code}</span>
+                <span className="sub">{d.category === "Others" ? d.custom_category_name : d.category}</span>
+                <span className="sub">v{d.version_number}</span>
+                <span className={`badge ${STATUS_BADGE[d.status] || "CLOSED"}`}>{d.status}</span>
+                {d.status === "Draft" && <button type="button" className="btn btn-outline" onClick={() => handleDecide(d, "Approved")}>Approve</button>}
+                {d.status === "Draft" && <button type="button" className="btn btn-outline" onClick={() => handleDecide(d, "Revision Required")}>Request Revision</button>}
+                {d.status === "Approved" && <button type="button" className="btn btn-primary" onClick={() => handleIssue(d)}>Issue for Production</button>}
+                {isCriticalUnacknowledged && <button type="button" className="btn btn-primary" onClick={() => handleAcknowledge(d)}>Acknowledge Revision</button>}
+              </div>
+              {d.parent_drawing_id && (
+                <div className="sub" style={{ marginTop: 4, color: isCriticalUnacknowledged ? "#b91c1c" : undefined }}>
+                  Revision — {d.revision_reason || "no reason given"}
+                  {d.acknowledged_at ? ` · Acknowledged ${new Date(d.acknowledged_at).toLocaleString()}` : " · ⚠ Not yet acknowledged"}
+                </div>
+              )}
+              {d.note && <div className="sub" style={{ marginTop: 2 }}>Note: {d.note}</div>}
             </div>
           );
         })}

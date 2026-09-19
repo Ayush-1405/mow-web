@@ -7,12 +7,14 @@ import {
   factorySaveBom, factorySubmitBom, factoryDecideBom,
 } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 const STATUS_BADGE = { Draft: "CLOSED", Submitted: "ASSIGNED", Approved: "VERIFIED", Rejected: "RETURNED", Revised: "ASSIGNED" };
 const EMPTY_ROW = { material_name: "", material_code: "", category: "", specification: "", unit: "", required_quantity: "", available_quantity: "", reserved_quantity: "", wastage_allowance: "", approved_substitute: "", supplier_source: "", rate: "", notes: "" };
 
-export default function FactoryBom({ lang }) {
+export default function FactoryBom({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [boms, setBoms] = useState([]);
@@ -27,16 +29,17 @@ export default function FactoryBom({ lang }) {
   const [msg, setMsg] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [bomRes, jobRes] = await Promise.all([listAllFactoryBoms(), listAllInhouseProductionRequests()]);
+    const [bomRes, jobRes] = await Promise.all([listAllFactoryBoms(includeTestData), listAllInhouseProductionRequests(includeTestData)]);
     if (bomRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setBoms(bomRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_bom_board", "factory_boms", null, load), [load]);
@@ -110,6 +113,7 @@ export default function FactoryBom({ lang }) {
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "New BOM"}
           </button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} BOM{filtered.length === 1 ? "" : "s"}</div>
       </div>

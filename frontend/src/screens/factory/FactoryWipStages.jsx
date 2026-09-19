@@ -4,6 +4,8 @@ import { subscribeTable } from "../../lib/realtime";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { listAllInhouseProductionRequests, listAllProductionStageUpdates, factoryUpdateStage } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 const PRODUCTION_STAGES = [
@@ -19,7 +21,7 @@ const STATUS_COLORS = { completed: "#15803d", in_progress: "#b45309", on_hold: "
 // (and tested) inside a Job Order's Job Card in FactoryJobOrders.jsx. This
 // is the "see every job's current stage across the whole factory floor"
 // view; updating a stage here uses the identical write path.
-export default function FactoryWipStages({ lang }) {
+export default function FactoryWipStages({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [stages, setStages] = useState([]);
@@ -33,16 +35,17 @@ export default function FactoryWipStages({ lang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [stageRes, jobRes] = await Promise.all([listAllProductionStageUpdates(), listAllInhouseProductionRequests()]);
+    const [stageRes, jobRes] = await Promise.all([listAllProductionStageUpdates(includeTestData), listAllInhouseProductionRequests(includeTestData)]);
     if (stageRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setStages(stageRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_wip_board", "production_stage_updates", null, load), [load]);
@@ -117,6 +120,7 @@ export default function FactoryWipStages({ lang }) {
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "Update a Stage"}
           </button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} record{filtered.length === 1 ? "" : "s"}</div>
       </div>

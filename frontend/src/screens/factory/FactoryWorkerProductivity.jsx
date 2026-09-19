@@ -1,26 +1,29 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { factoryWorkerProductivity } from "../../lib/interiorApi";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 // Read-only computed report -- entirely derived from production_stage_updates
 // / factory_quality_checks / factory_rework_records via the
 // factory_worker_productivity() SQL function. There is no write path here:
 // a productivity percentage can never be typed in by hand, only computed.
-export default function FactoryWorkerProductivity({ lang }) {
+export default function FactoryWorkerProductivity({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rows, setRows] = useState([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const { data, error: err } = await factoryWorkerProductivity(from || null, to || null);
+    const { data, error: err } = await factoryWorkerProductivity(from || null, to || null, includeTestData);
     if (err) { setError(true); setLoading(false); return; }
     setRows(data || []);
     setLoading(false);
-  }, [from, to]);
+  }, [from, to, includeTestData]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -49,6 +52,7 @@ export default function FactoryWorkerProductivity({ lang }) {
           <div className="field" style={{ width: "auto" }}><label>From</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div className="field" style={{ width: "auto" }}><label>To</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <button type="button" className="btn btn-outline" style={{ width: "auto", alignSelf: "flex-end" }} onClick={() => { setFrom(""); setTo(""); }}>Clear Filters</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
       </div>
 

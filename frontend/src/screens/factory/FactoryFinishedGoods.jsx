@@ -4,10 +4,12 @@ import { subscribeTable } from "../../lib/realtime";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { listAllFactoryFinishedGoods, listAllInhouseProductionRequests, factoryRecordFinishedGoods } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 
-export default function FactoryFinishedGoods({ lang }) {
+export default function FactoryFinishedGoods({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [records, setRecords] = useState([]);
@@ -19,16 +21,17 @@ export default function FactoryFinishedGoods({ lang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [recRes, jobRes] = await Promise.all([listAllFactoryFinishedGoods(), listAllInhouseProductionRequests()]);
+    const [recRes, jobRes] = await Promise.all([listAllFactoryFinishedGoods(includeTestData), listAllInhouseProductionRequests(includeTestData)]);
     if (recRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setRecords(recRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_finished_goods_board", "factory_finished_goods", null, load), [load]);
@@ -93,6 +96,7 @@ export default function FactoryFinishedGoods({ lang }) {
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "Record Finished Goods"}
           </button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} record{filtered.length === 1 ? "" : "s"}</div>
       </div>

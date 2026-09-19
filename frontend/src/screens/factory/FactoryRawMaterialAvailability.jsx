@@ -4,13 +4,15 @@ import { subscribeTable } from "../../lib/realtime";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { listFactoryMaterials, listFactoryMaterialStock, listFactoryLocationsAll, factoryUpsertMaterial, factoryReceiveMaterial } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 
 // The real material master + stock ledger, built this round -- previously
 // no inventory table existed anywhere in this app. "Available" here means
 // quantity_on_hand - reserved_quantity, computed live, never typed by hand.
-export default function FactoryRawMaterialAvailability({ lang }) {
+export default function FactoryRawMaterialAvailability({ lang, profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [materials, setMaterials] = useState([]);
@@ -25,17 +27,18 @@ export default function FactoryRawMaterialAvailability({ lang }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [matRes, stockRes, locRes] = await Promise.all([listFactoryMaterials(), listFactoryMaterialStock(), listFactoryLocationsAll()]);
+    const [matRes, stockRes, locRes] = await Promise.all([listFactoryMaterials(includeTestData), listFactoryMaterialStock(includeTestData), listFactoryLocationsAll()]);
     if (matRes.error || stockRes.error || locRes.error) { setError(true); setLoading(false); return; }
     setMaterials(matRes.data || []);
     setStock(stockRes.data || []);
     setLocations(locRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_material_stock_board", "factory_material_stock", null, load), [load]);
@@ -127,6 +130,7 @@ export default function FactoryRawMaterialAvailability({ lang }) {
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleExport}>Export</button>
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setShowMaterialForm((s) => !s)}>{showMaterialForm ? "Cancel" : "New Material"}</button>
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowReceiptForm((s) => !s)}>{showReceiptForm ? "Cancel" : "Receive Stock"}</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
       </div>
 

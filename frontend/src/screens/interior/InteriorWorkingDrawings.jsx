@@ -6,6 +6,8 @@ import {
   listProjects, listInteriorPeople, getAttachmentUrl,
   uploadWorkingDrawingFile, listWorkingDrawingFiles, updateWorkingDrawingFileCategory,
   createWorkingDrawingTask, deleteWorkingDrawingFile,
+  sendWorkingDrawingToFactory, getFactoryDrawingStatusMap, FACTORY_ELIGIBLE_DRAWING_CATEGORIES,
+  findFactoryDrawingForRevision,
 } from "../../lib/interiorApi";
 import { subscribeTable } from "../../lib/realtime";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
@@ -277,6 +279,19 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploading, setUploading] = useState(false);
 
+  // "Send to Factory?" — only offered for the drawing categories that map
+  // cleanly onto Factory's own category vocabulary (see interiorApi.js).
+  // Defaults to No: choosing No behaves exactly as this screen always has,
+  // no Factory record of any kind is created.
+  const [sendToFactory, setSendToFactory] = useState("no");
+  const [factoryForm, setFactoryForm] = useState({
+    roomArea: "", productItem: "", quantity: "", dimensions: "", material: "", finish: "", hardware: "",
+    requiredByDate: "", assignedFactoryCoordinator: "", notes: "", approvedForProduction: true, overrideReason: "",
+    revisionReason: "",
+  });
+  const [revisionCandidate, setRevisionCandidate] = useState(null);
+  const [factoryStatusMap, setFactoryStatusMap] = useState(new Map());
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [uploadedByFilter, setUploadedByFilter] = useState("");
@@ -306,7 +321,12 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
     if (!projectId) { setFiles([]); return; }
     setFilesLoading(true);
     const { data, error: err } = await listWorkingDrawingFiles(projectId);
-    if (!err) setFiles(data || []);
+    if (!err) {
+      setFiles(data || []);
+      const paths = (data || []).map((f) => f.storage_path).filter(Boolean);
+      const { data: statusMap } = await getFactoryDrawingStatusMap(paths);
+      setFactoryStatusMap(statusMap);
+    }
     setFilesLoading(false);
   }, [projectId]);
 
@@ -331,25 +351,73 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
     if (f && !form.file_category) setHighlightCategory(true);
   }
 
+  const isFactoryEligibleCategory = FACTORY_ELIGIBLE_DRAWING_CATEGORIES.includes(form.file_category);
+  const sendingToFactory = isFactoryEligibleCategory && sendToFactory === "yes";
+
+  // Same title, same project, not-yet-superseded Factory drawing already
+  // exists -> this upload is a REVISION of that job, not a new one.
+  useEffect(() => {
+    if (!sendingToFactory || !form.title.trim()) { setRevisionCandidate(null); return undefined; }
+    let cancelled = false;
+    findFactoryDrawingForRevision(projectId, form.title).then(({ data }) => { if (!cancelled) setRevisionCandidate(data); });
+    return () => { cancelled = true; };
+  }, [sendingToFactory, projectId, form.title]);
+
+  const factoryFieldsValid = !sendingToFactory || (
+    revisionCandidate
+      ? !!factoryForm.revisionReason.trim() && (factoryForm.approvedForProduction || !!factoryForm.overrideReason.trim())
+      : !!factoryForm.productItem.trim() && !!factoryForm.requiredByDate && !!factoryForm.assignedFactoryCoordinator
+        && (factoryForm.approvedForProduction || !!factoryForm.overrideReason.trim())
+  );
+
   const canSave = !!projectId && !!form.title.trim() && !!form.file_category
-    && (form.file_category !== "Other" || !!form.custom_category.trim()) && !!file;
+    && (form.file_category !== "Other" || !!form.custom_category.trim()) && !!file && factoryFieldsValid;
+
+  const factoryPeople = people.filter((p) => p.department_name === "Factory/Manufacturing");
 
   async function handleUpload(e) {
     e.preventDefault();
     if (!canSave || !file) return;
     setUploading(true);
     setUploadMsg(t("saving", lang));
-    const { error: err } = await uploadWorkingDrawingFile({
+    const { data: uploaded, error: err } = await uploadWorkingDrawingFile({
       projectId, title: form.title.trim(), fileCategory: form.file_category,
       customCategory: form.file_category === "Other" ? form.custom_category.trim() : null,
       file, note: form.note || null, uploadedBy: profile?.id,
     });
-    setUploading(false);
-    if (err) { setUploadMsg(t("errorSaving", lang)); return; }
+    if (err) { setUploading(false); setUploadMsg(t("errorSaving", lang)); return; }
+
+    if (sendingToFactory) {
+      const { data: submission, error: factoryErr } = await sendWorkingDrawingToFactory({
+        projectId, storagePath: uploaded.storage_path, title: form.title.trim(), fileCategory: form.file_category,
+        roomArea: factoryForm.roomArea, productItem: factoryForm.productItem, quantity: factoryForm.quantity,
+        dimensions: factoryForm.dimensions, material: factoryForm.material, finish: factoryForm.finish, hardware: factoryForm.hardware,
+        requiredByDate: factoryForm.requiredByDate, assignedFactoryCoordinator: factoryForm.assignedFactoryCoordinator,
+        notes: factoryForm.notes, approvedForProduction: factoryForm.approvedForProduction, overrideReason: factoryForm.overrideReason,
+        requestedBy: profile?.id, revisionOf: revisionCandidate, revisionReason: factoryForm.revisionReason,
+      });
+      setUploading(false);
+      if (factoryErr) {
+        setUploadMsg(`${t("saved", lang)} — but sending to Factory failed: ${factoryErr.message || factoryErr}`);
+        setFile(null); setForm({ title: "", file_category: "", custom_category: "", note: "" });
+        loadFiles();
+        return;
+      }
+      setUploadMsg(submission.isRevision
+        ? `Saved as a revision — Factory notified on Job ${submission.job_order_number}. The previous version is now marked Superseded.`
+        : submission.alreadySubmitted
+          ? `Saved. This drawing was already sent to Factory (Job ${submission.job_order_number}).`
+          : `Saved and sent to Factory — Job ${submission.job_order_number}.`);
+      setSendToFactory("no");
+      setRevisionCandidate(null);
+      setFactoryForm({ roomArea: "", productItem: "", quantity: "", dimensions: "", material: "", finish: "", hardware: "", requiredByDate: "", assignedFactoryCoordinator: "", notes: "", approvedForProduction: true, overrideReason: "", revisionReason: "" });
+    } else {
+      setUploading(false);
+      setUploadMsg(t("saved", lang));
+    }
     setForm({ title: "", file_category: "", custom_category: "", note: "" });
     setFile(null);
     setHighlightCategory(false);
-    setUploadMsg(t("saved", lang));
     setShowForm(false);
     loadFiles();
   }
@@ -467,6 +535,68 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
               <label>{t("notesLabel", lang)}</label>
               <textarea rows={2} value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
             </div>
+
+            {isFactoryEligibleCategory && (
+              <div className="field full">
+                <label>Send to Factory?</label>
+                <div className="task-meta" style={{ gap: 8 }}>
+                  <button type="button" className={`btn ${sendToFactory === "no" ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setSendToFactory("no")}>No</button>
+                  <button type="button" className={`btn ${sendToFactory === "yes" ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setSendToFactory("yes")}>Yes</button>
+                </div>
+                <div className="sub" style={{ marginTop: 4 }}>No (default) just saves the drawing in this project as usual — no Factory record is created.</div>
+              </div>
+            )}
+
+            {sendingToFactory && (
+              <>
+                {revisionCandidate ? (
+                  <>
+                    <div className="msg info full" style={{ gridColumn: "1 / -1" }}>
+                      A drawing titled "{form.title}" was already sent to Factory as Job {revisionCandidate.inhouse_production_requests.job_order_number} (v{revisionCandidate.version_number}).
+                      This upload will be saved as v{revisionCandidate.version_number + 1} of the <strong>same job</strong> — the previous version will be marked Superseded, not deleted.
+                      {revisionCandidate.inhouse_production_requests.current_stage && !["Planning", "Drawing Pending"].includes(revisionCandidate.inhouse_production_requests.current_stage) && (
+                        <div style={{ color: "#b91c1c", fontWeight: 700, marginTop: 4 }}>⚠ Production is already at stage "{revisionCandidate.inhouse_production_requests.current_stage}" — Factory will see this flagged as a CRITICAL REVISION.</div>
+                      )}
+                    </div>
+                    <div className="field full">
+                      <label>Revision Reason *</label>
+                      <input value={factoryForm.revisionReason} onChange={(e) => setFactoryForm((f) => ({ ...f, revisionReason: e.target.value }))} required />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="field"><label>Room/Area</label><input value={factoryForm.roomArea} onChange={(e) => setFactoryForm((f) => ({ ...f, roomArea: e.target.value }))} /></div>
+                    <div className="field"><label>Product/Item *</label><input value={factoryForm.productItem} onChange={(e) => setFactoryForm((f) => ({ ...f, productItem: e.target.value }))} required /></div>
+                    <div className="field"><label>Quantity</label><input type="number" value={factoryForm.quantity} onChange={(e) => setFactoryForm((f) => ({ ...f, quantity: e.target.value }))} /></div>
+                    <div className="field"><label>Dimensions</label><input value={factoryForm.dimensions} onChange={(e) => setFactoryForm((f) => ({ ...f, dimensions: e.target.value }))} /></div>
+                    <div className="field"><label>Material</label><input value={factoryForm.material} onChange={(e) => setFactoryForm((f) => ({ ...f, material: e.target.value }))} /></div>
+                    <div className="field"><label>Finish</label><input value={factoryForm.finish} onChange={(e) => setFactoryForm((f) => ({ ...f, finish: e.target.value }))} /></div>
+                    <div className="field"><label>Hardware</label><input value={factoryForm.hardware} onChange={(e) => setFactoryForm((f) => ({ ...f, hardware: e.target.value }))} /></div>
+                    <div className="field"><label>Required-by Date *</label><input type="date" value={factoryForm.requiredByDate} onChange={(e) => setFactoryForm((f) => ({ ...f, requiredByDate: e.target.value }))} required /></div>
+                    <div className="field">
+                      <label>Factory Assignee *</label>
+                      <select value={factoryForm.assignedFactoryCoordinator} onChange={(e) => setFactoryForm((f) => ({ ...f, assignedFactoryCoordinator: e.target.value }))} required>
+                        <option value="">—</option>
+                        {factoryPeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <div className="sub" style={{ marginTop: 4 }}>Required by the Factory submission RPC — a job cannot be created without a coordinator.</div>
+                    </div>
+                    <div className="field full"><label>Production Instructions/Notes</label><textarea rows={2} value={factoryForm.notes} onChange={(e) => setFactoryForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+                  </>
+                )}
+                <label className="sub" style={{ display: "flex", alignItems: "center", gap: 6, gridColumn: "1 / -1" }}>
+                  <input type="checkbox" checked={factoryForm.approvedForProduction} onChange={(e) => setFactoryForm((f) => ({ ...f, approvedForProduction: e.target.checked }))} />
+                  This drawing is approved for production
+                </label>
+                {!factoryForm.approvedForProduction && (
+                  <div className="field full">
+                    <label>Override Reason (required — sending an unapproved drawing) *</label>
+                    <input value={factoryForm.overrideReason} onChange={(e) => setFactoryForm((f) => ({ ...f, overrideReason: e.target.value }))} required />
+                  </div>
+                )}
+              </>
+            )}
+
             <button type="submit" className="btn btn-primary" disabled={!canSave || uploading}>
               {uploading ? t("saving", lang) : t("save", lang)}
             </button>
@@ -504,6 +634,7 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
             {filtered.map((f) => {
               const draft = categoryDrafts[f.id];
               const displayCategory = f.file_category === "Other" ? f.custom_category : f.file_category;
+              const factoryStatus = factoryStatusMap.get(f.storage_path);
               return (
                 <div key={`${f.source}-${f.id}`} className="task-meta" style={{ justifyContent: "space-between", padding: "10px 0", flexWrap: "wrap", gap: 6, borderBottom: "1px solid var(--border)" }}>
                   <span style={{ fontSize: 20 }}>{fileIcon(f.file_type)}</span>
@@ -531,6 +662,11 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
                     </span>
                   )}
                   {f.note && <span className="sub">{t("notesLabel", lang)}: {f.note}</span>}
+                  {factoryStatus && (
+                    <span className="badge VERIFIED" title="Live status from the Factory job this drawing was sent to">
+                      🏭 {factoryStatus.jobOrderNumber} — {factoryStatus.jobStatus} (drawing {factoryStatus.drawingStatus})
+                    </span>
+                  )}
                   <span className="sub">{personName(people, f.uploaded_by)} · {f.uploaded_at ? new Date(f.uploaded_at).toLocaleString() : "—"}</span>
                   <span className="sub">{formatFileSize(f.file_size)}</span>
                   <ViewDownloadButton lang={lang} storagePath={f.storage_path} fileName={f.original_file_name} />

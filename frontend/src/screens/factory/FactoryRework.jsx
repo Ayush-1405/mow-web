@@ -4,6 +4,8 @@ import { subscribeTable } from "../../lib/realtime";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { listAllFactoryReworkRecords, factoryCloseRework, uploadFactoryAttachment } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 
@@ -21,15 +23,16 @@ export default function FactoryRework({ lang, profile }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const { data, error: err } = await listAllFactoryReworkRecords();
+    const { data, error: err } = await listAllFactoryReworkRecords(includeTestData);
     if (err) { setError(true); setLoading(false); return; }
     setRecords(data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_rework_board", "factory_rework_records", null, load), [load]);
@@ -101,6 +104,7 @@ export default function FactoryRework({ lang, profile }) {
             <option value="">All</option>
           </select>
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleExport}>Export</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
         <div className="sub" style={{ marginTop: 6 }}>{filtered.length} record{filtered.length === 1 ? "" : "s"}</div>
       </div>

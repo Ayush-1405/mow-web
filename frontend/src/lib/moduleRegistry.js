@@ -18,6 +18,7 @@ export const MODULE_ROUTES = {
     "Complaints & Service": "/retail/complaints",
     "Sales Targets": "/retail/targets",
     "Sales Performance": "/retail/performance",
+    "Send to Factory": "/factory-request",
   },
   INTERIOR: {
     "Quotation": "/interior-projects/quotation",
@@ -31,8 +32,11 @@ export const MODULE_ROUTES = {
     "Payment Follow-up": "/interior-projects/payments",
     "Project Completion": "/interior-projects/completion",
     "Project Master Report": "/interior-projects/master-report",
+    "Send to Factory": "/factory-request",
   },
   FACTORY: {
+    "AI Factory Inbox": "/factory-inbox",
+    "Send to Factory": "/factory-request",
     "Production Planning": "/factory/production-planning",
     "Job Orders": "/factory/job-orders",
     "BOM": "/factory/bom",

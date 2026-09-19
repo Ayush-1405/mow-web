@@ -7,6 +7,8 @@ import {
   factoryUpsertMachine, factoryStartMachineJob, factoryStopMachineJob, uploadFactoryAttachment,
 } from "../../lib/interiorApi";
 import { exportRowsToExcel } from "../../lib/exportExcel";
+import { useIncludeTestData } from "../../lib/testDataVisibility";
+import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 
 const PAGE_SIZE = 20;
 const STATUS_BADGE = { running: "IN_PROGRESS", idle: "ASSIGNED", maintenance: "REVISION", breakdown: "RETURNED" };
@@ -27,12 +29,13 @@ export default function FactoryMachineTracking({ lang, profile }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     const [machRes, logRes, locRes, jobRes] = await Promise.all([
-      listFactoryMachines(), listFactoryMachineLogs(null), listFactoryLocationsAll(), listAllInhouseProductionRequests(),
+      listFactoryMachines(includeTestData), listFactoryMachineLogs(null), listFactoryLocationsAll(), listAllInhouseProductionRequests(includeTestData),
     ]);
     if (machRes.error || logRes.error || locRes.error || jobRes.error) { setError(true); setLoading(false); return; }
     setMachines(machRes.data || []);
@@ -40,7 +43,7 @@ export default function FactoryMachineTracking({ lang, profile }) {
     setLocations(locRes.data || []);
     setJobs(jobRes.data || []);
     setLoading(false);
-  }, []);
+  }, [includeTestData]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeTable("factory_machines_board", "factory_machines", null, load), [load]);
@@ -118,6 +121,7 @@ export default function FactoryMachineTracking({ lang, profile }) {
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleExport}>Export</button>
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setShowMachineForm((s) => !s)}>{showMachineForm ? "Cancel" : "New Machine"}</button>
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={() => setShowStartForm((s) => !s)}>{showStartForm ? "Cancel" : "Start Machine Job"}</button>
+          <IncludeTestDataToggle canToggle={canToggle} includeTestData={includeTestData} onChange={setIncludeTestData} />
         </div>
       </div>
 

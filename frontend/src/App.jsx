@@ -55,6 +55,11 @@ const InteriorDailyUpdates = lazy(() => import("./screens/interior/InteriorDaily
 const InteriorMaterials = lazy(() => import("./screens/interior/InteriorMaterials.jsx"));
 const InteriorPurchaseManagement = lazy(() => import("./screens/interior/InteriorPurchaseManagement.jsx"));
 const FactoryJobOrders = lazy(() => import("./screens/factory/FactoryJobOrders.jsx"));
+const AiTaskAssistant = lazy(() => import("./screens/AiTaskAssistant.jsx"));
+const FactoryAiIntake = lazy(() => import("./screens/factory/FactoryAiIntake.jsx"));
+const FactoryAiInbox = lazy(() => import("./screens/factory/FactoryAiInbox.jsx"));
+const FactoryControlDashboard = lazy(() => import("./screens/factory/FactoryControlDashboard.jsx"));
+const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
 const FactoryInProcessQC = lazy(() => import("./screens/factory/FactoryInProcessQC.jsx"));
 const FactoryFinalQC = lazy(() => import("./screens/factory/FactoryFinalQC.jsx"));
@@ -504,11 +509,17 @@ export default function App() {
   function deptPage(code) {
     const dept = lookups.departments.find((d) => d.code === code);
     const allowed = dept ? access.canAccessDepartment(dept) : false;
+    // Factory gets a dedicated, source-department-wise dashboard over real
+    // inhouse_production_requests data instead of the generic
+    // DepartmentDashboard shell's Department Functions grid — decided here,
+    // at the route level, so DepartmentDashboard's own hooks are never
+    // conditionally skipped for any department.
+    const Body = code === "FACTORY" ? FactoryControlDashboard : DepartmentDashboard;
     return (
       <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
         <ProtectedRoute allowed={allowed} lang={lang}>
           {dept
-            ? <DepartmentDashboard lang={lang} profile={profile} department={dept} onOpenLegacy={openLegacyView} />
+            ? <Body lang={lang} profile={profile} department={dept} onOpenLegacy={openLegacyView} />
             : <div className="msg error">Department not configured in the database yet.</div>}
         </ProtectedRoute>
       </DeptShell>
@@ -579,6 +590,21 @@ export default function App() {
           <Bridges lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
         </DeptShell>
       } />
+      <Route path="/ai-tasks" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <AiTaskAssistant profile={profile} lookups={lookups} />
+        </DeptShell>
+      } />
+      <Route path="/factory-request" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <FactoryAiIntake lang={lang} profile={profile} lookups={lookups} />
+        </DeptShell>
+      } />
+      <Route path="/factory-inbox" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <FactoryAiInbox lang={lang} profile={profile} lookups={lookups} />
+        </DeptShell>
+      } />
       <Route path="/users" element={
         <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <ProtectedRoute allowed={!!(profile.isDeptHead || profile.isManagement || profile.isSuperAdmin)} lang={lang}>
@@ -641,27 +667,28 @@ export default function App() {
       <Route path="/dispatch" element={deptPage("DISPATCH")} />
       <Route path="/factory" element={deptPage("FACTORY")} />
       <Route path="/factory/job-orders" element={deptModulePage("FACTORY", <FactoryJobOrders lang={lang} profile={profile} />)} />
-      <Route path="/factory/wip-stages" element={deptModulePage("FACTORY", <FactoryWipStages lang={lang} />)} />
+      <Route path="/factory/wip-stages" element={deptModulePage("FACTORY", <FactoryWipStages lang={lang} profile={profile} />)} />
       <Route path="/factory/in-process-qc" element={deptModulePage("FACTORY", <FactoryInProcessQC lang={lang} profile={profile} />)} />
       <Route path="/factory/final-qc" element={deptModulePage("FACTORY", <FactoryFinalQC lang={lang} profile={profile} />)} />
       <Route path="/factory/rework" element={deptModulePage("FACTORY", <FactoryRework lang={lang} profile={profile} />)} />
       <Route path="/factory/rejection" element={deptModulePage("FACTORY", <FactoryRejection lang={lang} profile={profile} />)} />
-      <Route path="/factory/production-planning" element={deptModulePage("FACTORY", <FactoryProductionPlanning lang={lang} />)} />
-      <Route path="/factory/bom" element={deptModulePage("FACTORY", <FactoryBom lang={lang} />)} />
-      <Route path="/factory/cutting-lists" element={deptModulePage("FACTORY", <FactoryCuttingLists lang={lang} />)} />
-      <Route path="/factory/worker-productivity" element={deptModulePage("FACTORY", <FactoryWorkerProductivity lang={lang} />)} />
-      <Route path="/factory/shift-productivity" element={deptModulePage("FACTORY", <FactoryShiftProductivity lang={lang} />)} />
-      <Route path="/factory/wastage" element={deptModulePage("FACTORY", <FactoryWastage lang={lang} />)} />
-      <Route path="/factory/finished-goods" element={deptModulePage("FACTORY", <FactoryFinishedGoods lang={lang} />)} />
-      <Route path="/factory/packing" element={deptModulePage("FACTORY", <FactoryPacking lang={lang} />)} />
-      <Route path="/factory/product-time-tracking" element={deptModulePage("FACTORY", <FactoryProductTimeTracking lang={lang} />)} />
-      <Route path="/factory/product-costing" element={deptModulePage("FACTORY", <FactoryProductCosting lang={lang} />)} />
-      <Route path="/factory/raw-material-availability" element={deptModulePage("FACTORY", <FactoryRawMaterialAvailability lang={lang} />)} />
-      <Route path="/factory/material-issue" element={deptModulePage("FACTORY", <FactoryMaterialIssue lang={lang} />)} />
+      <Route path="/factory/production-planning" element={deptModulePage("FACTORY", <FactoryProductionPlanning lang={lang} profile={profile} />)} />
+      <Route path="/factory/bom" element={deptModulePage("FACTORY", <FactoryBom lang={lang} profile={profile} />)} />
+      <Route path="/factory/cutting-lists" element={deptModulePage("FACTORY", <FactoryCuttingLists lang={lang} profile={profile} />)} />
+      <Route path="/factory/worker-productivity" element={deptModulePage("FACTORY", <FactoryWorkerProductivity lang={lang} profile={profile} />)} />
+      <Route path="/factory/shift-productivity" element={deptModulePage("FACTORY", <FactoryShiftProductivity lang={lang} profile={profile} />)} />
+      <Route path="/factory/wastage" element={deptModulePage("FACTORY", <FactoryWastage lang={lang} profile={profile} />)} />
+      <Route path="/factory/finished-goods" element={deptModulePage("FACTORY", <FactoryFinishedGoods lang={lang} profile={profile} />)} />
+      <Route path="/factory/packing" element={deptModulePage("FACTORY", <FactoryPacking lang={lang} profile={profile} />)} />
+      <Route path="/factory/product-time-tracking" element={deptModulePage("FACTORY", <FactoryProductTimeTracking lang={lang} profile={profile} />)} />
+      <Route path="/factory/product-costing" element={deptModulePage("FACTORY", <FactoryProductCosting lang={lang} profile={profile} />)} />
+      <Route path="/factory/raw-material-availability" element={deptModulePage("FACTORY", <FactoryRawMaterialAvailability lang={lang} profile={profile} />)} />
+      <Route path="/factory/material-issue" element={deptModulePage("FACTORY", <FactoryMaterialIssue lang={lang} profile={profile} />)} />
       <Route path="/factory/machine-tracking" element={deptModulePage("FACTORY", <FactoryMachineTracking lang={lang} profile={profile} />)} />
       <Route path="/factory/transfer" element={deptModulePage("FACTORY", <FactoryTransfer lang={lang} profile={profile} />)} />
       <Route path="/factory/drawings" element={deptModulePage("FACTORY", <FactoryDrawings lang={lang} profile={profile} />)} />
-      <Route path="/factory/inventory-costing" element={deptModulePage("FACTORY", <FactoryInventoryCosting lang={lang} />)} />
+      <Route path="/factory/inventory-costing" element={deptModulePage("FACTORY", <FactoryInventoryCosting lang={lang} profile={profile} />)} />
+      <Route path="/factory/master-report" element={deptModulePage("FACTORY", <FactoryMasterReport lang={lang} profile={profile} />)} />
       <Route path="/product-rnd" element={deptPage("RND")} />
       <Route path="/hr-admin" element={deptPage("HR_ADMIN")} />
       <Route path="/accounts-finance" element={deptPage("ACCOUNTS")} />
