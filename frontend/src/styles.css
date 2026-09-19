@@ -1159,6 +1159,55 @@ textarea { min-height: 84px; resize: vertical; }
 .col-chart-value { font-size: 10px; color: var(--ink-soft); margin-bottom: 2px; font-variant-numeric: tabular-nums; }
 .col-chart-label { font-size: 9px; color: var(--ink-soft); margin-top: 4px; white-space: nowrap; }
 
+/* ---------- Daily Updates — independently scrollable task/update
+   history, with its own sticky filter header, separate from the page's
+   own scroll (the submission form above it, and the sidebar, never move
+   just because the user scrolls through old records). ---------- */
+.daily-updates-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 650px;
+  min-height: 400px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--surface-2);
+}
+.daily-updates-scroll::-webkit-scrollbar { width: 8px; }
+.daily-updates-scroll::-webkit-scrollbar-track { background: var(--surface-2); border-radius: 8px; }
+.daily-updates-scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
+.daily-updates-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent-dark); }
+
+.daily-updates-sticky-filters {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+}
+
+.daily-updates-new-pill {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 6px 10px;
+  background: var(--accent);
+  color: #2a1a08;
+  font-weight: 700;
+  font-size: 12.5px;
+  border: none;
+  cursor: pointer;
+}
+
+@media (max-width: 899px) {
+  .daily-updates-scroll { max-height: 65vh; }
+}
+
 /* ---------- Project Master Report — print / PDF export ---------- */
 @media print {
   .no-print, .dept-sidebar, .top-nav, .dept-shell-header, .filter-bar { display: none !important; }

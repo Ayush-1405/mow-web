@@ -1,14 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import {
-  listProjects, listSiteReports, createSiteReport, notifyDeptLeadership,
-  listAssignableInteriorPeople, listProjectTeamIds, createProjectTask, listProjectStaffTasks,
+  listProjects, createSiteReport, notifyDeptLeadership,
+  listAssignableInteriorPeople, listProjectTeamIds, createProjectTask,
+  listSiteReportsPage, listSiteReportsForDate, listTasksForSiteReports,
 } from "../../lib/interiorApi";
 import { subscribeTable } from "../../lib/realtime";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
+import { kolkataDateStr, addDaysToDateStr, daysBetweenDateStrs, kolkataDateOf } from "../../lib/kolkataTime";
 
 // Daily Site Update — md/MOOD-OF-WOOD-SYSTEM.md §5. Today's Work and
 // Tomorrow's Plan are now structured, person-wise work items (title +
@@ -18,8 +21,40 @@ import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 // not a typed @name. Material Required / Any Issue / Remarks are
 // unchanged from the original flow.
 const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"];
-const today = () => new Date().toISOString().slice(0, 10);
-const tomorrow = () => new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+// "Today" must be Asia/Kolkata's calendar day, never `toISOString()`'s UTC
+// day — see lib/kolkataTime.js. A raw UTC compute here would show/save the
+// wrong date for roughly the first 5.5 hours of every IST day.
+const today = () => kolkataDateStr();
+const tomorrow = () => addDaysToDateStr(kolkataDateStr(), 1);
+
+const CLOSED_STATUS_CODES = new Set(["COMPLETED", "VERIFIED", "CLOSED"]);
+const ACTIVE_MIDDLE_STATUS_CODES = new Set(["IN_PROGRESS", "ACCEPTED", "PARTIALLY_ACCEPTED", "PARTIALLY_COMPLETED"]);
+const HISTORY_PAGE_SIZE = 25;
+const HISTORY_STORAGE_KEY = "interiorDailyUpdates.history.v1";
+
+function formatDisplayDate(dateStr, lang) {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return new Intl.DateTimeFormat(lang === "gu" ? "gu-IN" : "en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(dt);
+}
+
+function dateGroupHeading(dateStr, todayStr, lang) {
+  const formatted = formatDisplayDate(dateStr, lang);
+  if (dateStr === todayStr) return `${t("todayLabel", lang)} — ${formatted}`;
+  if (dateStr === addDaysToDateStr(todayStr, -1)) return `${t("yesterdayLabel", lang)} — ${formatted}`;
+  return formatted;
+}
+
+function readHistoryStorage() {
+  try { return JSON.parse(sessionStorage.getItem(HISTORY_STORAGE_KEY)) || {}; } catch { return {}; }
+}
+function writeHistoryStorage(partial) {
+  try {
+    const cur = readHistoryStorage();
+    sessionStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify({ ...cur, ...partial }));
+  } catch { /* private-browsing storage can throw — non-fatal */ }
+}
 
 function ChipInput({ value, onChange, placeholder }) {
   const [draft, setDraft] = useState("");
@@ -107,8 +142,6 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   const [projectId, setProjectId] = useState("");
   const [people, setPeople] = useState([]);
   const [teamIds, setTeamIds] = useState([]);
-  const [rows, setRows] = useState([]);
-  const [reportTasks, setReportTasks] = useState([]);
   const [statusById, setStatusById] = useState({});
   const [priorityById, setPriorityById] = useState({});
   const [saving, setSaving] = useState(false);
@@ -126,6 +159,32 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   const [issueText, setIssueText] = useState("");
   const [remarks, setRemarks] = useState("");
 
+  // ---- Lower history section: scrollable, date-grouped, filtered,
+  // paginated, realtime-aware. See styles.css ".daily-updates-scroll" for
+  // the container CSS. dateMode "all" = paginated newest-first feed;
+  // "date" = a single selected calendar day (Previous/Next/Today/picker). ----
+  const savedHistory = useRef(readHistoryStorage()).current;
+  const [dateMode, setDateMode] = useState(savedHistory.dateMode || "all");
+  const [selectedDate, setSelectedDate] = useState(savedHistory.selectedDate || kolkataDateStr());
+  const [historyStatusFilter, setHistoryStatusFilter] = useState(savedHistory.historyStatusFilter || "");
+  const [historyAssigneeFilter, setHistoryAssigneeFilter] = useState(savedHistory.historyAssigneeFilter || "");
+  const [historySearchInput, setHistorySearchInput] = useState(savedHistory.historySearchInput || "");
+  const historySearchText = useDebouncedValue(historySearchInput, 250);
+
+  const [rows, setRows] = useState([]);
+  const [reportTasks, setReportTasks] = useState([]);
+  const [assigneesByTask, setAssigneesByTask] = useState({});
+  const [unreadByTask, setUnreadByTask] = useState({});
+  const [reportsOffset, setReportsOffset] = useState(0);
+  const [hasMoreReports, setHasMoreReports] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [newUpdateAvailable, setNewUpdateAvailable] = useState(false);
+
+  const scrollRef = useRef(null);
+  const isAtTopRef = useRef(true);
+  const scrollRestoredRef = useRef(false);
+  const skipScrollResetRef = useRef(true);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
@@ -140,7 +199,8 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   useEffect(() => { load(); }, [load]);
 
   // Small, static lookups (not otherwise available to this screen) needed
-  // only to display a linked staff_tasks row's real status/priority text.
+  // only to display a linked staff_tasks row's real status/priority text —
+  // and, via their `code` field, to compute date-group tiering/badges.
   useEffect(() => {
     supabase.from("status_master").select("id, code, name_en, name_gu").then(({ data }) => {
       setStatusById(Object.fromEntries((data || []).map((s) => [s.id, s])));
@@ -149,6 +209,12 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
       setPriorityById(Object.fromEntries((data || []).map((p) => [p.id, p])));
     });
   }, []);
+
+  const loadUnread = useCallback(async () => {
+    const { data, error: err } = await supabase.rpc("staff_task_unread_message_counts");
+    if (!err) setUnreadByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count])));
+  }, []);
+  useEffect(() => { loadUnread(); }, [loadUnread]);
 
   const project = projects.find((p) => p.id === projectId);
 
@@ -163,23 +229,132 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
     return { team, others };
   }, [people, teamIds]);
 
-  const loadReports = useCallback(async () => {
-    if (!projectId) { setRows([]); setReportTasks([]); return; }
-    const [{ data, error: err }, tasksRes] = await Promise.all([listSiteReports(projectId), listProjectStaffTasks(projectId)]);
-    if (!err) setRows(data || []);
-    setReportTasks(tasksRes.data || []);
+  // Second Assignee — staff_task_assignees rows for every currently loaded
+  // task (same table/shape TodayTasks.jsx uses), so a card can show "+1"
+  // when more than one person is on the linked task.
+  useEffect(() => {
+    const ids = reportTasks.map((tsk) => tsk.id);
+    if (!ids.length) { setAssigneesByTask({}); return; }
+    supabase.from("staff_task_assignees").select("*").in("task_id", ids).eq("is_active", true).then(({ data }) => {
+      const grouped = {};
+      (data || []).forEach((r) => { (grouped[r.task_id] ||= []).push(r); });
+      setAssigneesByTask(grouped);
+    });
+  }, [reportTasks]);
+
+  // ---- History loaders ----
+  const loadAllPage = useCallback(async (targetOffset, replace) => {
+    if (!projectId) { setRows([]); setReportTasks([]); setHasMoreReports(false); return; }
+    const { data, count, error: err } = await listSiteReportsPage(projectId, targetOffset, HISTORY_PAGE_SIZE);
+    if (err) { setError(true); return; }
+    const newRows = data || [];
+    setRows((cur) => (replace ? newRows : [...cur, ...newRows]));
+    setReportsOffset(targetOffset + newRows.length);
+    setHasMoreReports(targetOffset + newRows.length < (count ?? 0));
+    const ids = newRows.map((r) => r.id);
+    if (ids.length) {
+      const { data: taskRows } = await listTasksForSiteReports(ids);
+      setReportTasks((cur) => (replace ? (taskRows || []) : [...cur, ...(taskRows || [])]));
+    } else if (replace) {
+      setReportTasks([]);
+    }
   }, [projectId]);
 
-  useEffect(() => { loadReports(); setSaveMsg(""); }, [loadReports]);
+  const loadForSelectedDate = useCallback(async (dateStr) => {
+    if (!projectId) { setRows([]); setReportTasks([]); return; }
+    const { data, error: err } = await listSiteReportsForDate(projectId, dateStr);
+    if (err) { setError(true); return; }
+    const newRows = data || [];
+    setRows(newRows);
+    setHasMoreReports(false);
+    const ids = newRows.map((r) => r.id);
+    const { data: taskRows } = ids.length ? await listTasksForSiteReports(ids) : { data: [] };
+    setReportTasks(taskRows || []);
+  }, [projectId]);
+
+  const reloadHistory = useCallback(async () => {
+    setNewUpdateAvailable(false);
+    if (dateMode === "date") await loadForSelectedDate(selectedDate);
+    else await loadAllPage(0, true);
+  }, [dateMode, selectedDate, loadForSelectedDate, loadAllPage]);
+
+  useEffect(() => { setSaveMsg(""); reloadHistory(); }, [reloadHistory]);
+
+  useForegroundRefresh(reloadHistory);
+
+  // Persist filter/date-mode selections (not scroll position, handled
+  // separately) so navigating away via "Open Task" and back restores them.
+  useEffect(() => {
+    writeHistoryStorage({ dateMode, selectedDate, historyStatusFilter, historyAssigneeFilter, historySearchInput });
+  }, [dateMode, selectedDate, historyStatusFilter, historyAssigneeFilter, historySearchInput]);
+
+  // Scroll the history container (never the whole page) to top whenever
+  // the user changes a filter or date-mode selection — skipping the very
+  // first run so a restored scroll position (below) isn't immediately
+  // overwritten on mount.
+  useEffect(() => {
+    if (skipScrollResetRef.current) { skipScrollResetRef.current = false; return; }
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [dateMode, selectedDate, historyStatusFilter, historyAssigneeFilter, historySearchText]);
+
+  // Restore the history container's own scroll position (not the page's)
+  // once, right after the first successful load — covers returning from
+  // "Open Task" (a real route navigation that unmounts this component).
+  useEffect(() => {
+    if (scrollRestoredRef.current || loading) return;
+    scrollRestoredRef.current = true;
+    const savedTop = readHistoryStorage().scrollTop;
+    if (savedTop && scrollRef.current) scrollRef.current.scrollTop = savedTop;
+  }, [loading, rows]);
+
+  function handleHistoryScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    isAtTopRef.current = el.scrollTop < 40;
+    writeHistoryStorage({ scrollTop: el.scrollTop });
+  }
+
+  async function handleLoadMore() {
+    if (loadingMore || !hasMoreReports) return;
+    setLoadingMore(true);
+    const el = scrollRef.current;
+    const prevHeight = el?.scrollHeight || 0;
+    await loadAllPage(reportsOffset, false);
+    setLoadingMore(false);
+    requestAnimationFrame(() => {
+      if (el) el.scrollTop += (el.scrollHeight - prevHeight);
+    });
+  }
+
+  async function handleShowNewUpdate() {
+    await reloadHistory();
+    if (scrollRef.current) scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleClickToday() {
+    setDateMode("date");
+    setSelectedDate(kolkataDateStr());
+  }
+  function shiftDay(delta) {
+    setDateMode("date");
+    setSelectedDate((d) => addDaysToDateStr(d || kolkataDateStr(), delta));
+  }
+  function handleClearHistoryFilters() {
+    setHistoryStatusFilter("");
+    setHistoryAssigneeFilter("");
+    setHistorySearchInput("");
+  }
 
   useEffect(() => {
     if (!projectId) return undefined;
-    const unsubR = subscribeTable(`project-${projectId}-site_reports`, "site_reports", `project_id=eq.${projectId}`, () => loadReports());
-    const unsubT = subscribeTable(`project-${projectId}-staff_tasks`, "staff_tasks", `project_id=eq.${projectId}`, () => loadReports());
+    const handleChange = () => {
+      if (isAtTopRef.current) reloadHistory();
+      else setNewUpdateAvailable(true);
+    };
+    const unsubR = subscribeTable(`project-${projectId}-site_reports`, "site_reports", `project_id=eq.${projectId}`, handleChange);
+    const unsubT = subscribeTable(`project-${projectId}-staff_tasks`, "staff_tasks", `project_id=eq.${projectId}`, handleChange);
     return () => { unsubR(); unsubT(); };
-  }, [projectId, loadReports]);
-
-  useForegroundRefresh(loadReports);
+  }, [projectId, reloadHistory]);
 
   function updateItem(list, setList, id, next) {
     setList(list.map((it) => (it.id === id ? next : it)));
@@ -211,7 +386,7 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
 
     const { data: report, error: err } = await createSiteReport({
       project_id: projectId,
-      report_date: new Date().toISOString().slice(0, 10),
+      report_date: today(),
       work_today: activeToday.map((it) => it.title).join(", ") || null,
       work_done: null,
       work_pending: activeToday.length ? activeToday.map((it) => it.title).join(", ") : t("noneLabel", lang),
@@ -270,11 +445,136 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
     setAssignAllTo("");
     setMaterialRequired(false); setMaterials([]); setMaterialRemark("");
     setIssuePresent(false); setIssueText(""); setRemarks("");
-    loadReports();
+    reloadHistory();
   }
 
   function personNameByAuthId(authId) {
     return people.find((p) => p.auth_id === authId)?.name || "—";
+  }
+
+  // ---- History grouping/sorting/filtering (real DB date/status/priority
+  // fields — never formatted-text comparison). ----
+  function taskTier(tsk, todayStr) {
+    const scode = statusById[tsk.status_id]?.code;
+    if (CLOSED_STATUS_CODES.has(scode)) return 4;
+    if (tsk.due_date === todayStr) return 0;
+    const pcode = priorityById[tsk.priority_id]?.code;
+    if (pcode === "URGENT" || pcode === "HIGH") return 1;
+    if (ACTIVE_MIDDLE_STATUS_CODES.has(scode)) return 2;
+    return 3;
+  }
+  function compareTasksWithinGroup(a, b, todayStr) {
+    const tierDiff = taskTier(a, todayStr) - taskTier(b, todayStr);
+    if (tierDiff !== 0) return tierDiff;
+    if (a.due_time && b.due_time) { const c = a.due_time.localeCompare(b.due_time); if (c) return c; }
+    else if (a.due_time) return -1;
+    else if (b.due_time) return 1;
+    return (b.assigned_at || b.created_at || "").localeCompare(a.assigned_at || a.created_at || "");
+  }
+  function taskMatchesHistoryFilters(tsk) {
+    if (historyStatusFilter && statusById[tsk.status_id]?.code !== historyStatusFilter) return false;
+    if (historyAssigneeFilter && tsk.assigned_to !== historyAssigneeFilter) return false;
+    if (historySearchText.trim()) {
+      const q = historySearchText.trim().toLowerCase();
+      const hay = [tsk.title, tsk.description].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }
+  function reportMatchesHistoryFilters(r) {
+    // A plain Daily Update (no linked task) has no status/assignee of its
+    // own to match a task-level filter against.
+    if (historyStatusFilter || historyAssigneeFilter) return false;
+    if (historySearchText.trim()) {
+      const q = historySearchText.trim().toLowerCase();
+      const hay = [r.work_today, r.work_pending, r.remarks].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }
+
+  const historyGroups = useMemo(() => {
+    const todayStr = kolkataDateStr();
+    const byDate = new Map();
+    for (const r of rows) {
+      const dateKey = r.report_date || kolkataDateOf(r.created_at);
+      if (!byDate.has(dateKey)) byDate.set(dateKey, { reports: [], tasks: [] });
+      byDate.get(dateKey).reports.push(r);
+    }
+    const reportIdToDate = new Map(rows.map((r) => [r.id, r.report_date || kolkataDateOf(r.created_at)]));
+    for (const tsk of reportTasks) {
+      const dateKey = reportIdToDate.get(tsk.source_site_report_id);
+      if (dateKey == null || !taskMatchesHistoryFilters(tsk)) continue;
+      byDate.get(dateKey).tasks.push(tsk);
+    }
+    const linkedReportIds = new Set(reportTasks.map((tsk) => tsk.source_site_report_id));
+    const orderedDates = Array.from(byDate.keys()).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+    return orderedDates
+      .map((dateKey) => {
+        const bucket = byDate.get(dateKey);
+        const sortedTasks = [...bucket.tasks].sort((a, b) => compareTasksWithinGroup(a, b, todayStr));
+        const reportsWithoutTasks = bucket.reports.filter((r) => !linkedReportIds.has(r.id) && reportMatchesHistoryFilters(r));
+        return { dateKey, tasks: sortedTasks, reportsWithoutTasks };
+      })
+      .filter((g) => g.tasks.length > 0 || g.reportsWithoutTasks.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, reportTasks, historyStatusFilter, historyAssigneeFilter, historySearchText, statusById, priorityById]);
+
+  const totalHistoryShown = historyGroups.reduce((sum, g) => sum + g.tasks.length + g.reportsWithoutTasks.length, 0);
+
+  function taskBadge(tsk) {
+    const todayStr = kolkataDateStr();
+    const scode = statusById[tsk.status_id]?.code;
+    if (scode === "CLOSED") return <span className="badge CLOSED">{t("closedBadgeLabel", lang)}</span>;
+    if (CLOSED_STATUS_CODES.has(scode)) return <span className="badge COMPLETED">{t("completedBadgeLabel", lang)}</span>;
+    if (scode === "IN_PROGRESS") return <span className="badge IN_PROGRESS">{t("inProgressBadgeLabel", lang)}</span>;
+    if (!tsk.due_date) return null;
+    if (tsk.due_date === todayStr) return <span className="badge ASSIGNED">{t("todayBadgeLabel", lang)}</span>;
+    if (tsk.due_date === addDaysToDateStr(todayStr, 1)) return <span className="badge ASSIGNED">{t("tomorrowBadgeLabel", lang)}</span>;
+    if (tsk.due_date < todayStr) return <span className="badge RETURNED">{t("overdueByDaysLabel", lang).replace("{n}", String(daysBetweenDateStrs(tsk.due_date, todayStr)))}</span>;
+    return null;
+  }
+
+  function renderTaskCard(tsk, reportDate) {
+    const second = (assigneesByTask[tsk.id] || []).find((a) => a.user_id !== tsk.assigned_to);
+    const unread = unreadByTask[tsk.id];
+    return (
+      <div key={tsk.id} className="card" style={{ padding: 10, marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontWeight: 700 }}>{tsk.title}</div>
+          {taskBadge(tsk)}
+        </div>
+        {project && <div className="sub">{t("projectSiteLabel", lang)}: {project.project_code} — {project.customer}</div>}
+        <div className="sub">{t("updateDateLabel", lang)}: {formatDisplayDate(reportDate, lang)}</div>
+        <div className="sub">
+          {t("dueDateLabel", lang)}: {tsk.due_date ? formatDisplayDate(tsk.due_date, lang) : "—"}
+          {tsk.due_time && ` · ${t("dueTimeLabel", lang)}: ${tsk.due_time.slice(0, 5)}`}
+        </div>
+        <div className="sub">{t("assignToLabel", lang)}: {personNameByAuthId(tsk.assigned_to)}</div>
+        {second && <div className="sub">{t("secondAssigneeLabel", lang)}: {personNameByAuthId(second.user_id)}</div>}
+        <div className="sub">{t("priorityLabel", lang)}: {lang === "gu" ? priorityById[tsk.priority_id]?.name_gu : priorityById[tsk.priority_id]?.name_en || "—"}</div>
+        <div className="sub">
+          {t("statusLabel", lang)}: <span className={`badge ${statusById[tsk.status_id]?.code || "ASSIGNED"}`}>{lang === "gu" ? statusById[tsk.status_id]?.name_gu : statusById[tsk.status_id]?.name_en || tsk.status_id}</span>
+        </div>
+        {tsk.description && <div className="sub">{tsk.description}</div>}
+        <button className="btn btn-outline" style={{ marginTop: 8, width: "100%" }} onClick={() => navigate(`/tasks?focus=${tsk.id}`)}>
+          {t("openTaskAction", lang)}{unread ? ` (${unread})` : ""}
+        </button>
+      </div>
+    );
+  }
+
+  function renderReportFallbackCard(r) {
+    return (
+      <div key={r.id} className="card" style={{ padding: 10, marginBottom: 8 }}>
+        <div style={{ fontWeight: 700 }}>{t("dailyUpdateRecordLabel", lang)}</div>
+        {project && <div className="sub">{t("projectSiteLabel", lang)}: {project.project_code} — {project.customer}</div>}
+        <div className="sub">{t("updateDateLabel", lang)}: {formatDisplayDate(r.report_date || kolkataDateOf(r.created_at), lang)}</div>
+        <div className="sub">{t("todayWorkLabel", lang)}: {r.work_today || "—"}</div>
+        <div className="sub">{t("workPendingAuto", lang)}: {r.work_pending || "—"}</div>
+        {r.status && <span className="badge IN_PROGRESS">{r.status}</span>}
+      </div>
+    );
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -379,39 +679,65 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
         </form>
       </div>
 
-      <div className="card">
-        {rows.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
-        {rows.map((r) => {
-          const linkedTasks = reportTasks.filter((tsk) => tsk.source_site_report_id === r.id);
-          return (
-            <div key={r.id} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
-              <div style={{ fontWeight: 700 }}>{r.report_date}</div>
-              {linkedTasks.length > 0 ? (
-                linkedTasks.map((tsk) => (
-                  <div key={tsk.id} className="task-meta" style={{ justifyContent: "space-between", padding: "4px 0", flexWrap: "wrap" }}>
-                    <span>{tsk.title}</span>
-                    <span className="sub">{t("assignToLabel", lang)}: {personNameByAuthId(tsk.assigned_to)}</span>
-                    <span className="sub">{t("dueDateLabel", lang)}: {tsk.due_date}</span>
-                    <span className="sub">{t("priorityLabel", lang)}: {lang === "gu" ? priorityById[tsk.priority_id]?.name_gu : priorityById[tsk.priority_id]?.name_en || "—"}</span>
-                    <span className={`badge ${statusById[tsk.status_id]?.code || "ASSIGNED"}`}>
-                      {lang === "gu" ? statusById[tsk.status_id]?.name_gu : statusById[tsk.status_id]?.name_en || tsk.status_id}
-                    </span>
-                    <span className="sub">{tsk.source_type === "tomorrows_plan" ? t("tomorrowLabel", lang) : t("todayLabel", lang)}</span>
-                    <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => navigate(`/tasks?focus=${tsk.id}`)}>
-                      {t("openTaskAction", lang)}
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <>
-                  <div className="sub">{t("todayWorkLabel", lang)}: {r.work_today || "—"}</div>
-                  <div className="sub">{t("workPendingAuto", lang)}: {r.work_pending || "—"}</div>
-                </>
-              )}
-              <span className="badge IN_PROGRESS">{r.status}</span>
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "12px 14px 0" }}>
+          <h3 style={{ margin: 0 }}>{t("dailyTasksUpdatesHeading", lang)}</h3>
+          <div className="sub">{t("showingCountLabel", lang).replace("{n}", String(totalHistoryShown))}</div>
+        </div>
+
+        <div className="daily-updates-scroll" ref={scrollRef} onScroll={handleHistoryScroll} style={{ marginTop: 10 }}>
+          <div className="daily-updates-sticky-filters">
+            <div className="btn-row" style={{ flexWrap: "wrap", marginTop: 0 }}>
+              <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => shiftDay(-1)}>{t("previousDayLabel", lang)}</button>
+              <input type="date" value={selectedDate} onChange={(e) => { setDateMode("date"); setSelectedDate(e.target.value); }} style={{ width: "auto" }} />
+              <button type="button" className={`btn ${dateMode === "date" && selectedDate === kolkataDateStr() ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={handleClickToday}>{t("todayLabel", lang)}</button>
+              <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => shiftDay(1)}>{t("nextDayLabel", lang)}</button>
+              <button type="button" className={`btn ${dateMode === "all" ? "btn-primary" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("all")}>{t("allDatesLabel", lang)}</button>
             </div>
-          );
-        })}
+            <div className="btn-row" style={{ flexWrap: "wrap", marginTop: 8 }}>
+              <select value={historyStatusFilter} onChange={(e) => setHistoryStatusFilter(e.target.value)} style={{ width: "auto" }}>
+                <option value="">{t("statusLabel", lang)}</option>
+                {Object.values(statusById).map((s) => <option key={s.id} value={s.code}>{lang === "gu" ? s.name_gu : s.name_en}</option>)}
+              </select>
+              <select value={historyAssigneeFilter} onChange={(e) => setHistoryAssigneeFilter(e.target.value)} style={{ width: "auto" }}>
+                <option value="">{t("assignToLabel", lang)}</option>
+                {people.map((p) => <option key={p.id} value={p.auth_id}>{p.name}</option>)}
+              </select>
+              <input value={historySearchInput} onChange={(e) => setHistorySearchInput(e.target.value)} placeholder={t("searchLabel", lang)} style={{ width: "auto", flex: "1 1 160px" }} />
+              <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleClearHistoryFilters}>{t("clearFiltersAction", lang)}</button>
+            </div>
+          </div>
+
+          {newUpdateAvailable && (
+            <button type="button" className="daily-updates-new-pill" onClick={handleShowNewUpdate}>
+              {t("newUpdateReceivedLabel", lang)}
+            </button>
+          )}
+
+          <div style={{ padding: "10px 14px 14px" }}>
+            {dateMode === "date" && (
+              <h4 style={{ margin: "0 0 8px" }}>{t("tasksUpdatesForHeading", lang)} {formatDisplayDate(selectedDate, lang)}</h4>
+            )}
+
+            {historyGroups.length === 0 && (
+              <div className="msg info">{dateMode === "date" ? t("noTasksOrUpdatesForDateMsg", lang) : t("noRecordsYet", lang)}</div>
+            )}
+
+            {historyGroups.map((g) => (
+              <div key={g.dateKey} style={{ marginTop: 14 }}>
+                {dateMode === "all" && <div style={{ fontWeight: 700, marginBottom: 6 }}>{dateGroupHeading(g.dateKey, kolkataDateStr(), lang)}</div>}
+                {g.tasks.map((tsk) => renderTaskCard(tsk, g.dateKey))}
+                {g.reportsWithoutTasks.map((r) => renderReportFallbackCard(r))}
+              </div>
+            ))}
+
+            {dateMode === "all" && hasMoreReports && (
+              <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 12 }} disabled={loadingMore} onClick={handleLoadMore}>
+                {loadingMore ? t("savingUpdateMsg", lang) : t("loadMoreAction", lang)}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

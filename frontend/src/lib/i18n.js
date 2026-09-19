@@ -880,6 +880,20 @@ export const STRINGS = {
   expandLabel: { en: "Expand", gu: "વિસ્તૃત કરો" },
   collapseLabel: { en: "Collapse", gu: "સંકોચો" },
 
+  // Interior Daily Updates — scrollable history section
+  dailyTasksUpdatesHeading: { en: "Daily Tasks & Updates", gu: "દૈનિક કાર્યો અને અપડેટ્સ" },
+  showingCountLabel: { en: "Showing {n} tasks", gu: "{n} કાર્યો બતાવી રહ્યા છીએ" },
+  yesterdayLabel: { en: "Yesterday", gu: "ગઈકાલે" },
+  tasksUpdatesForHeading: { en: "Tasks & Updates for", gu: "માટે કાર્યો અને અપડેટ્સ" },
+  noTasksOrUpdatesForDateMsg: { en: "No tasks or updates found for this date.", gu: "આ તારીખ માટે કોઈ કાર્ય કે અપડેટ મળ્યું નથી." },
+  newUpdateReceivedLabel: { en: "New update received — tap to view", gu: "નવું અપડેટ મળ્યું — જોવા માટે ટેપ કરો" },
+  loadMoreAction: { en: "Load More", gu: "વધુ લોડ કરો" },
+  updateDateLabel: { en: "Update Date", gu: "અપડેટ તારીખ" },
+  dailyUpdateRecordLabel: { en: "Daily Update", gu: "દૈનિક અપડેટ" },
+  inProgressBadgeLabel: { en: "IN PROGRESS", gu: "ચાલુ છે" },
+  closedBadgeLabel: { en: "CLOSED", gu: "બંધ" },
+  projectSiteLabel: { en: "Project / Site", gu: "પ્રોજેક્ટ / સાઇટ" },
+
   // Working Drawings — secure file delete / recycle bin / permanent delete
   deleteFileAction: { en: "Delete File", gu: "ફાઇલ કાઢો" },
   uploadedByLabel: { en: "Uploaded By", gu: "કોણે અપલોડ કરી" },

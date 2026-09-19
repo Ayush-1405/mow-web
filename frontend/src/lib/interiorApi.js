@@ -416,6 +416,25 @@ export async function listSiteReports(projectId) {
   return supabase.from("site_reports").select("*").eq("project_id", projectId).order("report_date", { ascending: false });
 }
 
+// Real server-side pagination for the Daily Updates history (not an
+// unbounded fetch-everything, then slice client-side) -- offset/range
+// based rather than a report_date cursor, since more than one report can
+// legitimately share the same report_date and a date-cursor would risk
+// skipping/duplicating across that boundary.
+export async function listSiteReportsPage(projectId, offset = 0, limit = 25) {
+  return supabase.from("site_reports").select("*", { count: "exact" }).eq("project_id", projectId)
+    .order("report_date", { ascending: false }).order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+}
+
+// Targeted single-date lookup for the date-picker/Previous/Next/Today
+// filter -- a real server-side date filter, not a client-side scan over
+// whatever page happens to already be loaded (a far-back date might not
+// be in the currently loaded window at all).
+export async function listSiteReportsForDate(projectId, dateStr) {
+  return supabase.from("site_reports").select("*").eq("project_id", projectId).eq("report_date", dateStr).order("created_at", { ascending: false });
+}
+
 export async function createSiteReport(payload) {
   const { data, error } = await supabase.from("site_reports").insert(payload).select().single();
   if (!error) await logAudit("site_reports", data.id, "create", { report_date: payload.report_date }, payload.project_id);
@@ -457,6 +476,17 @@ export async function createProjectTask({ projectId, title, description, assigne
 // AssignTask.jsx already use), never listInteriorPeople().
 export async function listProjectStaffTasks(projectId) {
   return supabase.from("staff_tasks").select("*").eq("project_id", projectId).order("created_at", { ascending: false });
+}
+
+// Scoped to a specific set of Daily Update report ids (source_site_report_id)
+// -- used by the Daily Updates history instead of listProjectStaffTasks,
+// since that fetched EVERY task on the project regardless of whether it
+// came from a Daily Update at all, growing unboundedly with the
+// project's whole task history instead of just the reports currently
+// paged into view.
+export async function listTasksForSiteReports(reportIds) {
+  if (!reportIds || !reportIds.length) return { data: [], error: null };
+  return supabase.from("staff_tasks").select("*").in("source_site_report_id", reportIds).order("due_date", { ascending: true });
 }
 
 export async function listMaterials(projectId) {
