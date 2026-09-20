@@ -65,6 +65,21 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       sourcemap: false,
+      rollupOptions: {
+        output: {
+          // Framework and Supabase client in their own long-lived chunks:
+          // the app entry shrinks (faster first paint) and these files stay
+          // cached across deploys because app-code changes no longer
+          // invalidate them. xlsx/jszip are already lazy-loaded elsewhere and
+          // are deliberately NOT listed here.
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return undefined;
+            if (/[\/]node_modules[\/](react|react-dom|react-router|react-router-dom|scheduler)[\/]/.test(id)) return "vendor-react";
+            if (id.includes("@supabase")) return "vendor-supabase";
+            return undefined;
+          },
+        },
+      },
     },
   };
 });

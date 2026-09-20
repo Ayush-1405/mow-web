@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { friendlyError } from "./lib/friendlyError";
 import { Routes, Route, useNavigate, useParams, Navigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
@@ -167,7 +168,7 @@ export default function App() {
   const [bootError, setBootError] = useState(null);
 
   const showToast = useCallback((kind, message) => {
-    setToast({ kind, message });
+    setToast({ kind, message: kind === "error" ? friendlyError(message) : message });
     window.clearTimeout(showToast._t);
     showToast._t = window.setTimeout(() => setToast(null), 4500);
   }, []);
