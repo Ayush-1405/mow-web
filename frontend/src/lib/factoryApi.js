@@ -181,3 +181,78 @@ export function subscribeJobDetail(jobId, onChange) {
   ];
   return () => { window.clearTimeout(timer); unsubs.forEach((u) => u()); };
 }
+
+// ---------------------------------------------------------------------------
+// Factory Task Management. Tasks live in the existing staff_tasks engine;
+// every write is an RPC (server validates role + status transition), and
+// reads go through RPCs that reuse the ONE task-visibility rule.
+// ---------------------------------------------------------------------------
+
+export async function listFactoryTasks({ tab = "open", search = "" } = {}) {
+  const { data, error } = await supabase.rpc("factory_tasks_list", { p_tab: tab, p_search: safeSearch(search) || null, p_limit: 300 });
+  return { data: Array.isArray(data) ? data : [], error };
+}
+
+export async function createFactoryTask(payload) {
+  const { data, error } = await supabase.rpc("factory_create_task", { p: payload });
+  return { data: Array.isArray(data) ? data[0] : data, error };
+}
+
+export const cancelFactoryTask = (taskId, reason) => supabase.rpc("factory_cancel_task", { p_task: taskId, p_reason: reason });
+export const reassignFactoryTask = (taskId, primary, second, reason) =>
+  supabase.rpc("factory_reassign_task", { p_task: taskId, p_primary: primary, p_second: second || null, p_reason: reason || null });
+
+// Task actions reuse the existing, already-validated task RPCs.
+export const taskAccept = (id) => supabase.rpc("staff_accept_task", { p_task_id: id });
+export const taskStart = (id) => supabase.rpc("staff_start_task", { p_task_id: id });
+export const taskReject = (id, reason) => supabase.rpc("staff_return_task", { p_task_id: id, p_reason: reason });
+export const taskBlock = (id, note) => supabase.rpc("staff_set_task_blocked", { p_task_id: id, p_blocked: true, p_note: note });
+export const taskUnblock = (id) => supabase.rpc("staff_set_task_blocked", { p_task_id: id, p_blocked: false, p_note: null });
+export const taskReady = (id) => supabase.rpc("staff_complete_task", { p_task_id: id });
+export const taskApprove = (id) => supabase.rpc("staff_verify_task", { p_task_id: id });
+
+export async function searchJobCards(q, includeClosed = false) {
+  const { data, error } = await supabase.rpc("factory_search_job_cards", { p_q: safeSearch(q) || null, p_include_closed: includeClosed, p_limit: 20 });
+  return { data: data || [], error };
+}
+
+export async function listProductionStages() {
+  const { data, error } = await supabase.from("factory_production_stages").select("code,name_en,name_gu,sort_order").eq("is_active", true).order("sort_order");
+  return { data: data || [], error };
+}
+
+// [{ job_id, progress: {total, done, review, in_progress, blocked, pending, overdue, qty_total, qty_done, next_due} }]
+export async function getJobProgress(jobIds) {
+  if (!jobIds?.length) return { data: {}, error: null };
+  const { data, error } = await supabase.rpc("factory_job_progress_many", { p_jobs: jobIds });
+  return { data: Object.fromEntries((data || []).map((r) => [r.job_id, r.progress])), error };
+}
+
+export async function getWorkOverview(filters) {
+  const { data, error } = await supabase.rpc("factory_work_overview", { p_filters: filters || {} });
+  return { data, error };
+}
+
+export async function listFactoryStaff(factoryDeptId) {
+  const { data, error } = await supabase.rpc("staff_list_assignable_users", { p_department_id: factoryDeptId });
+  return { data: data || [], error };
+}
+
+// Tasks of one Job Card (RLS-scoped: a leader sees all, an assignee only their own).
+export async function listJobTasks(jobId) {
+  const { data, error } = await supabase.rpc("factory_tasks_list", { p_tab: "jobcard", p_search: null, p_limit: 500 });
+  return { data: (Array.isArray(data) ? data : []).filter((t) => t.job_card_id === jobId), error };
+}
+
+// ONE debounced subscription pair for task pages: staff_tasks + assignees
+// (RLS applies to Realtime, so a user only receives events for tasks they may see).
+export function subscribeFactoryTasks(name, onChange) {
+  let timer = null;
+  const fire = () => { window.clearTimeout(timer); timer = window.setTimeout(onChange, 300); };
+  const unsubs = [
+    subscribeTable(`${name}-tasks`, "staff_tasks", null, fire),
+    subscribeTable(`${name}-assignees`, "staff_task_assignees", null, fire),
+    subscribeTable(`${name}-jobs`, "inhouse_production_requests", null, fire),
+  ];
+  return () => { window.clearTimeout(timer); unsubs.forEach((u) => u()); };
+}

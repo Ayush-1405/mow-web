@@ -5,6 +5,8 @@ import { uploadTaskProof, resolveMimeType } from "../lib/api";
 import { t } from "../lib/i18n";
 import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, TaskConversation, ProjectSiteSection, detectFileType } from "./TaskDetail.jsx";
 import { getMyInteriorProfile, listInteriorPeople } from "../lib/interiorApi";
+import { getMyActions } from "../lib/factoryApi";
+import { ACTION_LABEL } from "./factory/factoryConstants";
 import { subscribeTable, upsertById, removeById } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
@@ -160,8 +162,26 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       }
     }
 
+    // Factory leadership queue (verify / assign / confirm completion / blocked) and clarification
+    // requests for a source department. It is DERIVED from Job Card status by factory_my_actions(),
+    // so it can never duplicate or go stale, and the assignees' own work already arrives as real
+    // tasks in the list below -- only the "leadership" and "respond" actions are added here.
+    const QUEUE_CODES = new Set(["verify", "confirm_drawing", "assign", "confirm_completion", "resolve_blocker", "respond_clarification"]);
+    try {
+      const { data: actions, error: actionsErr } = await getMyActions();
+      if (!actionsErr) {
+        (actions || []).filter((a) => QUEUE_CODES.has(a.action_code)).forEach((a) => items.push({
+          key: `fx-${a.job_id}-${a.action_code}`,
+          typeLabel: "Factory",
+          label: `${ACTION_LABEL[a.action_code]?.[lang === "gu" ? "gu" : "en"] || a.action_code}: ${a.job_order_number}${a.title ? ` — ${a.title}` : ""}`,
+          status: a.is_overdue ? "Overdue" : (a.required_date ? `Due ${a.required_date}` : ""),
+          route: `/factory-job/${a.job_id}`,
+        }));
+      }
+    } catch { /* non-fatal: the queue simply is not shown */ }
+
     setAssignedItems(items);
-  }, [lookups.departments, profile.department_id, profile.id]);
+  }, [lookups.departments, profile.department_id, profile.id, lang]);
 
   // Skeleton only on the very first load. A later reload (returning to the
   // tab, after an action, the file picker closing) swaps data in place --
@@ -323,6 +343,16 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       });
     });
   }, []);
+
+  // Factory leadership queue follows Job Card status live (debounced; RLS scopes who receives events).
+  useEffect(() => {
+    let timer = null;
+    const unsub = subscribeTable("staff_factory_queue_today", "inhouse_production_requests", null, () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => loadAssignedItems(), 400);
+    });
+    return () => { window.clearTimeout(timer); unsub(); };
+  }, [loadAssignedItems]);
 
   // Catches anything a dropped websocket might have missed (phone locked,
   // brief network drop) -- a silent background refetch, never a forced
@@ -1097,7 +1127,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           {assignedItems.map((item) => (
             <div key={item.key} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
               <span>
-                <span className="badge ASSIGNED" style={{ marginRight: 8 }}>{t(item.typeKey, lang)}</span>
+                <span className="badge ASSIGNED" style={{ marginRight: 8 }}>{item.typeLabel || t(item.typeKey, lang)}</span>
                 {item.label}
               </span>
               <span className="sub">{item.status}</span>

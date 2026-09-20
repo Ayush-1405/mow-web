@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import FactoryHeader from "./FactoryHeader.jsx";
+import FactoryJobTasks from "./FactoryJobTasks.jsx";
 import {
   ActivityTab, AssignmentTab, FilePreview, FilesTab, ItemsTab, KeyDrawings, ProductionUpdate, VerificationTab,
 } from "./FactoryJobParts.jsx";
@@ -205,7 +206,7 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
   const tabs = [
     ["summary", "Summary"], ["items", `Items (${items.length})`], ["files", `Drawings & Files (${files.length})`],
     ["verify", `Verification${job.missing_count > 0 && ["pending_verification", "needs_clarification"].includes(job.factory_status) ? ` (${job.missing_count})` : ""}`],
-    ["assign", "Assignment"], ["activity", "Activity"],
+    ["tasks", "Tasks"], ["assign", "Assignment"], ["activity", "Activity"],
   ];
 
   return (
@@ -250,7 +251,7 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
               <div><div className="k">Status</div><div className="v">{label(STATUS, job.factory_status, lang)}</div></div>
               <div><div className="k">Factory / location</div><div className="v">{locName || "—"}</div></div>
               <div><div className="k">Coordinator / team</div><div className="v">{job.assigned_name ? `${job.assigned_name}${job.second_name ? ` + ${job.second_name}` : ""}` : "Not assigned"}{job.production_department ? ` · ${job.production_department}` : ""}</div></div>
-              <div><div className="k">Current stage</div><div className="v">{job.current_stage || "—"} · {job.completion_percentage}%</div></div>
+              <div><div className="k">Current stage</div><div className="v">{job.current_stage || "—"}</div></div>
               <div><div className="k">Created</div><div className="v">{fmtDateTime(job.created_at)}</div></div>
               <div><div className="k">Last update</div><div className="v">{fmtDateTime(job.updated_at)}</div></div>
             </div>
@@ -260,6 +261,7 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
         {tab === "items" && <ItemsTab jobId={job.id} items={items} canEdit={canEditItems} onChanged={load} />}
         {tab === "files" && <FilesTab jobId={job.id} files={files} canUpload={canUpload} onOpen={setPreview} onChanged={load} />}
         {tab === "verify" && <VerificationTab job={job} items={items} files={files} onGoItems={() => setTab("items")} onGoFiles={() => setTab("files")} />}
+        {tab === "tasks" && <FactoryJobTasks job={job} lang={lang} lookups={lookups} canCreate={role.isManager} />}
         {tab === "assign" && <AssignmentTab key={job.updated_at} job={job} people={people} canAssign={role.isManager} onDone={load} />}
         {tab === "activity" && <ActivityTab jobId={job.id} events={events} canComment onChanged={load} />}
       </section>

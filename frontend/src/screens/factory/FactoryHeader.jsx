@@ -9,15 +9,16 @@ const NAV = [
   ["/factory", { en: "Dashboard", gu: "ડેશબોર્ડ" }, true, ""],
   ["/factory/inbox", { en: "Factory Inbox", gu: "ફેક્ટરી ઇનબોક્સ" }, false, ""],
   ["/factory/job-cards", { en: "Job Cards", gu: "જોબ કાર્ડ" }, false, ""],
-  ["/factory/my-tasks", { en: "My Tasks", gu: "મારા કાર્યો" }, false, ""],
+  ["/factory/tasks", { en: "Tasks", gu: "કાર્યો" }, false, ""],
+  ["/factory/overview", { en: "Overview", gu: "ઓવરવ્યુ" }, false, "fx-hide-sm", "leader"],
   ["/factory/completed", { en: "Completed", gu: "પૂર્ણ" }, false, "fx-hide-sm"],
   ["/factory/master-report", { en: "Reports", gu: "રિપોર્ટ" }, false, ""],
 ];
 
-export function FactoryNav({ lang }) {
+export function FactoryNav({ lang, leader = false }) {
   return (
     <nav className="fx-nav" aria-label="Factory">
-      {NAV.map(([to, lbl, end, cls]) => (
+      {NAV.filter((n) => n[4] !== "leader" || leader).map(([to, lbl, end, cls]) => (
         <NavLink key={to} to={to} end={end} className={({ isActive }) => `${cls}${isActive ? " active" : ""}`}>
           {lang === "gu" ? lbl.gu : lbl.en}
         </NavLink>
@@ -67,7 +68,7 @@ export default function FactoryHeader({ lang, profile, title, onRefresh, refresh
           )}
         </div>
       </div>
-      {showNav && <FactoryNav lang={lang} />}
+      {showNav && <FactoryNav lang={lang} leader={!!(profile?.isManagement || profile?.isSuperAdmin || profile?.roleCode === "dept_head" || profile?.roleCode === "supervisor")} />}
     </div>
   );
 }

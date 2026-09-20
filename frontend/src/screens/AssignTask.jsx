@@ -6,6 +6,7 @@ import { t } from "../lib/i18n";
 import { subscribeTable } from "../lib/realtime";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import VoiceRecorder from "./VoiceRecorder.jsx";
+import FactoryTaskForm from "./factory/FactoryTaskForm.jsx";
 
 // Fixed bilingual message only — never a raw Supabase/Postgres error string —
 // so a failed directory load can never leak backend detail. Persistent (with
@@ -45,6 +46,12 @@ const NO_ACTIVE_STAFF_MESSAGE = {
 // relative to the other.
 export default function AssignTask({ lang, profile, lookups, showToast }) {
   const navigate = useNavigate();
+  // Task Type: General Task (everything below, unchanged) or Factory Task
+  // (job-card-aware form). Only Factory leadership / Management see the
+  // choice; the RPC re-checks the role either way.
+  const [taskScope, setTaskScope] = useState("general");
+  const isFactoryDept = lookups.departmentById?.[profile.department_id]?.code === "FACTORY";
+  const canFactoryTask = !!(profile.isManagement || profile.isSuperAdmin || (isFactoryDept && ["dept_head", "supervisor"].includes(profile.roleCode)));
   const [departments, setDepartments] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [directoryLoading, setDirectoryLoading] = useState(true);
@@ -350,6 +357,19 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       <button type="button" className="btn btn-outline" style={{ marginBottom: 10 }} onClick={() => navigate("/ai-tasks")}>
         ✨ Draft tasks with AI (paste a message or upload a file)
       </button>
+      {canFactoryTask && (
+        <div className="fx-seg" role="radiogroup" aria-label="Task type" style={{ marginBottom: 10 }}>
+          <button type="button" role="radio" aria-checked={taskScope === "general"} className={taskScope === "general" ? "on" : ""} onClick={() => setTaskScope("general")}>General Task</button>
+          <button type="button" role="radio" aria-checked={taskScope === "factory"} className={taskScope === "factory" ? "on" : ""} onClick={() => setTaskScope("factory")}>Factory Task</button>
+        </div>
+      )}
+      {taskScope === "factory" ? (
+        <div className="card">
+          <FactoryTaskForm lang={lang} lookups={lookups}
+            onCancel={() => setTaskScope("general")}
+            onCreated={(r) => { showToast("success", `Factory task ${r.task_number} created.`); navigate("/factory/tasks"); }} />
+        </div>
+      ) : (
       <div className="card">
         <form onSubmit={handleSubmit} className="form-grid">
           <div className="field full">
@@ -594,6 +614,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

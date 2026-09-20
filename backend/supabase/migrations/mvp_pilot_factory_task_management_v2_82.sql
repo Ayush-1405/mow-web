@@ -516,6 +516,7 @@ create or replace function public.factory_create_task(p jsonb)
   returns table(task_id uuid, task_number text)
   language plpgsql security definer set search_path = public
 as $$
+#variable_conflict use_column
 declare
   v_fac uuid := public.factory_dept_id(); v_uid uuid := auth.uid();
   v_title text := nullif(btrim(coalesce(p ->> 'title', '')), '');
@@ -533,7 +534,6 @@ declare
   v_location uuid := nullif(p ->> 'factory_location_id', '')::uuid;
   v_dept text := nullif(btrim(coalesce(p ->> 'production_department', '')), '');
   j public.inhouse_production_requests%rowtype; v_new record; v_type text; v_accepted uuid;
-#variable_conflict use_column
 begin
   perform public.staff_assert_operational();
   if not public.factory_ai_is_reviewer() then raise exception 'You are not authorized to create Factory tasks'; end if;

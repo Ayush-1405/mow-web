@@ -103,3 +103,51 @@
 .fx-modal .box { background: #fff; border-radius: var(--radius); max-width: 900px; width: 100%; max-height: 92vh; overflow: auto; padding: 12px; }
 .fx-modal img { max-width: 100%; max-height: 72vh; display: block; margin: 0 auto; }
 .fx-modal iframe { width: 100%; height: 72vh; border: 0; }
+
+/* ---- Factory Tasks / Job Card tasks / Work Overview ---- */
+.fx-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.fx-toolbar input { min-height: 44px; margin: 0; }
+.fx-toolbar .btn { margin: 0; width: auto; min-height: 44px; }
+.fx-sec-title { margin: 8px 0 6px; font-size: 15px; color: var(--brand-dark); }
+.fx-sec-title .c { color: var(--ink-soft); font-weight: 600; }
+.fx-task { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); min-width: 0; }
+.fx-task.late { border-left: 4px solid var(--danger); }
+.fx-task.blocked { border-left: 4px solid var(--accent-dark); }
+.fx-task-main { display: block; width: 100%; text-align: left; background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; min-width: 0; }
+.fx-task-main:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.fx-row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.fx-row-top b { min-width: 0; }
+.fx-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.fx-blocker { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--danger); background: var(--danger-bg); border-radius: 6px; padding: 4px 8px; }
+.fx-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.fx-actions .btn { width: auto; flex: 1 1 96px; min-height: 48px; margin: 0; }
+.fx-ask { display: grid; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--border-strong); }
+.fx-ask textarea, .fx-ask select { margin: 0; }
+.fx-row.late { border-left: 4px solid var(--danger); }
+.fx-form { display: grid; gap: 10px; min-width: 0; }
+.fx-form .field { margin: 0; min-width: 0; }
+.fx-form .sub { color: var(--ink-soft); font-size: 12px; font-weight: 400; }
+.fx-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+@media (min-width: 640px) { .fx-two { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fx-check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; }
+.fx-seg { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.fx-seg button { flex: 1 1 auto; min-height: 44px; padding: 8px 12px; border-radius: 999px; border: 1.5px solid var(--border-strong); background: var(--surface); font-weight: 700; color: var(--brand-dark); cursor: pointer; }
+.fx-seg button.on { background: var(--accent); border-color: var(--accent-dark); color: #2a1a08; }
+.fx-jobpick { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px; border: 1.5px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.fx-jobpick .btn { width: auto; margin: 0; min-height: 44px; }
+.fx-results { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.fx-results button { display: block; width: 100%; text-align: left; min-height: 48px; padding: 8px 12px; background: var(--surface); border: none; border-bottom: 1px solid var(--border); font: inherit; cursor: pointer; }
+.fx-results button:hover, .fx-results button:focus-visible { background: var(--accent-soft); }
+.fx-context { display: grid; gap: 2px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); font-size: 13px; }
+.fx-context .k { display: inline-block; min-width: 118px; color: var(--ink-soft); font-weight: 600; }
+.fx-filterbox summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; cursor: pointer; color: var(--brand-dark); }
+.fx-ov-job { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); padding: 0 10px; min-width: 0; }
+.fx-ov-job > summary { list-style: none; padding: 10px 0; cursor: pointer; min-height: 44px; }
+.fx-ov-job > summary::-webkit-details-marker { display: none; }
+.fx-ov-sub { border-top: 1px solid var(--border); padding: 0 0 0 8px; }
+.fx-ov-sub > summary { padding: 8px 0; min-height: 44px; cursor: pointer; font-weight: 600; }
+.fx-ov-children { display: grid; gap: 6px; padding: 0 0 10px; }
+.fx-task-line { display: grid; gap: 2px; width: 100%; text-align: left; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); font: inherit; color: inherit; cursor: pointer; min-height: 48px; }
+.fx-task-line.late { border-left: 4px solid var(--danger); }
+.fx-task-line:hover { border-color: var(--accent); }
+.fx-task-line .t { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }

@@ -67,6 +67,8 @@ const AiTaskAssistant = lazy(() => import("./screens/AiTaskAssistant.jsx"));
 const FactoryAiIntake = lazy(() => import("./screens/factory/FactoryAiIntake.jsx"));
 const FactoryInbox = lazy(() => import("./screens/factory/FactoryInbox.jsx"));
 const FactoryJobCardPage = lazy(() => import("./screens/factory/FactoryJobCardPage.jsx"));
+const FactoryTasks = lazy(() => import("./screens/factory/FactoryTasks.jsx"));
+const FactoryWorkOverview = lazy(() => import("./screens/factory/FactoryWorkOverview.jsx"));
 const FactoryDashboard = lazy(() => import("./screens/factory/FactoryDashboard.jsx"));
 const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
@@ -688,7 +690,9 @@ export default function App() {
       <Route path="/factory" element={deptPage("FACTORY")} />
       <Route path="/factory/inbox" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="inbox" />)} />
       <Route path="/factory/job-cards" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="jobcards" />)} />
-      <Route path="/factory/my-tasks" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="mytasks" />)} />
+      <Route path="/factory/my-tasks" element={<Navigate to="/factory/tasks" replace />} />
+      <Route path="/factory/tasks" element={deptModulePage("FACTORY", <FactoryTasks lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/factory/overview" element={deptModulePage("FACTORY", <FactoryWorkOverview lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/factory/completed" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="completed" />)} />
       <Route path="/factory/job-orders" element={<JobOrdersRedirect />} />
       <Route path="/factory/legacy-job-orders" element={deptModulePage("FACTORY", <FactoryJobOrders lang={lang} profile={profile} />)} />
