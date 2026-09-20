@@ -2,11 +2,14 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof, resolveMimeType } from "../lib/api";
+import { ACCEPT_ATTR, UPLOAD_MSG, UploadError, humanSize, validateUploadFile } from "../lib/fileTypes";
 import { t } from "../lib/i18n";
-import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, TaskConversation, ProjectSiteSection, detectFileType } from "./TaskDetail.jsx";
+import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, ProjectSiteSection, detectFileType } from "./TaskDetail.jsx";
 import { getMyInteriorProfile, listInteriorPeople } from "../lib/interiorApi";
 import { getMyActions } from "../lib/factoryApi";
 import ChatButton from "../components/ChatButton.jsx";
+import ActionMenu from "../components/ActionMenu.jsx";
+import { openProjectChat, subscribeChatBadge, taskChatUnread } from "../lib/chatApi";
 import { ACTION_LABEL } from "./factory/factoryConstants";
 import { subscribeTable } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
@@ -298,11 +301,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
   }, []);
 
-  // Per-task unread-reply count (staff_task_unread_message_counts is scoped
-  // to whatever tasks staff_task_visible already lets this caller see — no
-  // separate authorization check needed here).
+  // Per-task unread CHAT count for the "Chat (N)" badge (chat_task_unread_counts only counts conversations the caller is an
+  // active participant of -- Chat is the single place task messages live).
   const loadUnread = useCallback(async () => {
-    const { data, error } = await supabase.rpc("staff_task_unread_message_counts");
+    const { data, error } = await taskChatUnread();
     if (!error) setUnreadByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count])));
   }, []);
 
@@ -313,13 +315,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     loadUnread();
   }, [load, loadDirectory, loadAssignedItems, loadUnread]);
 
-  // Live updates: any reply anywhere this caller can see re-derives the
-  // unread badges immediately — an open TaskConversation panel keeps its
-  // own separate realtime subscription (TaskDetail.jsx) for the message
-  // list itself; this one only drives the per-card "Reply (N)" badges.
+  // Live updates: a new / read chat message re-derives the badges (debounced; Realtime only delivers conversations the caller is in).
   useEffect(() => {
-    return subscribeTable("task_messages_unread_today", "task_messages", null, () => loadUnread());
-  }, [loadUnread]);
+    return subscribeChatBadge(profile.id, `chat-unread-today-${profile.id}`, loadUnread);
+  }, [profile.id, loadUnread]);
 
   // Live updates: merge INSERT/UPDATE straight into `tasks` instead of a
   // full refetch (spec'd "person-wise Today's Tasks realtime" pattern) --
@@ -408,17 +407,19 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   useEffect(() => {
     const focusId = searchParams.get("focus");
     const messageId = searchParams.get("message");
+    // An old Reply link: Replies now live in Chat, so resolve it there (the message is highlighted when its id is known).
+    if (messageId && focusId) {
+      navigate(`/chat?legacy_message=${encodeURIComponent(messageId)}&legacy_task=${encodeURIComponent(focusId)}`, { replace: true });
+      return;
+    }
     if (!focusId || focusId === focusedRef.current) return;
     if (!tasks.some((tsk) => tsk.id === focusId)) return;
     focusedRef.current = focusId;
     setDetailsFor(focusId);
     requestAnimationFrame(() => {
-      const anchor = messageId ? `conversation-${focusId}` : `task-${focusId}`;
-      document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById(`task-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
-  }, [tasks, searchParams]);
-
-  const highlightMessageId = searchParams.get("message");
+  }, [tasks, searchParams, navigate]);
 
   async function runAction(rpcName, taskId, extraArgs = {}) {
     setBusyId(taskId);
@@ -490,6 +491,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // point of this rewrite is that the upload actually satisfies the same
   // requirement the DB is about to enforce, instead of always guessing
   // "image" regardless of what the task actually asked for.
+  // Resolves { ok: true } once the task is really completed, or { ok: false, message } with the task UNCHANGED. The required
+  // document is uploaded AND linked before staff_complete_task is ever called; a locally selected file never counts.
   async function completeWithProof(task, proofTypeCode, file, confirmationText, voiceDurationSeconds) {
     setBusyId(task.id);
     try {
@@ -502,15 +505,13 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         if (!file) throw new Error("A barcode evidence photo is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે બારકોડ પુરાવો જરૂરી છે.");
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "image" });
       } else if (proofTypeCode === "document" || proofTypeCode === "file_note") {
-        if (!file) throw new Error("A document (PDF/Word/Excel/Drawing) is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે દસ્તાવેજ જરૂરી છે.");
-        const detected = detectFileType(resolveMimeType(file));
-        if (!detected || detected === "image") {
-          throw new Error("Please attach a PDF, Word, Excel, or DWG/DXF drawing file — not a photo. / કૃપા કરીને PDF, Word, Excel અથવા DWG/DXF ડ્રોઈંગ ફાઇલ જોડો — ફોટો નહીં.");
-        }
-        await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: detected });
+        if (!file) throw new UploadError("REQUIRED");
+        // cheap checks first: nothing is uploaded for a task that could not be completed anyway
         if (proofTypeCode === "file_note" && !confirmationText?.trim()) {
           throw new Error("A completion note is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે પૂર્ણતા નોંધ જરૂરી છે.");
         }
+        const meta = await validateUploadFile(file, "document");
+        await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: meta.category });
       } else if (proofTypeCode === "voice") {
         if (!file) throw new Error("A voice note is required to complete this task. / આ કાર્ય પૂર્ણ કરવા માટે વોઇસ નોંધ જરૂરી છે.");
         await uploadTaskProof({ entityType: "task", entityId: task.id, file, fileType: "voice", durationSeconds: voiceDurationSeconds });
@@ -541,13 +542,18 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       setProofFor(null);
       showToast("success", "Task completed / કાર્ય પૂર્ણ થયું");
       await load();
+      return { ok: true };
     } catch (err) {
       // Recoverable failure: already-uploaded photos/notes stay exactly as
       // the user left them (ProofUploader's own state is untouched, proof
       // already recorded in staff_attachments is a real durable row, not a
       // temp/orphaned one) — a retry needs no re-upload, and "note" text
       // survives since this component only clears on success.
-      showToast("error", err.message);
+      const message = err instanceof UploadError && !["REQUIRED", "WRONG_KIND", "UNSUPPORTED", "BLOCKED", "EMPTY", "TOO_LARGE", "DRAWING_INVALID"].includes(err.code)
+        ? `${err.message} ${UPLOAD_MSG.NOT_COMPLETED}`
+        : err.message;
+      showToast("error", message);
+      return { ok: false, message, code: err.code || null };
     } finally {
       setBusyId(null);
     }
@@ -920,63 +926,43 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               {t("reopenAction", lang)}
             </button>
           )}
-          {!task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && isSharedAssignee && (
-            <button
-              className="btn btn-outline"
-              disabled={busy}
-              onClick={() => runAction("staff_request_help", task.id, { p_note: "" })}
-            >
-              {t("requestHelp", lang)}
-            </button>
-          )}
-          {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "REOPENED"].includes(statusCode) && (
-            <button
-              className="btn btn-outline"
-              disabled={busy}
-              onClick={() => setReassignFor(reassignFor === task.id ? null : task.id)}
-            >
-              {t("reassign", lang)}
-            </button>
-          )}
-          {taskProject && (
-            <>
-              <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}`)}>
-                {t("viewProjectAction", lang)}
+          {/* Secondary actions live in the overflow menu (same conditions and handlers as before -- only the layout changed). Details stays
+              visible on phones. There is no separate Reply action: all task communication is the Chat button. */}
+          <div className="task-actions-secondary">
+            <ChatButton taskId={task.id} unread={unreadByTask[task.id] || 0} wrapStyle={{ minWidth: 0 }} />
+            {breakpoint === "mobile" && (
+              <button className="btn btn-outline" onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)} aria-expanded={detailsFor === task.id}>
+                {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
               </button>
-              {task.source_module === "daily_site_update" && (
-                <button className="btn btn-outline" onClick={() => navigate(`/interior-projects/detail/${task.project_id}?tab=dailyUpdates`)}>
-                  {t("viewDailyUpdateAction", lang)}
-                </button>
-              )}
-            </>
-          )}
-          <ChatButton taskId={task.id} wrapStyle={{ flex: "1 1 130px", marginTop: 8 }} />
-          <button
-            className="btn btn-outline"
-            onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)}
-          >
-            {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
-          </button>
-          <button
-            className="btn btn-outline"
-            onClick={() => {
-              setDetailsFor(task.id);
-              requestAnimationFrame(() => {
-                document.getElementById(`conversation-${task.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-              });
-            }}
-          >
-            {t("replyAction", lang)}{unreadByTask[task.id] ? ` (${unreadByTask[task.id]})` : ""}
-          </button>
-          {canDeleteTask && (
-            <button
-              className="btn btn-outline"
-              disabled={busy}
-              onClick={() => setDeleteConfirmFor(deleteConfirmFor === task.id ? null : task.id)}
-            >
-              {t("deleteTask", lang)}
-            </button>
-          )}
+            )}
+            <ActionMenu
+              label={t("moreActions", lang)}
+              items={[
+                canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "REOPENED"].includes(statusCode) && {
+                  key: "reassign", label: t("reassign", lang), disabled: busy, onClick: () => setReassignFor(reassignFor === task.id ? null : task.id),
+                },
+                !task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && isSharedAssignee && {
+                  key: "help", label: t("requestHelp", lang), disabled: busy, onClick: () => runAction("staff_request_help", task.id, { p_note: "" }),
+                },
+                breakpoint !== "mobile" && {
+                  key: "details", label: detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang), onClick: () => setDetailsFor(detailsFor === task.id ? null : task.id),
+                },
+                taskProject && { key: "project", label: t("viewProjectAction", lang), onClick: () => navigate(`/interior-projects/detail/${task.project_id}`) },
+                taskProject && task.source_module === "daily_site_update" && {
+                  key: "daily", label: t("viewDailyUpdateAction", lang), onClick: () => navigate(`/interior-projects/detail/${task.project_id}?tab=dailyUpdates`),
+                },
+                task.project_id && {
+                  key: "projectchat", label: `💬 ${t("projectChatLabel", lang)}`,
+                  onClick: async () => {
+                    const { data, error } = await openProjectChat(task.project_id);
+                    if (error || !data) showToast("error", "Project chat is limited to the people working on this project.");
+                    else navigate(`/chat?c=${data}`);
+                  },
+                },
+                canDeleteTask && { key: "delete", label: t("deleteTask", lang), danger: true, disabled: busy, onClick: () => setDeleteConfirmFor(deleteConfirmFor === task.id ? null : task.id) },
+              ].filter(Boolean)}
+            />
+          </div>
         </div>
 
         {deleteConfirmFor === task.id && (
@@ -1076,16 +1062,6 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               />
             )}
             <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} usersById={usersById} />
-            <div id={`conversation-${task.id}`}>
-              <TaskConversation
-                taskId={task.id}
-                lang={lang}
-                profile={profile}
-                usersById={usersById}
-                showToast={showToast}
-                highlightMessageId={highlightMessageId}
-              />
-            </div>
           </>
         )}
       </div>
@@ -1269,7 +1245,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
 // 'drawing' file_type for DWG/DXF; this was the one place still missing
 // it, which made every DWG "document" proof upload fail before the file
 // even left the browser.
-const DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.dwg,.dxf,application/dxf,application/dwg,image/vnd.dwg,image/vnd.dxf,application/x-dwg,application/x-dxf,application/acad";
+const DOCUMENT_ACCEPT = ACCEPT_ATTR("document");
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif";
 
 const SUPPORTED_PROOF_CODES = new Set(["photo", "barcode", "document", "voice", "customer_confirmation", "none", "note", "photo_note", "file_note"]);
@@ -1386,6 +1362,28 @@ function ProofUploader({ lang, busy, task, proofTypeCode, onCancel, onSubmit }) 
   const [confirmationText, setConfirmationText] = useState("");
   const [voiceDuration, setVoiceDuration] = useState(0);
   const [photos, setPhotos] = useState([]);
+  // selected -> (validating) -> selected | invalid ; on Complete: uploading -> failed | (task completes and this form closes)
+  const [fileState, setFileState] = useState({ status: "none", error: null, info: null });
+
+  async function pickFile(f) {
+    setFile(null);
+    if (!f) { setFileState({ status: "none", error: null, info: null }); return; }
+    setFileState({ status: "validating", error: null, info: null });
+    try {
+      const info = await validateUploadFile(f, proofTypeCode === "barcode" ? "image" : "document");
+      setFile(f);
+      setFileState({ status: "selected", error: null, info });
+    } catch (err) {
+      setFileState({ status: "invalid", error: err.message, info: null });
+    }
+  }
+
+  async function submitWithUploadState() {
+    if (fileState.status === "uploading") return;
+    setFileState((s) => ({ ...s, status: file ? "uploading" : s.status, error: null }));
+    const res = await onSubmit(file, confirmationText, voiceDuration);
+    if (res && res.ok === false) setFileState((s) => ({ ...s, status: file ? "failed" : s.status, error: res.message }));
+  }
 
   if (!SUPPORTED_PROOF_CODES.has(proofTypeCode)) {
     return (
@@ -1410,7 +1408,7 @@ function ProofUploader({ lang, busy, task, proofTypeCode, onCancel, onSubmit }) 
   let canSubmit = true;
   if (isPhotoType) canSubmit = canSubmit && !anyPhotoUploading && donePhotoCount >= minPhotos;
   if (NOTE_PROOF_CODES.has(proofTypeCode)) canSubmit = canSubmit && !!confirmationText.trim();
-  if (proofTypeCode === "file_note" || proofTypeCode === "document" || proofTypeCode === "barcode") canSubmit = canSubmit && !!file;
+  if (proofTypeCode === "file_note" || proofTypeCode === "document" || proofTypeCode === "barcode") canSubmit = canSubmit && !!file && fileState.status !== "validating";
   if (proofTypeCode === "voice") canSubmit = canSubmit && !!file;
   if (proofTypeCode === "customer_confirmation") canSubmit = canSubmit && (!!confirmationText.trim() || !!file);
 
@@ -1434,22 +1432,41 @@ function ProofUploader({ lang, busy, task, proofTypeCode, onCancel, onSubmit }) 
       )}
 
       {(proofTypeCode === "document" || proofTypeCode === "barcode" || proofTypeCode === "file_note") && (
-        <label className="file-input-label">
-          {file ? file.name : (proofTypeCode === "barcode" ? t("attachProof", lang) : t("attachDocument", lang))}
-          <input
-            type="file"
-            accept={accept}
-            style={{ display: "none" }}
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
-        </label>
+        <>
+          <label className="file-input-label">
+            {file ? t("attachDocument", lang) + " — " + (lang === "gu" ? "બદલો" : "replace") : (proofTypeCode === "barcode" ? t("attachProof", lang) : t("attachDocument", lang))}
+            <input
+              type="file"
+              accept={accept}
+              style={{ display: "none" }}
+              disabled={busy}
+              onChange={(e) => { pickFile(e.target.files?.[0] || null); e.target.value = ""; }}
+            />
+          </label>
+          {fileState.status !== "none" && (
+            <div className={`proof-file-card ${fileState.status}`} role="status" aria-live="polite">
+              {file && <div className="pf-name">📄 {file.name}</div>}
+              {file && fileState.info && <div className="sub">{fileState.info.label} · {humanSize(file.size)}</div>}
+              <div className="pf-state">
+                {fileState.status === "validating" && "Checking file…"}
+                {fileState.status === "selected" && "Selected — will be uploaded when you press Complete."}
+                {fileState.status === "uploading" && <><span className="spinner" /> Uploading and saving…</>}
+                {fileState.status === "failed" && <span className="pf-bad">Not uploaded — {fileState.error}</span>}
+                {fileState.status === "invalid" && <span className="pf-bad">{fileState.error}</span>}
+              </div>
+              {(fileState.status === "selected" || fileState.status === "failed" || fileState.status === "invalid") && (
+                <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 6 }} onClick={() => pickFile(null)} disabled={busy}>Remove</button>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <div className="btn-row">
-        <button className="btn btn-primary" disabled={busy || !canSubmit} onClick={() => onSubmit(file, confirmationText, voiceDuration)}>
-          {busy ? t("uploading", lang) : t("complete", lang)}
+        <button className="btn btn-primary" disabled={busy || !canSubmit} onClick={submitWithUploadState}>
+          {busy ? t("uploading", lang) : fileState.status === "failed" ? "Retry upload & complete" : t("complete", lang)}
         </button>
-        <button className="btn btn-outline" onClick={onCancel}>{t("cancel", lang)}</button>
+        <button className="btn btn-outline" disabled={busy} onClick={onCancel}>{t("cancel", lang)}</button>
       </div>
     </div>
   );

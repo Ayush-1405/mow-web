@@ -2,14 +2,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom";
 import ChatConversation from "./ChatConversation.jsx";
 import {
-  TYPE_LABEL, UUID_RE, listConversations, managementDirectory, managementOpen, searchMessages, searchUsers, startDirect, subscribeConversationList,
+  TYPE_LABEL, UUID_RE, listConversations, managementDirectory, managementOpen, openProjectChat, resolveLegacyLink, searchMessages, searchProjects, searchUsers, startDirect,
+  subscribeConversationList,
 } from "../../lib/chatApi";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
 const FILTERS = [
   ["all", "All", null], ["unread", "Unread", null], ["direct", "Direct", ["direct"]], ["department", "Department", ["department"]],
-  ["team", "Team", ["team"]], ["task", "Tasks", ["task"]], ["job_card", "Job Cards", ["job_card"]], ["bridge", "Bridge", ["bridge"]], ["management", "Management", ["management"]],
+  ["team", "Team", ["team"]], ["task", "Tasks", ["task"]], ["project", "Projects", ["project"]], ["job_card", "Job Cards", ["job_card"]], ["bridge", "Bridge", ["bridge"]],
+  ["management", "Management", ["management"]],
 ];
 
 function timeLabel(iso) {
@@ -37,6 +39,14 @@ export default function ChatPage({ profile }) {
   const [params, setParams] = useSearchParams();
   const rawC = params.get("c");
   const selected = rawC && UUID_RE.test(rawC) ? rawC : null;
+  const rawM = params.get("m");
+  const highlightId = rawM && UUID_RE.test(rawM) ? rawM : null;
+  // An OLD Reply link (notification / bookmark): ?legacy_message=<old reply id>&legacy_task=<task id> (or legacy_project / legacy_job)
+  const legacyMessage = params.get("legacy_message");
+  const legacyTask = params.get("legacy_task");
+  const legacyProject = params.get("legacy_project");
+  const legacyJob = params.get("legacy_job");
+  const [legacyError, setLegacyError] = useState(null);
 
   const [items, setItems] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -55,6 +65,29 @@ export default function ChatPage({ profile }) {
   useEffect(() => {
     if (rawC && !selected) setParams({}, { replace: true });
   }, [rawC, selected, setParams]);
+
+  useEffect(() => {
+    const kind = legacyMessage ? "task_message" : legacyTask ? "task" : legacyProject ? "project" : legacyJob ? "job_card" : null;
+    const id = legacyMessage || legacyTask || legacyProject || legacyJob;
+    if (!kind) return undefined;
+    if (!UUID_RE.test(id)) { setLegacyError("This link is not valid any more."); setParams({}, { replace: true }); return undefined; }
+    let alive = true;
+    setLegacyError(null);
+    resolveLegacyLink(kind, id, legacyMessage && legacyTask && UUID_RE.test(legacyTask) ? legacyTask : null).then(({ data, error: err }) => {
+      if (!alive) return;
+      if (err || !data?.conversation_id) {
+        setLegacyError(/access|not found|limited/i.test(err?.message || "")
+          ? "That conversation is limited to the people working on it, and you do not have access."
+          : "This old reply link could not be matched to a chat. The message history is kept safely — ask an administrator if it is missing.");
+        setParams({}, { replace: true });
+        return;
+      }
+      const next = { c: data.conversation_id };
+      if (data.message_id) next.m = data.message_id;
+      setParams(next, { replace: true });
+    });
+    return () => { alive = false; };
+  }, [legacyMessage, legacyTask, legacyProject, legacyJob, setParams]);
 
   // ---- list data ----
   const listToken = useRef(0);
@@ -121,12 +154,17 @@ export default function ChatPage({ profile }) {
   const open = useCallback((id) => { if (id !== selectedRef.current) setParams({ c: id }); }, [setParams]);
   const back = useCallback(() => setParams({}, { replace: true }), [setParams]);
 
+  const projectQ = filter === "project" ? q.trim().toLowerCase() : "";
   const present = useMemo(() => new Set(items.map((i) => i.type)), [items]);
   const visible = useMemo(() => {
     const def = FILTERS.find((f) => f[0] === filter);
     return items.filter((i) => (filter === "unread" ? i.unread > 0 : !def?.[2] || def[2].includes(i.type)));
   }, [items, filter]);
-  const chips = FILTERS.filter(([k, , types]) => k === "all" || k === "unread" || k === "direct" || types?.some((t) => present.has(t)));
+  const shown = useMemo(() => {
+    if (!projectQ) return visible;
+    return visible.filter((c) => [c.title, c.project_code, c.client, c.site].filter(Boolean).some((v) => v.toLowerCase().includes(projectQ)));
+  }, [visible, projectQ]);
+  const chips = FILTERS.filter(([k, , types]) => k === "all" || k === "unread" || k === "direct" || k === "project" || types?.some((t) => present.has(t)));
   const unreadAll = items.reduce((n, i) => n + (i.muted ? 0 : i.unread), 0);
 
   return (
@@ -139,8 +177,10 @@ export default function ChatPage({ profile }) {
             <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New chat</button>
           </div>
         </div>
-        <input type="search" className="chat-search-all" placeholder="Search messages…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search all your messages" />
-        {hits.length > 0 && (
+        <input type="search" className="chat-search-all" placeholder={filter === "project" ? "Search projects by code, name, client or site…" : "Search messages…"} value={q} onChange={(e) => setQ(e.target.value)} aria-label={filter === "project" ? "Search projects" : "Search all your messages"} />
+        {legacyError && <div className="msg info" role="alert">{legacyError} <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 0 }} onClick={() => setLegacyError(null)}>OK</button></div>}
+        {filter === "project" && <ProjectFinder q={q} onOpened={(id) => { refreshRow(id); open(id); }} />}
+        {filter !== "project" && hits.length > 0 && (
           <div className="chat-hits">
             {hits.map((h) => <button key={h.id} type="button" className="chat-hit" onClick={() => { setQ(""); open(h.conversation_id); }}><b>{h.conversation_title}</b><span className="sub">{h.sender} · {new Date(h.created_at).toLocaleDateString()}</span><div>{h.body}</div></button>)}
           </div>
@@ -150,11 +190,11 @@ export default function ChatPage({ profile }) {
         </div>
         {error && <div className="msg error">{error} <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 0 }} onClick={loadAll}>Retry</button></div>}
         {initialLoading && <div className="msg info">Loading…</div>}
-        {!initialLoading && !error && visible.length === 0 && (
+        {!initialLoading && !error && shown.length === 0 && filter !== "project" && (
           <div className="chat-empty">{filter === "unread" ? "Nothing unread." : items.length === 0 ? "No conversations yet. Start one with “New chat”, or open Chat from a task or Job Card." : "No conversations in this view."}</div>
         )}
         <ul className="chat-list">
-          {visible.map((c) => (
+          {shown.map((c) => (
             <li key={c.id}>
               <button type="button" className={`chat-row${c.id === selected ? " active" : ""}${c.unread > 0 ? " unread" : ""}`} onClick={() => open(c.id)}>
                 <span className="chat-row-top">
@@ -163,7 +203,7 @@ export default function ChatPage({ profile }) {
                 </span>
                 <span className="chat-row-mid">
                   <span className="fx-tag">{TYPE_LABEL[c.type] || c.type}</span>
-                  {c.department && c.type !== "direct" && <span className="sub">{c.department}</span>}
+                  {c.type === "project" ? <span className="sub">{[c.site, c.stage].filter(Boolean).join(" · ")}</span> : c.department && c.type !== "direct" && <span className="sub">{c.department}</span>}
                   {c.muted && <span aria-label="Muted" title="Muted">🔕</span>}
                   {!c.is_active && <span className="fx-tag">Archived</span>}
                 </span>
@@ -179,7 +219,7 @@ export default function ChatPage({ profile }) {
 
       <section className="chat-conv-pane" aria-label="Conversation">
         {selected ? (
-          <ChatConversation key={selected} conversationId={selected} me={me} onBack={back} onRead={onRead} />
+          <ChatConversation key={selected} conversationId={selected} me={me} onBack={back} onRead={onRead} highlightId={highlightId} />
         ) : (
           <div className="chat-placeholder">
             <div style={{ fontSize: 40 }} aria-hidden="true">💬</div>
@@ -191,6 +231,40 @@ export default function ChatPage({ profile }) {
 
       {showNew && <NewChat onClose={() => setShowNew(false)} onStarted={(id) => { setShowNew(false); refreshRow(id); open(id); }} />}
       {showOversight && <Oversight onClose={() => setShowOversight(false)} onOpened={(id) => { setShowOversight(false); refreshRow(id); open(id); }} />}
+    </div>
+  );
+}
+
+// Projects the caller may open (the server decides; a project they cannot open is never returned). Members open their existing chat;
+// authorized leadership can start one from here. Shown under the Projects tab, searchable by code / project / client / site.
+function ProjectFinder({ q, onOpened }) {
+  const dq = useDebouncedValue(q, 300);
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    let active = true;
+    searchProjects(dq.trim()).then(({ data, error: e }) => { if (!active) return; if (e) setErr("Could not search projects."); else { setErr(null); setRows(data || []); } });
+    return () => { active = false; };
+  }, [dq]);
+  const others = (rows || []).filter((r) => !r.is_member);
+  if (err) return <div className="msg error" role="alert">{err}</div>;
+  if (!others.length) return null;
+  async function pick(r) {
+    setBusy(r.project_id); setErr(null);
+    const { data, error: e } = await openProjectChat(r.project_id);
+    setBusy(null);
+    if (e || !data) { setErr("You cannot open this project chat."); return; }
+    onOpened(data);
+  }
+  return (
+    <div className="chat-hits" aria-label="Other projects you can open">
+      <div className="sub" style={{ padding: "4px 8px" }}>Other projects you can open</div>
+      {others.map((r) => (
+        <button key={r.project_id} type="button" className="chat-hit" disabled={busy === r.project_id} onClick={() => pick(r)}>
+          <b>{r.project_code} — {r.client}</b><span className="sub">{[r.site, r.stage].filter(Boolean).join(" · ")}</span>
+        </button>
+      ))}
     </div>
   );
 }

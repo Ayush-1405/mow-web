@@ -30,6 +30,7 @@ import InteriorActivityHistory from "./InteriorActivityHistory.jsx";
 import { submitJobCard, uploadJobFile, FACTORY_FILE_MAX_MB } from "../../lib/factoryApi";
 import { friendlyRpcError } from "../factory/factoryConstants";
 
+import ChatButton from "../../components/ChatButton.jsx";
 const OUTSOURCE_TYPES = [
   "Finished Goods Purchase", "Vendor Manufacturing/Job Work", "Material-Only Purchase",
   "Labour-Only Contract", "Labour + Material Contract", "Turnkey Agency/Subcontract",
@@ -268,6 +269,7 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
           <h1>{t("purchaseManagementTitle", lang)}</h1>
           <div className="sub">{t("interiorLiveDataNote", lang)}</div>
         </div>
+        {!lockedProjectId && projectId && <ChatButton projectId={projectId} label={`💬 ${t("projectChatLabel", lang)}`} />}
       </div>
 
       <div className="card">

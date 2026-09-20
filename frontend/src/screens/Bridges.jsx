@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
-import { TaskTimeline, ReassignPanel, AttachmentsList, TaskConversation, ProjectSiteSection } from "./TaskDetail.jsx";
-import { subscribeTable } from "../lib/realtime";
+import { TaskTimeline, ReassignPanel, AttachmentsList, ProjectSiteSection } from "./TaskDetail.jsx";
+import { subscribeChatBadge, taskChatUnread } from "../lib/chatApi";
+import { useBreakpoint } from "../lib/useBreakpoint";
 import { listInteriorPeople } from "../lib/interiorApi";
 import ChatButton from "../components/ChatButton.jsx";
+import ActionMenu from "../components/ActionMenu.jsx";
 
 // Cross-department Bridge screen. Reads public.bridges (RLS-scoped via
 // bridges_select_scoped) joined against its linked staff_tasks row for
@@ -27,6 +29,7 @@ function userLabel(usersById, id) {
 }
 
 export default function Bridges({ lang, profile, lookups, showToast }) {
+  const breakpoint = useBreakpoint();
   const [bridges, setBridges] = useState([]);
   const [tasksById, setTasksById] = useState({});
   const [usersById, setUsersById] = useState({});
@@ -64,7 +67,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
   }
 
   const loadUnread = useCallback(async () => {
-    const { data, error } = await supabase.rpc("staff_task_unread_message_counts");
+    const { data, error } = await taskChatUnread();
     if (!error) setUnreadByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count])));
   }, []);
 
@@ -146,8 +149,8 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
   }, [load]);
 
   useEffect(() => {
-    return subscribeTable("task_messages_unread_bridges", "task_messages", null, () => loadUnread());
-  }, [loadUnread]);
+    return subscribeChatBadge(profile.id, `chat-unread-bridges-${profile.id}`, loadUnread);
+  }, [profile.id, loadUnread]);
 
   async function runAction(rpcName, taskId, extraArgs = {}) {
     setBusyId(taskId);
@@ -342,33 +345,25 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
                     {t("close", lang)}
                   </button>
                 )}
-                {canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS"].includes(statusCode) && (
-                  <button
-                    className="btn btn-outline"
-                    disabled={busy}
-                    onClick={() => setReassignFor(reassignFor === task.id ? null : task.id)}
-                  >
-                    {t("reassign", lang)}
-                  </button>
-                )}
-                <ChatButton taskId={task.id} wrapStyle={{ flex: "1 1 130px", marginTop: 8 }} />
-                <button
-                  className="btn btn-outline"
-                  onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)}
-                >
-                  {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
-                </button>
-                <button
-                  className="btn btn-outline"
-                  onClick={() => {
-                    setDetailsFor(task.id);
-                    requestAnimationFrame(() => {
-                      document.getElementById(`conversation-${task.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    });
-                  }}
-                >
-                  {t("replyAction", lang)}{unreadByTask[task.id] ? ` (${unreadByTask[task.id]})` : ""}
-                </button>
+                <div className="task-actions-secondary">
+                  <ChatButton taskId={task.id} unread={unreadByTask[task.id] || 0} wrapStyle={{ minWidth: 0 }} />
+                  {breakpoint === "mobile" && (
+                    <button className="btn btn-outline" onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)} aria-expanded={detailsFor === task.id}>
+                      {detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang)}
+                    </button>
+                  )}
+                  <ActionMenu
+                    label={t("moreActions", lang)}
+                    items={[
+                      canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS"].includes(statusCode) && {
+                        key: "reassign", label: t("reassign", lang), disabled: busy, onClick: () => setReassignFor(reassignFor === task.id ? null : task.id),
+                      },
+                      breakpoint !== "mobile" && {
+                        key: "details", label: detailsFor === task.id ? t("hideDetails", lang) : t("viewDetails", lang), onClick: () => setDetailsFor(detailsFor === task.id ? null : task.id),
+                      },
+                    ].filter(Boolean)}
+                  />
+                </div>
               </div>
             )}
 
@@ -413,9 +408,6 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
                   />
                 )}
                 <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
-                <div id={`conversation-${task.id}`}>
-                  <TaskConversation taskId={task.id} lang={lang} profile={profile} usersById={usersById} showToast={showToast} />
-                </div>
               </>
             )}
           </div>

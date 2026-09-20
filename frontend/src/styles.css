@@ -1536,3 +1536,52 @@ textarea { min-height: 84px; resize: vertical; }
 @media (min-width: 1024px) {
   .tt-fields { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 }
+
+/* ---- task proof: selected / uploading / failed file card ---- */
+.proof-file-card { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); overflow-wrap: anywhere; }
+.proof-file-card.failed, .proof-file-card.invalid { border-color: var(--danger); background: var(--danger-bg); }
+.proof-file-card .pf-name { font-weight: 700; }
+.proof-file-card .pf-bad { color: var(--danger); font-weight: 600; }
+.proof-file-card .pf-state { margin-top: 4px; font-size: 13px; }
+
+/* ---------- Task card secondary actions: Chat | Details | More (one row on phones) ---------- */
+.task-actions-secondary { display: flex; gap: 8px; align-items: stretch; flex: 1 1 100%; min-width: 0; margin-top: 8px; }
+.task-actions-secondary > .chat-btn-wrap { flex: 1 1 0; min-width: 0; margin: 0; }
+/* .btn-row .btn (flex: 1 1 130px) would otherwise size this button's HEIGHT, because the wrapper is a column */
+.task-actions-secondary > .chat-btn-wrap > .btn { flex: 1 1 auto; width: 100%; margin: 0; min-height: 46px; padding-left: 10px; padding-right: 10px; white-space: nowrap; }
+.task-actions-secondary .btn { white-space: nowrap; line-height: 1.2; padding-top: 0; padding-bottom: 0; min-height: 46px; }
+.task-actions-secondary > .action-menu { display: flex; }
+.task-actions-secondary > .action-menu > .action-menu-btn { align-self: stretch; }
+.task-actions-secondary .chat-badge { margin-left: 6px; }
+.task-actions-secondary > .btn { flex: 1 1 0; min-width: 0; width: auto; margin: 0; padding-left: 10px; padding-right: 10px; }
+.task-actions-secondary > .action-menu { flex: 0 0 auto; margin: 0; }
+@media (min-width: 768px) {
+  .task-actions-secondary { flex: 0 0 auto; }
+  .task-actions-secondary > .chat-btn-wrap, .task-actions-secondary > .btn { flex: 0 0 auto; }
+  .task-actions-secondary > .chat-btn-wrap > .btn, .task-actions-secondary > .btn { padding-left: 18px; padding-right: 18px; }
+}
+
+/* ---------- Overflow ("More") menu: same type, radius and colours as .btn-outline ---------- */
+.action-menu { position: relative; display: inline-flex; }
+.action-menu-btn { width: auto; margin: 0; min-height: 46px; padding: 12px 14px; gap: 6px; }
+.action-menu > .action-menu-btn { margin: 0; } /* beats .btn-row .btn { margin-top: 8px } */
+.action-menu-caret { font-size: 11px; line-height: 1; }
+.action-menu-list {
+  position: absolute; z-index: 40; min-width: 220px; max-width: calc(100vw - 24px);
+  background: var(--surface); border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  padding: 4px; display: grid; gap: 2px;
+}
+.action-menu-list.down { top: calc(100% + 4px); }
+.action-menu-list.up { bottom: calc(100% + 4px); }
+.action-menu-list.right { right: 0; }
+.action-menu-list.left { left: 0; }
+.action-menu-item {
+  display: flex; align-items: center; text-align: left; width: 100%; min-height: 46px; padding: 10px 14px;
+  background: none; border: none; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 14.5px; font-weight: 600; letter-spacing: 0.1px; color: var(--brand-dark);
+}
+.action-menu-item:hover:not(:disabled), .action-menu-item:focus-visible { background: var(--surface-2); outline: none; }
+.action-menu-item:focus-visible { box-shadow: inset 0 0 0 2px var(--brand-light); }
+.action-menu-item.danger { color: var(--danger); }
+.action-menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.task-card .btn-row { min-width: 0; }

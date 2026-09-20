@@ -13,6 +13,8 @@ import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { kolkataDateStr, addDaysToDateStr, daysBetweenDateStrs, kolkataDateOf } from "../../lib/kolkataTime";
 
+import ChatButton from "../../components/ChatButton.jsx";
+import { taskChatUnread } from "../../lib/chatApi";
 // Daily Site Update — md/MOOD-OF-WOOD-SYSTEM.md §5. Today's Work and
 // Tomorrow's Plan are now structured, person-wise work items (title +
 // mandatory assignee + due date + priority) instead of free-text chips —
@@ -280,7 +282,7 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
   }, []);
 
   const loadUnread = useCallback(async () => {
-    const { data, error: err } = await supabase.rpc("staff_task_unread_message_counts");
+    const { data, error: err } = await taskChatUnread();
     if (!err) setUnreadByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count])));
   }, []);
   useEffect(() => { loadUnread(); }, [loadUnread]);
@@ -672,8 +674,9 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
           </div>
         )}
         <button className="btn btn-outline" style={{ marginTop: 8, width: "100%", minHeight: 44 }} onClick={() => navigate(`/tasks?focus=${tsk.id}`)}>
-          {t("openTaskAction", lang)}{unread ? ` (${unread})` : ""}
+          {t("openTaskAction", lang)}
         </button>
+        <ChatButton taskId={tsk.id} unread={unread || 0} wrapStyle={{ marginTop: 8, width: "100%" }} />
       </div>
     );
   }
@@ -709,6 +712,7 @@ export default function InteriorDailyUpdates({ lang, lockedProjectId }) {
           <h1>{t("interiorDailyUpdatesTitle", lang)}</h1>
           <div className="sub">{t("interiorLiveDataNote", lang)}</div>
         </div>
+        {!lockedProjectId && projectId && <ChatButton projectId={projectId} label={`💬 ${t("projectChatLabel", lang)}`} />}
       </div>
 
       <div className="card">

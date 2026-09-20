@@ -11,6 +11,7 @@ import {
 import { subscribeTable } from "../../lib/realtime";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 
+import ChatButton from "../../components/ChatButton.jsx";
 const emptyDetails = { location: "", start_date: "", next_update: "", on_time: null, next_action: "", remarks: "" };
 
 // The live `projects.stage` CHECK constraint (projects_stage_check) is the
@@ -279,6 +280,7 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
           <h1>{t("interiorTimelineTitle", lang)}</h1>
           <div className="sub">{t("interiorLiveDataNote", lang)}</div>
         </div>
+        {!lockedProjectId && projectId && <ChatButton projectId={projectId} label={`💬 ${t("projectChatLabel", lang)}`} />}
       </div>
 
       <div className="card">

@@ -11,6 +11,7 @@ import InteriorAllFiles from "./InteriorAllFiles.jsx";
 import InteriorActivityHistory from "./InteriorActivityHistory.jsx";
 import { AREA_TYPES } from "./InteriorMaterialSelection.jsx";
 
+import ChatButton from "../../components/ChatButton.jsx";
 // Shared by every section that lists an `attachments` row — opens a fresh
 // signed URL on demand (never pre-fetched/cached, since these expire).
 async function openAttachment(storagePath, onError) {
@@ -442,6 +443,7 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
           <h1>{t("masterReportCardLabel", lang)} — {p.project_code}</h1>
           <div className="sub">{p.customer} · {p.location || "—"}</div>
         </div>
+        <ChatButton projectId={p.id} label={`💬 ${t("projectChatLabel", lang)}`} />
       </div>
 
       <div className="card no-print">

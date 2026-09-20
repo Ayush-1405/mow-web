@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { friendlyError } from "./lib/friendlyError";
-import { Routes, Route, useNavigate, useParams, Navigate } from "react-router-dom";
+import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
 import { requestNotificationPermission, showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
@@ -163,13 +163,20 @@ function RedirectToProjectTimeline() {
 
 export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [booting, setBooting] = useState(true);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [lookups, setLookups] = useState(null);
-  const [view, setView] = useState("tasks");
+  // "Create task from a Project Chat message" leaves a draft for the Assign Task form: open that view (the draft is read once there)
+  const [view, setView] = useState(() => { try { return sessionStorage.getItem("mow.assign_draft") ? "assign" : "tasks"; } catch { return "tasks"; } });
   const [lang, setLang] = useState("en");
+  // arriving at "/" with a chat-message draft (Project Chat -> "Create task") opens the Assign Task form, where it is reviewed and submitted
+  useEffect(() => {
+    if (location.pathname !== "/") return;
+    try { if (sessionStorage.getItem("mow.assign_draft")) setView("assign"); } catch { /* storage unavailable */ }
+  }, [location.pathname]);
   const [toast, setToast] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
   // Persistent bilingual error state for a failed profile/lookup/bootstrap

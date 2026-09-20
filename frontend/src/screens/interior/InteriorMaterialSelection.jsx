@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { formatCurrency } from "../../lib/retailModules";
+import ChatButton from "../../components/ChatButton.jsx";
 import {
   listProjects, listInteriorPeople, listMaterialSelections, createMaterialSelection,
   updateMaterialSelection, replaceMaterialSelection, markMaterialSelectionFinal,
@@ -372,6 +373,7 @@ export default function InteriorMaterialSelection({ lang, staffProfile, lockedPr
           <h1>{t("materialSelectionTitle", lang)}</h1>
           <div className="sub">{t("interiorLiveDataNote", lang)}</div>
         </div>
+        {!lockedProjectId && projectId && <ChatButton projectId={projectId} label={`💬 ${t("projectChatLabel", lang)}`} />}
       </div>
 
       <div className="card no-print">

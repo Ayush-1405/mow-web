@@ -1,4 +1,5 @@
 import { supabase, SUPABASE_URL_BASE, SUPABASE_ANON_KEY_VALUE } from "./supabase";
+import { FILE_RULES, UploadError, extensionOf, logUploadFailure, typedFile, validateUploadFile } from "./fileTypes";
 
 // Mood of Wood — Staff Pilot — thin client for the four staff-* Edge
 // Functions (staff-login, staff-create-user, staff-password-change,
@@ -23,15 +24,12 @@ const FUNCTIONS_URL = `${SUPABASE_URL_BASE}/functions/v1`;
 // server (storage bucket allowed_mime_types, staff-file-url's
 // MIME_WHITELIST, and staff_record_attachment()) already fully supports a
 // 'drawing' file_type for exactly these MIME types.
-const EXTENSION_MIME_FALLBACK = {
-  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
-  heic: "image/heic", heif: "image/heif",
-  dwg: "application/acad", dxf: "application/dxf",
-};
+// The canonical MIME for a file: the approved extension decides (DWG/DXF are usually reported as "" or octet-stream by
+// browsers). Unknown extensions keep whatever the browser reported and are refused by validateUploadFile / the server.
 export function resolveMimeType(file) {
-  if (file.type && file.type !== "image/jpg" && file.type !== "application/octet-stream") return file.type;
-  const ext = (file.name.split(".").pop() || "").toLowerCase();
-  return EXTENSION_MIME_FALLBACK[ext] || file.type || "application/octet-stream";
+  const rule = FILE_RULES[extensionOf(file.name)];
+  if (rule) return rule.mime;
+  return file.type || "application/octet-stream";
 }
 
 const GENERIC_ERROR = "Something went wrong. Please try again later. / કંઈક ખોટું થયું. કૃપા કરીને પછીથી ફરી પ્રયાસ કરો.";
@@ -47,7 +45,7 @@ async function callFunction(name, body, { auth = false } = {}) {
   if (auth) {
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
-    if (!token) throw new Error(AUTH_REQUIRED_ERROR);
+    if (!token) throw Object.assign(new Error(AUTH_REQUIRED_ERROR), { code: "SESSION", status: 401 });
     headers.Authorization = `Bearer ${token}`;
   }
 
@@ -59,7 +57,7 @@ async function callFunction(name, body, { auth = false } = {}) {
       body: JSON.stringify(body ?? {}),
     });
   } catch {
-    throw new Error(NETWORK_ERROR);
+    throw Object.assign(new Error(NETWORK_ERROR), { code: "NETWORK" });
   }
 
   let payload = null;
@@ -72,8 +70,8 @@ async function callFunction(name, body, { auth = false } = {}) {
 
   if (!res.ok) {
     const msg = payload?.error;
-    if (msg?.en && msg?.gu) throw new Error(`${msg.en} / ${msg.gu}`);
-    throw new Error(GENERIC_ERROR);
+    if (msg?.en && msg?.gu) throw Object.assign(new Error(`${msg.en} / ${msg.gu}`), { status: res.status });
+    throw Object.assign(new Error(GENERIC_ERROR), { status: res.status });
   }
 
   return payload;
@@ -104,48 +102,121 @@ export function staffResetPassword(userId, newPassword) {
   return callFunction("staff-reset-password", { user_id: userId, new_password: newPassword }, { auth: true });
 }
 
-// Authenticated: uploads a proof file for a task/bridge.
-// 1) mint a short-lived signed upload URL scoped to entityId, via staff-file-url
-// 2) PUT the file straight to Storage using that signed URL
-// 3) register the attachment via staff_record_attachment (RLS-gated RPC),
-//    which re-verifies the object actually landed before recording it
-export async function uploadTaskProof({ entityType, entityId, file, fileType, durationSeconds }) {
-  const mimeType = resolveMimeType(file);
-  const urlRes = await callFunction(
-    "staff-file-url",
+// ---------------------------------------------------------------------------------------------------------------------
+// Shared upload pipeline for task / bridge / reply files.
+//   validate -> mint a signed upload URL (server picks path + canonical Content-Type) -> PUT the File re-typed to that
+//   type -> verify the PUT -> record metadata -> (caller) complete the task. Nothing later runs if an earlier step fails.
+// ---------------------------------------------------------------------------------------------------------------------
+const BUCKET = "staff-attachments";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function mapStorageError(err) {
+  const status = Number(err?.status ?? err?.statusCode);
+  const text = `${err?.message || ""} ${err?.error || ""}`.toLowerCase();
+  if (/mime|invalid_mime_type|415/.test(text) || status === 415) return "MIME_REJECTED";
+  if (/expired|invalid (jwt|token)|signature/.test(text) || status === 401) return "LINK_EXPIRED";
+  if (/size|too large|413|exceeded/.test(text) || status === 413) return "TOO_LARGE";
+  if (status === 403) return "DENIED";
+  if (status >= 500 || /unavailable|timeout/.test(text)) return "STORAGE_DOWN";
+  if (/fetch|network|failed to fetch/.test(text) || err?.name === "StorageUnknownError") return "NETWORK";
+  return "STORAGE_DOWN";
+}
+
+function mapFunctionError(err) {
+  if (err instanceof UploadError) return err;
+  if (err?.code === "NETWORK") return new UploadError("NETWORK");
+  if (err?.code === "SESSION" || err?.status === 401) return new UploadError("SESSION");
+  if (err?.status === 403) return new UploadError("DENIED");
+  if (err?.status === 400) return new UploadError("UNSUPPORTED", err.message);
+  return new UploadError("STORAGE_DOWN");
+}
+
+// One signed-URL request + one PUT. Retried ONCE, automatically, only for a transient network failure or an expired link
+// (a new link is minted -- an expired token is never reused). Everything else surfaces immediately for the user to act on.
+async function putWithSignedUrl(request, file, ctx) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let target;
+    try {
+      target = await callFunction("staff-file-url", request, { auth: true });
+    } catch (err) {
+      const mapped = mapFunctionError(err);
+      logUploadFailure("sign", err, { ...ctx, bucket: BUCKET });
+      if (mapped.code === "NETWORK" && attempt === 0) { await sleep(800); lastErr = mapped; continue; }
+      throw mapped;
+    }
+    const contentType = target.content_type || ctx.mime;
+    const body = typedFile(file, contentType, ctx.fileName); // the SDK sends file.type as the multipart Content-Type
+    const { error } = await supabase.storage.from(BUCKET).uploadToSignedUrl(target.storage_path, target.token, body, { upsert: false, contentType });
+    if (!error) return { storagePath: target.storage_path, contentType };
+    const code = mapStorageError(error);
+    logUploadFailure("put", error, { ...ctx, bucket: BUCKET, path: target.storage_path, mime: contentType });
+    lastErr = new UploadError(code);
+    if ((code === "NETWORK" || code === "LINK_EXPIRED") && attempt === 0) { await sleep(800); continue; }
+    throw lastErr;
+  }
+  throw lastErr || new UploadError("STORAGE_DOWN");
+}
+
+async function removeOrphan(storagePath) {
+  try { await callFunction("staff-file-url", { action: "cleanup", storage_path: storagePath }, { auth: true }); } catch { /* best effort */ }
+}
+
+// A File that has already been uploaded for an entity is never uploaded again (retry after a later step failed, double-click,
+// re-render): the same result is returned. A failed upload is forgotten so the user's Retry really retries.
+const doneUploads = new WeakMap();
+
+// Authenticated: uploads a proof file for a task/bridge and records its metadata. Resolves only when BOTH the stored object and
+// the attachment row exist. Throws UploadError (message = human-readable) otherwise; nothing is left half-recorded.
+export function uploadTaskProof({ entityType, entityId, file, fileType, durationSeconds }) {
+  const hit = doneUploads.get(file);
+  if (hit && hit.entityId === entityId) return hit.promise;
+  const promise = doTaskProofUpload({ entityType, entityId, file, fileType, durationSeconds });
+  doneUploads.set(file, { entityId, promise });
+  promise.catch(() => { if (doneUploads.get(file)?.promise === promise) doneUploads.delete(file); });
+  return promise;
+}
+
+async function doTaskProofUpload({ entityType, entityId, file, fileType, durationSeconds }) {
+  let category = fileType;
+  let mimeType;
+  let ext = extensionOf(file.name || "");
+  let fileName = file.name || "file";
+  if (fileType === "voice") {
+    mimeType = file.type || "audio/webm";
+    if (file.size === 0) throw new UploadError("EMPTY");
+  } else {
+    const meta = await validateUploadFile(file, fileType === "image" ? "image" : "task");
+    if (fileType === "image" && meta.category !== "image") throw new UploadError("WRONG_KIND");
+    category = meta.category;
+    mimeType = meta.mime;
+    ext = meta.ext;
+    fileName = meta.filename;
+  }
+  const ctx = { ext, size: file.size, mime: mimeType, fileName };
+
+  const { storagePath, contentType } = await putWithSignedUrl(
     {
-      action: "upload",
-      entity_type: entityType,
-      entity_id: entityId,
-      filename: file.name,
-      mime_type: mimeType,
-      file_type: fileType,
-      file_size: file.size,
+      action: "upload", entity_type: entityType, entity_id: entityId, filename: fileName, mime_type: mimeType, file_type: category, file_size: file.size,
       ...(durationSeconds != null ? { duration_seconds: durationSeconds } : {}),
     },
-    { auth: true },
+    file, ctx,
   );
 
-  const { error: uploadError } = await supabase.storage
-    .from("staff-attachments")
-    .uploadToSignedUrl(urlRes.storage_path, urlRes.token, file);
-  if (uploadError) {
-    throw new Error("Could not upload the file. Please try again. / ફાઇલ અપલોડ કરી શકાઈ નથી. કૃપા કરીને ફરી પ્રયાસ કરો.");
-  }
-
-  const { data: attachmentId, error: recordError } = await supabase.rpc("staff_record_attachment", {
-    p_entity_type: entityType,
-    p_entity_id: entityId,
-    p_file_type: fileType,
-    p_storage_path: urlRes.storage_path,
-    p_original_filename: file.name,
-    p_mime_type: mimeType,
-    p_file_size: file.size,
+  const record = () => supabase.rpc("staff_record_attachment", {
+    p_entity_type: entityType, p_entity_id: entityId, p_file_type: category, p_storage_path: storagePath,
+    p_original_filename: fileName, p_mime_type: contentType, p_file_size: file.size,
     ...(durationSeconds != null ? { p_duration_seconds: durationSeconds } : {}),
   });
-  if (recordError) throw recordError;
-
-  return { attachmentId, storagePath: urlRes.storage_path };
+  let { data: attachmentId, error: recordError } = await record();
+  if (recordError && /fetch|network|timeout|5\d\d/i.test(recordError.message || "")) { await sleep(800); ({ data: attachmentId, error: recordError } = await record()); }
+  if (recordError || !attachmentId) {
+    logUploadFailure("record", recordError, { ...ctx, path: storagePath, bucket: BUCKET });
+    await removeOrphan(storagePath); // no silent orphan: the object is removed because nothing links to it
+    if (recordError && /access to attach|not authorized|permission/i.test(recordError.message || "")) throw new UploadError("DENIED");
+    throw new UploadError("NOT_LINKED");
+  }
+  return { attachmentId, storagePath, fileName, category, size: file.size };
 }
 
 // Authenticated: mints a short-lived signed download URL for an existing attachment.
@@ -153,53 +224,8 @@ export function downloadTaskProof(attachmentId) {
   return callFunction("staff-file-url", { action: "download", attachment_id: attachmentId }, { auth: true });
 }
 
-// Authenticated: uploads an attachment/voice file for a task Reply, BEFORE
-// the reply itself is created — mirrors uploadTaskProof's own
-// mint-URL / PUT / verify-server-side shape, but stops short of recording
-// any metadata row (there's no message to attach it to yet). The returned
-// object is exactly the p_attachment_metadata shape
-// staff_send_task_message expects; that RPC re-verifies the uploaded
-// object exists before it's ever linked to a reply, so an upload that's
-// never followed by a send just leaves an orphaned, never-referenced
-// object under the uploader's own storage prefix.
-export async function uploadTaskMessageFile({ taskId, file, fileType, durationSeconds }) {
-  const mimeType = resolveMimeType(file);
-  const urlRes = await callFunction(
-    "staff-file-url",
-    {
-      action: "upload",
-      entity_type: "task_message",
-      entity_id: taskId,
-      filename: file.name,
-      mime_type: mimeType,
-      file_type: fileType,
-      file_size: file.size,
-      ...(durationSeconds != null ? { duration_seconds: durationSeconds } : {}),
-    },
-    { auth: true },
-  );
-
-  const { error: uploadError } = await supabase.storage
-    .from("staff-attachments")
-    .uploadToSignedUrl(urlRes.storage_path, urlRes.token, file);
-  if (uploadError) {
-    throw new Error("Could not upload the file. Please try again. / ફાઇલ અપલોડ કરી શકાઈ નથી. કૃપા કરીને ફરી પ્રયાસ કરો.");
-  }
-
-  return {
-    kind: fileType === "voice" ? "voice" : "attachment",
-    storage_path: urlRes.storage_path,
-    filename: file.name,
-    file_type: fileType,
-    file_size: file.size,
-    ...(durationSeconds != null ? { duration_seconds: durationSeconds } : {}),
-  };
-}
-
-// Authenticated: mints a short-lived signed download/playback URL for a
-// Reply's own attachment or voice message (access gated by task_messages'
-// own RLS via the Edge Function's user-scoped client — see
-// handleDownloadMessage).
-export function downloadTaskMessageFile(messageId) {
-  return callFunction("staff-file-url", { action: "download", message_id: messageId }, { auth: true });
+// Authenticated: mints a short-lived signed download URL for a Chat attachment that still lives in the staff-attachments bucket
+// (a migrated legacy Reply file). Access is decided by chat_message_attachments' own RLS (active participant of that conversation).
+export function downloadChatAttachment(attachmentId) {
+  return callFunction("staff-file-url", { action: "download", chat_attachment_id: attachmentId }, { auth: true });
 }

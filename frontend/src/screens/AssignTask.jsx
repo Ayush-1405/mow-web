@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { uploadTaskProof } from "../lib/api";
@@ -79,9 +79,19 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
 
+  // A draft handed over from a Project Chat message ("Create task from message"): read once, only pre-fills the form -- nothing is
+  // created until the user reviews and submits it like any other task.
+  const chatDraft = useRef(null);
+  if (chatDraft.current === null) {
+    chatDraft.current = {};
+    try {
+      const raw = sessionStorage.getItem("mow.assign_draft");
+      if (raw) { chatDraft.current = JSON.parse(raw) || {}; sessionStorage.removeItem("mow.assign_draft"); }
+    } catch { /* no draft */ }
+  }
   const [form, setForm] = useState({
-    title: "",
-    description: "",
+    title: typeof chatDraft.current.title === "string" ? chatDraft.current.title : "",
+    description: typeof chatDraft.current.description === "string" ? chatDraft.current.description : "",
     task_type_code: lookups.taskTypes[0]?.code || "",
     priority_code: "NORMAL",
     proof_type_code: "none",
@@ -90,7 +100,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     // selector for this below — everyone else keeps the existing disabled,
     // derived-from-profile display, so no other role can spoof from_department.
     from_department_id: profile.department_id || "",
-    to_department_id: "",
+    to_department_id: chatDraft.current.project_id ? (lookups.departments.find((d) => d.code === "INTERIOR")?.id || "") : "",
     assigned_to: "",
     second_assignee: "",
     verifier_id: "",
@@ -99,7 +109,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     reference_number: "",
     requirement_text: "",
     quantity: "",
-    project_id: "",
+    project_id: typeof chatDraft.current.project_id === "string" ? chatDraft.current.project_id : "",
   });
 
   const interiorDeptId = useMemo(

@@ -16,7 +16,8 @@ import { subscribeTable, upsertById } from "../lib/realtime";
 function routeFor(n) {
   switch (n.entity_type) {
     case "task": return `/tasks?focus=${n.entity_id}`;
-    case "task_message": return n.task_id ? `/tasks?focus=${n.task_id}&message=${n.entity_id}` : null;
+    // A legacy Reply notification: Replies now live in Chat, so it resolves to the migrated message (server-checked access)
+    case "task_message": return n.task_id ? `/chat?legacy_message=${n.entity_id}&legacy_task=${n.task_id}` : `/chat?legacy_message=${n.entity_id}`;
     case "project": return `/interior-projects/detail/${n.entity_id}`;
     case "snag": return "/interior-projects/site-execution";
     case "interior_task": return "/interior-projects/tasks";

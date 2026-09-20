@@ -18,6 +18,7 @@ import InteriorRequests from "./InteriorRequests.jsx";
 import InteriorAllFiles from "./InteriorAllFiles.jsx";
 import InteriorActivityHistory from "./InteriorActivityHistory.jsx";
 import InteriorProjectAssignedTasks from "./InteriorProjectAssignedTasks.jsx";
+import ChatButton from "../../components/ChatButton.jsx";
 
 // Same authoritative stage list InteriorTimeline.jsx uses (projects_stage_check).
 const STAGES = [
@@ -124,6 +125,7 @@ export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
           <h1>{project.project_code} — {project.customer}</h1>
           <div className="sub">{t("interiorLiveDataNote", lang)}</div>
         </div>
+        <ChatButton projectId={projectId} label={`💬 ${t("projectChatLabel", lang)}`} />
         <button className="btn btn-outline" style={{ marginTop: 0, width: "auto" }} onClick={() => navigate(`/interior-projects/master-report/${projectId}`)}>
           {t("masterReportButtonLabel", lang)}
         </button>

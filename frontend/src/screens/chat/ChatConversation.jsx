@@ -1,10 +1,11 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  CHAT_ACCEPT, CHAT_EDIT_WINDOW_MIN, TYPE_LABEL, chatFileUrl, deleteMessage, editMessage, fetchMessage, fetchMessages, fetchReads, getDetails,
-  markRead, searchMessages, sendMessage, setMuted, subscribeConversation, uploadChatFile,
+  CHAT_ACCEPT, CHAT_EDIT_WINDOW_MIN, TYPE_LABEL, chatFileUrl, deleteMessage, editMessage, fetchMessage, fetchMessages, fetchMessagesAround, fetchReads, getDetails,
+  linkMessageToTask, markRead, openProjectChat, projectTasks, searchMessages, sendMessage, setMuted, subscribeConversation, uploadChatFile,
 } from "../../lib/chatApi";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
+import ChatButton from "../../components/ChatButton.jsx";
 
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const dayKey = (iso) => new Date(iso).toDateString();
@@ -47,17 +48,17 @@ function Attachment({ att }) {
   useEffect(() => {
     if (!isImg) return undefined;
     let active = true;
-    chatFileUrl(att.storage_path).then(({ url: u }) => { if (active) setUrl(u); });
+    chatFileUrl(att).then(({ url: u }) => { if (active) setUrl(u); });
     return () => { active = false; };
-  }, [att.storage_path, isImg]);
+  }, [att, isImg]);
   async function download() {
-    const { url: u } = await chatFileUrl(att.storage_path);
+    const { url: u } = await chatFileUrl(att);
     if (u) window.open(u, "_blank", "noopener,noreferrer");
   }
   if (isImg) {
     return url ? (
       <button type="button" className="chat-img" onClick={() => window.open(url, "_blank", "noopener,noreferrer")} aria-label={`Open image ${att.file_name}`}>
-        <img src={url} alt={att.file_name} loading="lazy" onError={async () => { if (retried.current) return; retried.current = true; const { url: u } = await chatFileUrl(att.storage_path, { fresh: true }); if (u) setUrl(u); }} />
+        <img src={url} alt={att.file_name} loading="lazy" onError={async () => { if (retried.current) return; retried.current = true; const { url: u } = await chatFileUrl(att, { fresh: true }); if (u) setUrl(u); }} />
       </button>
     ) : <div className="chat-file">Loading image…</div>;
   }
@@ -69,13 +70,20 @@ function Attachment({ att }) {
 }
 
 // One message. Memoised: typing in the composer, or an unrelated message arriving, does not re-render the others.
-const MessageRow = memo(function MessageRow({ m, mine, sender, quotedText, seen, canReply, canEdit, canDelete, isEditing, editText, onEditText, onReply, onStartEdit, onSaveEdit, onCancelEdit, onDelete }) {
-  if (m.is_system) return <div className="chat-system" data-mid={m.id}>{m.body}</div>;
+const MessageRow = memo(function MessageRow({ m, mine, sender, quotedText, seen, canReply, canEdit, canDelete, isEditing, editText, onEditText, onReply, onStartEdit, onSaveEdit, onCancelEdit, onDelete, highlighted, projectActions, onCreateTask, onLinkTask }) {
+  if (m.is_system) return <div className={`chat-system${highlighted ? " hl" : ""}`} data-mid={m.id}>{m.body}</div>;
+  const ctx = m.context || {};
   return (
-    <div className={`chat-msg${mine ? " mine" : ""}`} data-mid={m.id}>
+    <div className={`chat-msg${mine ? " mine" : ""}${highlighted ? " hl" : ""}`} data-mid={m.id}>
       {!mine && sender && <div className="chat-sender"><b>{sender.name}</b> <span className="sub">{sender.role_label}{sender.department ? ` · ${sender.department}` : ""}</span></div>}
       {!mine && !sender && <div className="chat-sender"><b>Former member</b></div>}
       <div className="chat-bubble">
+        {(ctx.badge || m.legacy_source_type) && (
+          <div className="chat-ctxrow">
+            {ctx.badge && <span className="fx-tag gold">{ctx.badge}</span>}
+            {m.legacy_source_type && <span className="chat-imported" title="This message was moved into Chat from the old Reply section, with its original author and time.">Imported reply</span>}
+          </div>
+        )}
         {quotedText && <div className="chat-quote">{quotedText}</div>}
         {m.deleted_at ? <i className="sub">Message deleted</i> : isEditing ? (
           <div className="chat-edit">
@@ -88,6 +96,7 @@ const MessageRow = memo(function MessageRow({ m, mine, sender, quotedText, seen,
             {m.attachments.map((a) => <Attachment key={a.id} att={a} />)}
           </>
         )}
+        {ctx.linked_task_number && <div className="chat-linked">🔗 Linked to task <b>{ctx.linked_task_number}</b></div>}
         <div className="chat-meta">{fmtTime(m.created_at)}{m.edited_at && !m.deleted_at ? " · edited" : ""}{mine && !m.deleted_at ? seen : ""}</div>
       </div>
       {!m.deleted_at && !isEditing && canReply && (
@@ -95,6 +104,8 @@ const MessageRow = memo(function MessageRow({ m, mine, sender, quotedText, seen,
           <button type="button" onClick={() => onReply(m)} aria-label="Reply">↩ Reply</button>
           {canEdit && <button type="button" onClick={() => onStartEdit(m)} aria-label="Edit">✎ Edit</button>}
           {canDelete && <button type="button" onClick={() => onDelete(m)} aria-label="Delete">🗑 Delete</button>}
+          {projectActions && m.body && !ctx.linked_task_number && <button type="button" onClick={() => onLinkTask(m)} aria-label="Link to a task">🔗 Link task</button>}
+          {projectActions && m.body && <button type="button" onClick={() => onCreateTask(m)} aria-label="Create a task from this message">➕ Task</button>}
         </div>
       )}
     </div>
@@ -103,7 +114,7 @@ const MessageRow = memo(function MessageRow({ m, mine, sender, quotedText, seen,
 
 // The open conversation. `key={conversationId}` in the parent gives every conversation a clean instance; everything
 // below depends on PRIMITIVES (conversation id, my id) only, so a parent re-render can never restart a load.
-export default function ChatConversation({ conversationId, me, onBack, onRead }) {
+export default function ChatConversation({ conversationId, me, onBack, onRead, highlightId = null }) {
   const navigate = useNavigate();
   const [details, setDetails] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -127,6 +138,11 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
   const [search, setSearch] = useState({ open: false, q: "", results: [] });
   const [showFiles, setShowFiles] = useState(false);
   const [visible, setVisible] = useState(() => !document.hidden);
+  const [hl, setHl] = useState(null);
+  const [tasksPanel, setTasksPanel] = useState({ open: false, loading: false, rows: null, error: null });
+  const [linkFor, setLinkFor] = useState(null);
+  const [createFor, setCreateFor] = useState(null);
+  const [ctxNote, setCtxNote] = useState(null);
 
   const scrollRef = useRef(null);
   const stickRef = useRef(true);
@@ -139,6 +155,9 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
   const editingRef = useRef(editing); editingRef.current = editing;
   const editTextRef = useRef(editText); editTextRef.current = editText;
   const messagesRef = useRef(messages); messagesRef.current = messages;
+  const highlightRef = useRef(highlightId); highlightRef.current = highlightId;
+  const hlDone = useRef(null);
+  const hlTimer = useRef(null);
 
   const people = useMemo(() => Object.fromEntries((details?.participants || []).map((p) => [p.user_id, p])), [details]);
   const peopleRef = useRef(people); peopleRef.current = people;
@@ -158,9 +177,20 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
         return;
       }
       if (m.error) { console.error("[Chat] messages failed", m.error); setLoadError("Could not load messages."); setLoading(false); return; }
+      let list = m.data;
+      const want = highlightRef.current;
+      if (want && !list.some((x) => x.id === want)) {
+        // an old (e.g. migrated) message that is not in the newest window: load the window that ends at it
+        const target = await fetchMessage(want);
+        if (target.data && target.data.conversation_id === conversationId) {
+          const around = await fetchMessagesAround(conversationId, target.data, 40);
+          if (!around.error) list = around.data.concat(list.filter((x) => x.created_at > target.data.created_at)).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i);
+        }
+        if (!alive || token !== loadToken.current) return;
+      }
       setDetails(d.data);
-      setMessages(m.data);
-      setHasMore(m.data.length >= 40);
+      setMessages(list);
+      setHasMore(list.length >= 40);
       const r = await fetchReads(conversationId);
       if (!alive || token !== loadToken.current) return;
       setReads(r.data);
@@ -253,6 +283,17 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
     });
   }, [conversationId, latestForeignId, loading, visible, onRead]);
 
+  // ---- 4b. land on / flash the message an old Reply link pointed at (once per link) ----
+  useEffect(() => {
+    if (loading || !highlightId || hlDone.current === highlightId || !messages.some((m) => m.id === highlightId)) return;
+    hlDone.current = highlightId;
+    stickRef.current = false;
+    setHl(highlightId);
+    requestAnimationFrame(() => document.querySelector(`[data-mid="${highlightId}"]`)?.scrollIntoView({ block: "center" }));
+    hlTimer.current = window.setTimeout(() => setHl(null), 3500);
+  }, [loading, highlightId, messages]);
+  useEffect(() => () => window.clearTimeout(hlTimer.current), []);
+
   // ---- 5. scrolling: bottom on open / when the user is already near it; never on plain re-renders ----
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -336,6 +377,50 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
     if (row) setMessages((cur) => upsertMessage(cur, row));
   }, [me]);
 
+  const loadProjectTasks = useCallback(async (projectId) => {
+    setTasksPanel((s) => ({ ...s, loading: true, error: null }));
+    const { data, error } = await projectTasks(projectId);
+    setTasksPanel((s) => ({ ...s, loading: false, rows: error ? s.rows : data || [], error: error ? "Could not load the project's tasks." : null }));
+  }, []);
+  const tasksLoadedRef = useRef(false);
+  const ensureProjectTasks = useCallback((projectId) => {
+    if (tasksLoadedRef.current || !projectId) return;
+    tasksLoadedRef.current = true;
+    loadProjectTasks(projectId);
+  }, [loadProjectTasks]);
+  const toggleTasks = useCallback((projectId) => {
+    setTasksPanel((s) => ({ ...s, open: !s.open }));
+    ensureProjectTasks(projectId);
+  }, [ensureProjectTasks]);
+  const projectIdRef = useRef(null);
+  projectIdRef.current = details?.context?.project_id || null;
+  const onLinkTask = useCallback((m) => { setLinkFor(m); ensureProjectTasks(projectIdRef.current); }, [ensureProjectTasks]);
+  const onCreateTask = useCallback((m) => setCreateFor(m), []);
+  async function confirmLink(taskId) {
+    const m = linkFor;
+    setLinkFor(null);
+    const { error: err } = await linkMessageToTask(m.id, taskId);
+    if (err) { setSendError("Could not link the message to that task."); return; }
+    const { data: row } = await fetchMessage(m.id);
+    if (row) setMessages((cur) => upsertMessage(cur, row));
+  }
+  // Nothing is created here: the message becomes a DRAFT in the normal Assign Task form, which the user reviews and submits.
+  function confirmCreate() {
+    const m = createFor;
+    const c = details?.context || {};
+    try {
+      sessionStorage.setItem("mow.assign_draft", JSON.stringify({ title: (m.body || "").split("\n")[0].slice(0, 120), description: m.body || "", project_id: c.project_id || "", from_chat_message: m.id }));
+    } catch { /* storage unavailable: the form simply opens empty */ }
+    setCreateFor(null);
+    navigate("/");
+  }
+  async function openProjectFromTask() {
+    setCtxNote(null);
+    const { data, error: err } = await openProjectChat(ctx.project_id);
+    if (err || !data) { setCtxNote("Project chat is limited to the people working on this project."); return; }
+    navigate(`/chat?c=${data}`);
+  }
+
   async function toggleMute() {
     const muted = !reads[me]?.muted;
     const { error } = await setMuted(conversationId, muted);
@@ -403,6 +488,46 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
             </div>
           </div>
           <button type="button" className="btn btn-outline" onClick={() => navigate(`/?focus=${ctx.task_id}`)}>Open Task</button>
+          {ctx.project_id && ctx.can_open_project && <button type="button" className="btn btn-outline" onClick={openProjectFromTask}>Project Chat</button>}
+          {ctx.project_id && <Link className="btn btn-outline" to={`/interior-projects/detail/${ctx.project_id}`}>Open Project</Link>}
+        </div>
+      )}
+      {ctxNote && <div className="msg info" role="status" style={{ margin: "6px 12px" }}>{ctxNote}</div>}
+      {details && ctx.kind === "project" && (
+        <div className="chat-ctx chat-ctx-project">
+          <div className="chat-ctx-main">
+            <b>{ctx.project_code}</b> · {ctx.client}
+            <div className="sub">
+              {ctx.site && <span className="fx-tag">📍 {ctx.site}</span>}
+              {ctx.stage && <span className="fx-tag">{ctx.stage}</span>}
+              <span className="fx-tag">{ctx.department}</span>
+              {ctx.lead_executive && <span className="fx-tag">Lead: {ctx.lead_executive}</span>}
+              {ctx.executive_assistant && <span className="fx-tag">Assistant: {ctx.executive_assistant}</span>}
+              <span className="fx-tag">{activePeople.length} member{activePeople.length === 1 ? "" : "s"}</span>
+              {ctx.archived && <span className="fx-tag">Archived</span>}
+            </div>
+          </div>
+          <div className="chat-ctx-actions">
+            <Link className="btn btn-outline" to={`/interior-projects/detail/${ctx.project_id}`}>Open Project</Link>
+            <button type="button" className="btn btn-outline" onClick={() => toggleTasks(ctx.project_id)} aria-expanded={tasksPanel.open}>Tasks</button>
+            <Link className="btn btn-outline" to={`/interior-projects/detail/${ctx.project_id}?tab=files`}>Files</Link>
+            <Link className="btn btn-outline" to={`/interior-projects/detail/${ctx.project_id}?tab=workingDrawings`}>Drawings</Link>
+            <Link className="btn btn-outline" to={`/interior-projects/detail/${ctx.project_id}?tab=dailyUpdates`}>Daily updates</Link>
+          </div>
+        </div>
+      )}
+      {tasksPanel.open && ctx.kind === "project" && (
+        <div className="chat-info" role="region" aria-label="Project tasks">
+          <b>Project tasks{tasksPanel.rows ? ` (${tasksPanel.rows.length})` : ""}</b>
+          <div className="sub">Each task keeps its own Task Chat. Open one to discuss that task only.</div>
+          {tasksPanel.loading && <div className="sub">Loading…</div>}
+          {tasksPanel.error && <div className="msg error" role="alert">{tasksPanel.error}</div>}
+          {tasksPanel.rows && tasksPanel.rows.length === 0 && <div className="sub">No tasks you can see for this project.</div>}
+          <ul className="chat-tasklist">
+            {(tasksPanel.rows || []).map((t) => (
+              <li key={t.id}><span><b>{t.task_number}</b> {t.title} <span className="fx-tag">{t.status}</span></span><ChatButton taskId={t.id} label="Task chat" style={{ minHeight: 44 }} /></li>
+            ))}
+          </ul>
         </div>
       )}
       {details && ctx.kind === "job_card" && (
@@ -433,6 +558,30 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {linkFor && (
+        <div className="chat-modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) setLinkFor(null); }}>
+          <div className="chat-modal" role="dialog" aria-modal="true" aria-label="Link message to a task">
+            <div className="chat-modal-head"><b>Link to a task</b><button type="button" className="chat-x" onClick={() => setLinkFor(null)} aria-label="Close">×</button></div>
+            <div className="sub" style={{ margin: "6px 0" }}>“{(linkFor.body || "").slice(0, 100)}” — only tasks of this project you can see are listed. Linking does not copy or change anything.</div>
+            {tasksPanel.loading && <div className="msg info">Loading…</div>}
+            {tasksPanel.rows && tasksPanel.rows.length === 0 && <div className="chat-empty">No tasks to link to.</div>}
+            <ul className="chat-people">
+              {(tasksPanel.rows || []).map((t) => <li key={t.id}><button type="button" onClick={() => confirmLink(t.id)}><b>{t.task_number}</b> {t.title} <span className="sub">{t.status}</span></button></li>)}
+            </ul>
+          </div>
+        </div>
+      )}
+      {createFor && (
+        <div className="chat-modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) setCreateFor(null); }}>
+          <div className="chat-modal" role="dialog" aria-modal="true" aria-label="Create a task from this message">
+            <div className="chat-modal-head"><b>Create a task from this message?</b><button type="button" className="chat-x" onClick={() => setCreateFor(null)} aria-label="Close">×</button></div>
+            <div className="chat-quote" style={{ margin: "8px 0" }}>{(createFor.body || "").slice(0, 300)}</div>
+            <div className="sub">This opens the Assign Task form with the message and this project filled in. Nothing is created until you review and submit it.</div>
+            <div className="btn-row" style={{ marginTop: 10 }}><button type="button" className="btn btn-primary" onClick={confirmCreate}>Review in Assign Task</button><button type="button" className="btn btn-outline" onClick={() => setCreateFor(null)}>Cancel</button></div>
+          </div>
         </div>
       )}
 
@@ -474,6 +623,7 @@ export default function ChatConversation({ conversationId, me, onBack, onRead })
                 canReply={canPost} canEdit={canEdit} canDelete={mine || canManage}
                 isEditing={editing === m.id} editText={editing === m.id ? editText : ""} onEditText={setEditText}
                 onReply={onReply} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onDelete={onDelete}
+                highlighted={hl === m.id} projectActions={ctx.kind === "project" && canPost} onCreateTask={onCreateTask} onLinkTask={onLinkTask}
               />
             </React.Fragment>
           );
