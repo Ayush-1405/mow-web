@@ -26,6 +26,7 @@ function routeFor(n) {
     case "retail_vm_task": return "/retail/display";
     case "FACTORY_AI_REQUEST": return "/factory-requests";
     case "FACTORY_JOB": return `/factory-job/${n.entity_id}`;
+    case "CHAT": return `/chat?c=${n.entity_id}`;
     default: return null;
   }
 }
@@ -37,6 +38,7 @@ const GROUPS = {
   interior: ["project", "snag", "interior_task", "site_report"],
   retail: ["retail_lead", "retail_complaint", "retail_vm_task"],
   factory: ["FACTORY_AI_REQUEST", "FACTORY_JOB"],
+  chat: ["CHAT"],
   reminders: ["daily_reminder"],
 };
 const FILTERS = [

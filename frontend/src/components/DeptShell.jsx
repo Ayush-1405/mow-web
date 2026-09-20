@@ -1,6 +1,7 @@
 import React from "react";
 import Sidebar from "./Sidebar.jsx";
 import { t } from "../lib/i18n";
+import ChatNavButton from "./ChatNavButton.jsx";
 
 // Layout used by every department page and the Management Control Tower:
 // the responsive Sidebar (desktop rail / mobile drawer, see Sidebar.jsx)
@@ -17,6 +18,7 @@ export default function DeptShell({ lang, items, managementLinks, onBackToTasks,
             <h1>Mood of Wood</h1>
           </div>
           <div className="header-actions">
+            <ChatNavButton />
             <button className="icon-btn" onClick={() => window.location.reload()} aria-label={t("refresh", lang)} title={t("refresh", lang)}>🔄</button>
             <button className="icon-btn" onClick={onBackToTasks}>⬅ {t("backToTasks", lang)}</button>
             <button className="icon-btn" onClick={onLogout}>{t("logout", lang)}</button>

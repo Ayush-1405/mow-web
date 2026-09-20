@@ -5,6 +5,7 @@ import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
 import { requestNotificationPermission, showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
 import { useForegroundRefresh } from "./lib/useForegroundRefresh";
+import ChatNavButton from "./components/ChatNavButton.jsx";
 import UpdateBanner from "./components/UpdateBanner.jsx";
 import Login from "./screens/Login.jsx";
 import ChangePassword from "./screens/ChangePassword.jsx";
@@ -68,6 +69,7 @@ const FactoryAiIntake = lazy(() => import("./screens/factory/FactoryAiIntake.jsx
 const FactoryInbox = lazy(() => import("./screens/factory/FactoryInbox.jsx"));
 const FactoryJobCardPage = lazy(() => import("./screens/factory/FactoryJobCardPage.jsx"));
 const FactoryTasks = lazy(() => import("./screens/factory/FactoryTasks.jsx"));
+const ChatPage = lazy(() => import("./screens/chat/ChatPage.jsx"));
 const FactoryWorkOverview = lazy(() => import("./screens/factory/FactoryWorkOverview.jsx"));
 const FactoryDashboard = lazy(() => import("./screens/factory/FactoryDashboard.jsx"));
 const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
@@ -622,6 +624,11 @@ export default function App() {
           <FactoryJobCardPage lang={lang} profile={profile} lookups={lookups} />
         </DeptShell>
       } />
+      <Route path="/chat" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <ChatPage lang={lang} profile={profile} />
+        </DeptShell>
+      } />
       <Route path="/notifications" element={
         <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <Notifications lang={lang} showToast={showToast} />
@@ -737,6 +744,7 @@ export default function App() {
               🗼 {t("departmentsNav", lang)}
             </button>
           )}
+          <ChatNavButton />
           <button
             className="icon-btn bell"
             onClick={() => { setView("notifications"); loadUnread(); }}

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import FactoryHeader from "./FactoryHeader.jsx";
 import FactoryJobTasks from "./FactoryJobTasks.jsx";
+import ChatButton from "../../components/ChatButton.jsx";
 import {
   ActivityTab, AssignmentTab, FilePreview, FilesTab, ItemsTab, KeyDrawings, ProductionUpdate, VerificationTab,
 } from "./FactoryJobParts.jsx";
@@ -225,6 +226,8 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
         <div className="msg info"><strong>Returned for clarification:</strong> {job.clarification_note || "—"}</div>
       )}
       {job.factory_status === "blocked" && <div className="msg error"><strong>Blocked:</strong> {job.blocked_reason || "—"}</div>}
+
+      <div><ChatButton jobId={job.id} label="💬 Job Card chat" /></div>
 
       <KeyDrawings files={files} onOpen={setPreview} />
       <QuickActions job={job} role={role} mine={mine} isSource={isSource} goTab={setTab} onDone={load} onOpenUpdate={() => updateRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} />

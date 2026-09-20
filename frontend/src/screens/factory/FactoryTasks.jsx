@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom";
 import FactoryHeader from "./FactoryHeader.jsx";
 import FactoryTaskForm from "./FactoryTaskForm.jsx";
+import ChatButton from "../../components/ChatButton.jsx";
 import {
   getMyActions, listFactoryTasks, listJobCards, listFactoryStaff, subscribeFactoryTasks, listFactoryLocations,
   taskAccept, taskStart, taskReject, taskBlock, taskUnblock, taskReady, taskApprove, reassignFactoryTask, cancelFactoryTask,
@@ -246,6 +247,7 @@ function TaskCard({ t, leader, headLike, staff, navigate, onDone, onError }) {
       {t.job_card_id && <Link className="fx-tag gold" to={`/factory-job/${t.job_card_id}`}>Open Job Card {t.job_order_number} →</Link>}
 
       <div className="fx-actions">
+        <ChatButton taskId={t.id} wrapStyle={{ flex: "1 1 96px" }} />
         {mineAccept && <button type="button" className="btn btn-gold" disabled={busy} onClick={() => run(() => taskAccept(t.id), "Accepted.")}>Accept</button>}
         {mineAccept && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setAsk({ kind: "reject" })}>Reject</button>}
         {t.is_mine && ["ACCEPTED", "REOPENED"].includes(t.status) && <button type="button" className="btn btn-gold" disabled={busy} onClick={() => run(() => taskStart(t.id), "Started.")}>Start</button>}

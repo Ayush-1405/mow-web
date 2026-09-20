@@ -6,6 +6,7 @@ import { t } from "../lib/i18n";
 import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, TaskConversation, ProjectSiteSection, detectFileType } from "./TaskDetail.jsx";
 import { getMyInteriorProfile, listInteriorPeople } from "../lib/interiorApi";
 import { getMyActions } from "../lib/factoryApi";
+import ChatButton from "../components/ChatButton.jsx";
 import { ACTION_LABEL } from "./factory/factoryConstants";
 import { subscribeTable } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
@@ -949,6 +950,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               )}
             </>
           )}
+          <ChatButton taskId={task.id} wrapStyle={{ flex: "1 1 130px", marginTop: 8 }} />
           <button
             className="btn btn-outline"
             onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)}

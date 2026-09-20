@@ -4,6 +4,7 @@ import { t } from "../lib/i18n";
 import { TaskTimeline, ReassignPanel, AttachmentsList, TaskConversation, ProjectSiteSection } from "./TaskDetail.jsx";
 import { subscribeTable } from "../lib/realtime";
 import { listInteriorPeople } from "../lib/interiorApi";
+import ChatButton from "../components/ChatButton.jsx";
 
 // Cross-department Bridge screen. Reads public.bridges (RLS-scoped via
 // bridges_select_scoped) joined against its linked staff_tasks row for
@@ -350,6 +351,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
                     {t("reassign", lang)}
                   </button>
                 )}
+                <ChatButton taskId={task.id} wrapStyle={{ flex: "1 1 130px", marginTop: 8 }} />
                 <button
                   className="btn btn-outline"
                   onClick={() => setDetailsFor(detailsFor === task.id ? null : task.id)}
