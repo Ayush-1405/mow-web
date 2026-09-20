@@ -1,0 +1,2942 @@
+[
+ {
+  "vp": "phone-390",
+  "route": "/",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 1,
+  "small": [
+   {
+    "sel": "body>div#root>div.install-banner>button.install-banner-close",
+    "w": 21,
+    "h": 24,
+    "t": "✕"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/tasks",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.004,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/bridges",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.01,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/chat",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.01,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/notifications",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.01,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/management",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.043,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/reports",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.054,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/analytics",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.076,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.076,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/new",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.076,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/timeline",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/daily-updates",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 11,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/tasks",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/materials",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/purchase-management",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/working-drawings",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/site-execution",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/payments",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/communication",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/detail/ecede838-7db7-4ffd-b429-cb96c4116ecd",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/detail/ecede838-7db7-4ffd-b429-cb96c4116ecd?tab=dailyUpdates",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/detail/ecede838-7db7-4ffd-b429-cb96c4116ecd?tab=files",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/interior-projects/master-report/ecede838-7db7-4ffd-b429-cb96c4116ecd",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 7,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory/tasks",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": [
+   "400 https://bykmyttaesuyjwvtnxks.supabase.co/rest/v1/rpc/staff_list_assignable_users"
+  ]
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory/job-cards",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory/overview",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 7,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory/inbox",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory/job-orders",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory-job/12d40daa-540e-4767-92de-888d7be7f9e2",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/factory-request",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/retail",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/retail/leads",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/retail/orders",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/marketing",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/procurement",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/inventory",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/dispatch",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/ai-tasks",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "phone-390",
+  "route": "/users",
+  "vw": 390,
+  "vh": 844,
+  "touch": true,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 6,
+  "small": [
+   {
+    "sel": "div#root>div.dept-shell>div.dept-topbar>button.dept-sidebar-toggle",
+    "w": 40,
+    "h": 40,
+    "t": "☰"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn.bell",
+    "w": 43,
+    "h": 40,
+    "t": "💬"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 41,
+    "h": 40,
+    "t": "🔄"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 123,
+    "h": 40,
+    "t": "⬅ Back to Tasks"
+   },
+   {
+    "sel": "div.dept-shell-right>header.app-header.dept-main-header>div.header-actions>button.icon-btn",
+    "w": 66,
+    "h": 40,
+    "t": "Logout"
+   }
+  ],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0.126,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": 0,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "view:1",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": 0,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "view:2",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": 0,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "view:3",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": 0,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "view:4",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": 0,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "view:5",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": 0,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "view:6",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": 0,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/tasks",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/bridges",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/chat",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/notifications",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/management",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/reports",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/analytics",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/new",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/timeline",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/daily-updates",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/tasks",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/materials",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/purchase-management",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/working-drawings",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/site-execution",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/payments",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/communication",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/detail/ecede838-7db7-4ffd-b429-cb96c4116ecd",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/detail/ecede838-7db7-4ffd-b429-cb96c4116ecd?tab=dailyUpdates",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/detail/ecede838-7db7-4ffd-b429-cb96c4116ecd?tab=files",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/interior-projects/master-report/ecede838-7db7-4ffd-b429-cb96c4116ecd",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory/tasks",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": [
+   "400 https://bykmyttaesuyjwvtnxks.supabase.co/rest/v1/rpc/staff_list_assignable_users"
+  ]
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory/job-cards",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory/overview",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory/inbox",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory/job-orders",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory-job/12d40daa-540e-4767-92de-888d7be7f9e2",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/factory-request",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/retail",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/retail/leads",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/retail/orders",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/marketing",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/procurement",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/inventory",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/dispatch",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/ai-tasks",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ },
+ {
+  "vp": "laptop-1366",
+  "route": "/users",
+  "vw": 1366,
+  "vh": 768,
+  "touch": false,
+  "docOverflow": 0,
+  "offenders": [],
+  "clipped": [],
+  "smallCount": 0,
+  "small": [],
+  "inputZoomCount": 0,
+  "inputZoom": [],
+  "navBottomGap": null,
+  "cls": 0,
+  "longTasks": 0,
+  "longTaskMax": 0,
+  "errors": [],
+  "bad": []
+ }
+]

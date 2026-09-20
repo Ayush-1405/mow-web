@@ -1628,6 +1628,11 @@ img, video { height: auto; }
   select, textarea { font-size: 16px; }
   .icon-btn, .dept-sidebar-toggle, .fx-icon-btn { min-width: 44px; min-height: 44px; }
   .bottom-nav button { min-height: 52px; }
+  .daily-updates-toolbar .btn { min-height: 44px; }
+  .chat-actions button { min-height: 44px; padding: 8px 12px; }
+  /* small "tag" links (e.g. View all) and the banner close button get a real 44px hit box without changing how they look */
+  a.fx-tag { display: inline-flex; align-items: center; min-height: 44px; padding-left: 10px; padding-right: 10px; }
+  .install-banner-close { min-width: 44px; min-height: 44px; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; }
 }
 
 /* Visible keyboard focus everywhere (mouse users do not see it) */

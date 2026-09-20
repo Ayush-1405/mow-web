@@ -31,6 +31,10 @@ const VIEWPORTS = [
   { name: "tablet-1024", w: 1024, h: 768, dsf: 2, mobile: true },
   { name: "laptop-1366", w: 1366, h: 768, dsf: 1, mobile: false },
   { name: "desktop-1920", w: 1920, h: 1080, dsf: 1, mobile: false },
+  { name: "phone-390-notch", w: 390, h: 844, dsf: 3, mobile: true, safe: { top: 47, bottom: 34, left: 0, right: 0 } },
+  { name: "phone-land-844", w: 844, h: 390, dsf: 3, mobile: true, safe: { top: 0, bottom: 21, left: 47, right: 47 } },
+  { name: "phone-land-667", w: 667, h: 375, dsf: 2, mobile: true },
+  { name: "desktop-2560", w: 2560, h: 1440, dsf: 1, mobile: false },
 ].filter((v) => !ONLY_VP.length || ONLY_VP.includes(v.name));
 
 const ROUTES = [
@@ -113,7 +117,7 @@ const AUDIT = `(() => {
   const docW = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
   const nav = document.querySelector('.bottom-nav'); const navR = nav && vis(nav) ? nav.getBoundingClientRect() : null;
   return { vw, vh, touch, docOverflow: docW > vw + 1 ? docW - vw : 0, offenders, clipped: clipped.slice(0, 4), smallCount: small.length, small: small.slice(0, 5), inputZoomCount: inputZoom.length, inputZoom: [...new Set(inputZoom)].slice(0, 3),
-    navBottomGap: navR ? Math.round(vh - navR.bottom) : null, cls: Math.round((window.__cls || 0) * 1000) / 1000, longTasks: (window.__lt || []).length, longTaskMax: Math.max(0, ...(window.__lt || [])) };
+    navBottomGap: navR ? Math.round(vh - navR.bottom) : null, safe: (() => { const h = document.querySelector('.app-header, .dept-topbar'); const n = document.querySelector('.bottom-nav'); const hs = h && getComputedStyle(h); const ns = n && getComputedStyle(n); return { headPadTop: hs ? parseFloat(hs.paddingTop) : null, headPadLeft: hs ? parseFloat(hs.paddingLeft) : null, navPadBottom: ns ? parseFloat(ns.paddingBottom) : null, navPadLeft: ns ? parseFloat(ns.paddingLeft) : null, headTop: h ? Math.round(h.getBoundingClientRect().top) : null }; })(), cls: Math.round((window.__cls || 0) * 1000) / 1000, longTasks: (window.__lt || []).length, longTaskMax: Math.max(0, ...(window.__lt || [])) };
 })()`;
 
 const SETTLE = `new Promise((res) => { const t0 = Date.now(); (function poll() { const busy = document.querySelector('.skeleton-block, .spinner') || /Loading/.test((document.getElementById('root') || {}).innerText || '') && Date.now() - t0 < 5000; if (!busy || Date.now() - t0 > 6000) setTimeout(res, 600); else setTimeout(poll, 150); })(); })`;
@@ -121,7 +125,8 @@ const SETTLE = `new Promise((res) => { const t0 = Date.now(); (function poll() {
 const results = [];
 for (const vp of VIEWPORTS) {
   await send("Emulation.setDeviceMetricsOverride", { width: vp.w, height: vp.h, deviceScaleFactor: vp.dsf, mobile: vp.mobile });
-  await send("Emulation.setTouchEmulationEnabled", { enabled: vp.mobile, maxTouchPoints: vp.mobile ? 5 : 0 });
+  await send("Emulation.setTouchEmulationEnabled", vp.mobile ? { enabled: true, maxTouchPoints: 5 } : { enabled: false });
+  try { await send("Emulation.setSafeAreaInsetsOverride", { insets: vp.safe || { top: 0, bottom: 0, left: 0, right: 0 } }); } catch (e) { /* older Edge */ }
   await send("Page.navigate", { url: BASE + "/" });
   await sleep(2500); await evalJs(SETTLE);
   for (const route of ROUTES) {

@@ -6,7 +6,11 @@
     <meta name="theme-color" content="#8a4b23" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+    <!-- API host warmed up in parallel with the bundle, so the first session / data request skips DNS + TLS setup -->
+    <link rel="preconnect" href="https://bykmyttaesuyjwvtnxks.supabase.co" crossorigin />
+    <!-- Web fonts load without blocking first paint (system fonts show instantly, display=swap upgrades them) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" /></noscript>
 
     <!-- Add to Home Screen / installable app -->
     <link rel="icon" href="/icons/favicon-32.png" type="image/png" />
