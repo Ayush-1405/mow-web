@@ -42,6 +42,25 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
   const [detailsFor, setDetailsFor] = useState(null);
   const [reassignFor, setReassignFor] = useState(null);
   const [unreadByTask, setUnreadByTask] = useState({});
+  // Inbox = incoming Bridge Tasks still waiting for acceptance (destination Head / Supervisor only).
+  // Incoming = every Bridge Task routed to the department. Sent = ones this user / their department sent.
+  // Assigned to me = the personal slice. Each is a different question -- never one merged list.
+  const isLead = !!(profile.isDeptHead || profile.roleCode === "supervisor" || profile.isManagement || profile.isSuperAdmin);
+  const bridgeTabs = [
+    ...(isLead ? [["inbox", "Bridge Inbox"], ["incoming", "All Incoming"]] : []),
+    ["sent", "Bridge Sent"], ["mine", "Assigned to me"],
+  ];
+  const [bridgeTab, setBridgeTab] = useState(isLead ? "inbox" : "mine");
+  const AWAITING = new Set(["ASSIGNED", "PARTIALLY_ACCEPTED", "RETURNED", "REOPENED"]);
+  function inTab(task) {
+    if (!task) return false;
+    switch (bridgeTab) {
+      case "inbox": return task.scope_bridge_in && AWAITING.has(lookups.statusById?.[task.status_id]?.code);
+      case "incoming": return task.scope_bridge_in;
+      case "sent": return task.scope_bridge_sent;
+      default: return task.scope_mine;
+    }
+  }
 
   const loadUnread = useCallback(async () => {
     const { data, error } = await supabase.rpc("staff_task_unread_message_counts");
@@ -65,7 +84,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
     let taskMap = {};
     if (taskIds.length > 0) {
       const { data: taskRows, error: taskErr } = await supabase
-        .from("staff_tasks")
+        .from("staff_task_scope_v")
         .select("*")
         .in("id", taskIds);
       if (taskErr) {
@@ -203,9 +222,14 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
         </div>
       )}
 
-      {!loading && bridges.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
+      <div className="fx-tabs" role="tablist" aria-label="Bridge lists" style={{ marginBottom: 8 }}>
+        {bridgeTabs.map(([k, lbl]) => (
+          <button key={k} type="button" role="tab" aria-selected={bridgeTab === k} className={bridgeTab === k ? "active" : ""} onClick={() => setBridgeTab(k)}>{lbl}</button>
+        ))}
+      </div>
+      {!loading && bridges.filter((b) => inTab(tasksById[b.task_id])).length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
 
-      {bridges.filter((b) => !projectFilter || tasksById[b.task_id]?.project_id === projectFilter).map((bridge) => {
+      {bridges.filter((b) => inTab(tasksById[b.task_id]) && (!projectFilter || tasksById[b.task_id]?.project_id === projectFilter)).map((bridge) => {
         const task = tasksById[bridge.task_id];
         const status = task ? lookups.statusById[task.status_id] : null;
         const statusCode = status?.code || "";

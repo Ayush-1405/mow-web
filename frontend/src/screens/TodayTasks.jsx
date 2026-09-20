@@ -7,7 +7,7 @@ import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, Task
 import { getMyInteriorProfile, listInteriorPeople } from "../lib/interiorApi";
 import { getMyActions } from "../lib/factoryApi";
 import { ACTION_LABEL } from "./factory/factoryConstants";
-import { subscribeTable, upsertById, removeById } from "../lib/realtime";
+import { subscribeTable } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { kolkataDateStr, addDaysToDateStr, daysBetweenDateStrs, kolkataDateOf, msUntilNextKolkataMidnight } from "../lib/kolkataTime";
@@ -18,6 +18,19 @@ import { useBreakpoint } from "../lib/useBreakpoint";
 
 const CLOSED_STATUS_CODES = new Set(["COMPLETED", "VERIFIED", "CLOSED"]);
 const DATE_FILTER_STORAGE_KEY = "todayTasks.dateFilter.v1";
+const SCOPE_STORAGE_KEY = "todayTasks.scope.v1";
+// Each list is a NARROW question asked of staff_task_scope_v (whose rows are already limited by
+// staff_tasks RLS). "My Tasks" is the personal action list; department-wide work lives in the
+// Department / Team / Bridge views and never leaks into it. `only` = who gets the tab.
+const SCOPES = [
+  { key: "my", col: "scope_mine", en: "My Tasks", gu: "મારા કાર્યો", empty: "No tasks need your action right now." },
+  { key: "created", col: "scope_created", en: "Created by Me", gu: "મેં બનાવેલા", empty: "You have not created any tasks." },
+  { key: "department", col: "scope_department", en: "Department Tasks", gu: "વિભાગના કાર્યો", only: "lead", empty: "No tasks are owned by your department." },
+  { key: "team", col: "scope_team", en: "Team Tasks", gu: "ટીમના કાર્યો", only: "lead", empty: "No tasks are assigned to people who report to you." },
+  { key: "bridge_in", col: "scope_bridge_in", en: "Bridge Inbox", gu: "બ્રિજ ઇનબોક્સ", only: "lead", empty: "No incoming Bridge Tasks for your department." },
+  { key: "bridge_sent", col: "scope_bridge_sent", en: "Bridge Sent", gu: "મોકલેલ બ્રિજ", empty: "You have not sent any Bridge Tasks." },
+  { key: "all", col: "scope_all", en: "All Tasks", gu: "બધા કાર્યો", only: "global", empty: "No tasks." },
+];
 const PRIORITY_COLORS = { URGENT: "#a23434", HIGH: "#97731c", NORMAL: "#4c6d2b", LOW: "#5c5347" };
 
 function formatDisplayDate(dateStr, lang) {
@@ -51,6 +64,19 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const focusedRef = useRef(null);
+  const isLead = !!(profile.isDeptHead || profile.roleCode === "supervisor" || profile.roleCode === "accounts_head");
+  const isGlobal = !!(profile.isManagement || profile.isSuperAdmin);
+  const availableScopes = SCOPES.filter((sc) => !sc.only || (sc.only === "lead" && (isLead || isGlobal)) || (sc.only === "global" && isGlobal));
+  const [scope, setScopeState] = useState(() => {
+    let saved = null;
+    try { saved = sessionStorage.getItem(SCOPE_STORAGE_KEY); } catch { /* storage unavailable */ }
+    return saved && availableScopes.some((sc) => sc.key === saved) ? saved : "my";
+  });
+  const scopeDef = SCOPES.find((sc) => sc.key === scope) || SCOPES[0];
+  function setScope(next) {
+    setScopeState(next);
+    try { sessionStorage.setItem(SCOPE_STORAGE_KEY, next); } catch { /* non-fatal */ }
+  }
   const [tasks, setTasks] = useState([]);
   const [assigneesByTask, setAssigneesByTask] = useState({});
   const [projectsById, setProjectsById] = useState({});
@@ -196,10 +222,11 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     // Limit raised from 100 -> 300: the date-filter modes (a specific past/
     // future date, This Week, Overdue) need to see further back/forward
     // than "most recently created 100" would allow for an active user.
-    const { data, error } = await supabase
-      .from("staff_tasks")
-      .select("*")
-      .eq("is_active", true)
+    // Scoped at the database: the view exposes staff_tasks (RLS applies) plus scope flags, and each
+    // list filters on ONE flag -- nothing is fetched wide and trimmed in the browser.
+    let taskQuery = supabase.from("staff_task_scope_v").select("*").eq("is_active", true);
+    if (scopeDef.key !== "all") taskQuery = taskQuery.eq(scopeDef.col, true);
+    const { data, error } = await taskQuery
       .order("created_at", { ascending: false })
       .limit(300);
     if (error) {
@@ -248,7 +275,16 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
     loadedOnce.current = true;
     setLoading(false);
-  }, [showToast]);
+  }, [showToast, scopeDef.key, scopeDef.col]);
+
+  useEffect(() => { loadRef.current = load; }, [load]);
+  // Switching list: show the skeleton for the new list, never the previous list's rows.
+  const scopeFirstRun = useRef(true);
+  useEffect(() => {
+    if (scopeFirstRun.current) { scopeFirstRun.current = false; return; }
+    loadedOnce.current = false;
+    setTasks([]);
+  }, [scopeDef.key]);
 
   // Directory used only to resolve ids to names in the timeline and to
   // populate the Reassign candidate list — same RPC AssignTask.jsx already
@@ -296,28 +332,17 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // change, or new task lands here once and automatically reflows into
   // its correct section/date — no separate per-section realtime logic
   // needed.
+  // Realtime is RLS-filtered by Supabase (a user only receives events for rows they may read), and
+  // every event just triggers ONE debounced, scoped re-query. The old handler upserted whatever row
+  // arrived into the list, which would have dropped department-wide rows into a personal list.
+  const loadRef = useRef(null);
   useEffect(() => {
-    return subscribeTable("staff_tasks_today", "staff_tasks", null, (payload) => {
-      if (payload.eventType === "DELETE") {
-        setTasks((cur) => removeById(cur, payload.old.id));
-        return;
-      }
-      const row = payload.new;
-      if (!row) return;
-      if (row.is_active === false) {
-        setTasks((cur) => removeById(cur, row.id));
-        return;
-      }
-      setTasks((cur) => upsertById(cur, row));
-      if (row.project_id) {
-        setProjectsById((cur) => {
-          if (cur[row.project_id]) return cur;
-          supabase.from("projects").select("id, project_code, customer, location").eq("id", row.project_id).maybeSingle()
-            .then(({ data }) => { if (data) setProjectsById((c) => ({ ...c, [data.id]: data })); });
-          return cur;
-        });
-      }
+    let timer = null;
+    const unsub = subscribeTable("staff_tasks_today", "staff_tasks", null, () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => loadRef.current?.(), 300);
     });
+    return () => { window.clearTimeout(timer); unsub(); };
   }, []);
 
   // Second Assignee: merge INSERT/UPDATE/DELETE straight into
@@ -366,6 +391,19 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // this page is already open still re-focuses — the route doesn't
   // remount between two clicks here, only re-renders — while a later
   // realtime reload for the SAME focus id doesn't keep re-scrolling.
+  const focusProbe = useRef(null);
+  useEffect(() => {
+    const focusId = searchParams.get("focus");
+    if (!focusId || loading || focusProbe.current === focusId || tasks.some((tsk) => tsk.id === focusId)) return;
+    focusProbe.current = focusId;
+    supabase.from("staff_task_scope_v").select("id,scope_mine,scope_created,scope_bridge_in,scope_department,scope_bridge_sent,scope_all").eq("id", focusId).maybeSingle().then(({ data: row }) => {
+      if (!row) return; // not visible to this user: RLS says no, so nothing opens
+      const pick = SCOPES.find((sc) => availableScopes.some((a) => a.key === sc.key) && row[sc.col]);
+      if (pick && pick.key !== scope) setScope(pick.key);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, tasks]);
+
   useEffect(() => {
     const focusId = searchParams.get("focus");
     const messageId = searchParams.get("message");
@@ -680,6 +718,11 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   }), [projectsById, lookups.statuses, lookups.priorities, lookups.departments, lang, assigneeOptions]);
   const activeFilters = activeFilterList(filterValues, filterOptions, lang);
 
+  const deptName = (id) => {
+    const d = lookups.departmentById?.[id];
+    return d ? (lang === "gu" ? d.name_gu : d.name_en) : "—";
+  };
+
   function renderTaskCard(task) {
     const status = statusOf(task.status_id);
     const statusCode = status?.code || "";
@@ -731,6 +774,21 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           <div>
             <div className="task-title">{task.title}</div>
             <div className="task-number">{t("taskNumber", lang)} {task.task_number}</div>
+            <div className="task-meta" style={{ marginTop: 4, gap: 6 }}>
+              {task.is_bridge ? (
+                <span className="fx-tag gold" title="Bridge Task">
+                  🌉 Bridge · {deptName(task.from_department_id)} → {deptName(task.to_department_id)}
+                </span>
+              ) : (
+                <span className="fx-tag">{deptName(task.to_department_id)}</span>
+              )}
+              {usersById[task.assigned_to] && (
+                <span className="fx-tag">
+                  👤 {usersById[task.assigned_to].full_name}
+                  {(assigneesByTask[task.id] || []).filter((r) => r.assignment_role === "secondary").map((r) => usersById[r.user_id]?.full_name).filter(Boolean).map((n) => ` + ${n}`).join("")}
+                </span>
+              )}
+            </div>
           </div>
           <span className={`badge ${statusCode}`}>{lang === "gu" ? status?.name_gu : status?.name_en || statusCode}</span>
         </div>
@@ -1055,6 +1113,15 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         </button>
       </div>
 
+      {/* ---------------- Which list: personal vs department vs bridge ---------------- */}
+      <div className="fx-tabs" role="tablist" aria-label="Task lists" style={{ marginBottom: 8 }}>
+        {availableScopes.map((sc) => (
+          <button key={sc.key} type="button" role="tab" aria-selected={scope === sc.key} className={scope === sc.key ? "active" : ""} onClick={() => setScope(sc.key)}>
+            {lang === "gu" ? sc.gu : sc.en}
+          </button>
+        ))}
+      </div>
+
       {/* ---------------- Date + search + filter toolbar ---------------- */}
       <div className="tt-toolbar">
         <div className="tt-toolbar-top">
@@ -1121,7 +1188,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
         />
       )}
 
-      {assignedItems.length > 0 && (
+      {scope === "my" && assignedItems.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
           <div className="section-title" style={{ fontSize: 15 }}>{t("myAssignedItems", lang)}</div>
           {assignedItems.map((item) => (
@@ -1138,7 +1205,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       )}
 
       {loading && tasks.length === 0 && <div className="msg info">…</div>}
-      {!loading && totalVisible === 0 && assignedItems.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
+      {!loading && totalVisible === 0 && (scope !== "my" || assignedItems.length === 0) && <div className="msg info">{scope === "my" ? t("noTasks", lang) : scopeDef.empty}</div>}
 
       {!loading && sections.mode === "date" && (
         <>
