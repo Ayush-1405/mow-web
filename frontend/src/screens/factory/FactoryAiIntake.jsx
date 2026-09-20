@@ -24,6 +24,7 @@ export default function FactoryAiIntake({ lang, profile, lookups }) {
   const [files, setFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [sent, setSent] = useState(null);
   // One key per form session: a retry (double-click, flaky network) reuses it,
   // so the server returns the same request instead of creating a second one.
   const idemKey = useRef(crypto.randomUUID());
@@ -74,11 +75,12 @@ export default function FactoryAiIntake({ lang, profile, lookups }) {
     if (res.error) console.error("[FactoryAiIntake] extraction trigger failed", res.error);
     idemKey.current = crypto.randomUUID();
     setTitle(""); setFiles([]); setRequiredDate(""); setPriority("Normal");
+    setSent({ jobId: res.jobId, number: res.jobNumber || res.requestNumber });
     setMsg({
       type: "success",
       text: res.error
-        ? `Sent to Factory as ${res.requestNumber}. Automatic reading is delayed; the Factory team will review it manually.`
-        : `Sent to Factory as ${res.requestNumber}. It is being prepared for the Factory Head's review.`,
+        ? `Sent to Factory as Job Card ${res.jobNumber || res.requestNumber}. Automatic reading is not available right now, so the Factory team will check the details themselves.`
+        : `Sent to Factory as Job Card ${res.jobNumber || res.requestNumber}. Details are being read automatically — the Factory Head will verify them.`,
     });
   }
 
@@ -128,7 +130,8 @@ export default function FactoryAiIntake({ lang, profile, lookups }) {
 
         <div className="btn-row" style={{ marginTop: 12 }}>
           <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Sending…" : "Send to Factory"}</button>
-          {msg?.type === "success" && <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => navigate("/")}>Done</button>}
+          {msg?.type === "success" && sent?.jobId && <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => navigate(`/factory-job/${sent.jobId}`)}>View Job Card</button>}
+          <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => navigate("/factory-requests")}>My Factory Requests</button>
         </div>
         {msg && <div className={`msg ${msg.type}`} style={{ marginTop: 8 }}>{msg.text}</div>}
       </form>

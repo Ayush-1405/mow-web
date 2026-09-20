@@ -248,8 +248,9 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
   const [thumbUrls, setThumbUrls] = useState({});
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
+  const loadedOnce = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!loadedOnce.current) setLoading(true);
     const { data, error } = await supabase
       .from("staff_attachments")
       .select("*")
@@ -259,6 +260,7 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
       .order("created_at", { ascending: false });
     if (error) showToast("error", error.message);
     else setItems(data || []);
+    loadedOnce.current = true;
     setLoading(false);
   }, [taskId, showToast]);
 
@@ -298,6 +300,30 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
       showToast("error", err.message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  // Signed URLs are deliberately short-lived (~2 min), so a URL cached at
+  // page load is dead by the time someone taps a thumbnail a few minutes
+  // later (or the browser re-requests an evicted image) -- that is the
+  // "Failed to load resource ... 400" on Screenshot*.png. Mint a fresh one
+  // for the lightbox every time, and once per image when a thumbnail fails.
+  const retriedThumbs = useRef(new Set());
+  async function refreshThumb(attachmentId) {
+    if (retriedThumbs.current.has(attachmentId)) return;
+    retriedThumbs.current.add(attachmentId);
+    try {
+      const res = await downloadTaskProof(attachmentId);
+      setThumbUrls((cur) => ({ ...cur, [attachmentId]: res.signed_url }));
+    } catch { /* keep the placeholder; the Download path still works */ }
+  }
+  async function openLightbox(a) {
+    try {
+      const res = await downloadTaskProof(a.id);
+      setThumbUrls((cur) => ({ ...cur, [a.id]: res.signed_url }));
+      setLightboxUrl(res.signed_url);
+    } catch (err) {
+      showToast("error", err.message);
     }
   }
 
@@ -355,10 +381,10 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
               key={a.id}
               type="button"
               className="proof-thumb"
-              onClick={() => (thumbUrls[a.id] ? setLightboxUrl(thumbUrls[a.id]) : handleDownload(a.id))}
+              onClick={() => openLightbox(a)}
               title={a.original_filename}
             >
-              {thumbUrls[a.id] ? <img src={thumbUrls[a.id]} alt={a.original_filename} /> : "…"}
+              {thumbUrls[a.id] ? <img src={thumbUrls[a.id]} alt={a.original_filename} onError={() => refreshThumb(a.id)} /> : "…"}
             </button>
           ))}
         </div>

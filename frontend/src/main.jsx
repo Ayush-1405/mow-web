@@ -5,6 +5,7 @@ import { registerSW } from "virtual:pwa-register";
 import App from "./App.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
 import "./styles.css";
+import "./factory.css";
 
 // Manual registration (injectRegister: null in vite.config.js) so a new
 // deployed version never force-reloads mid-session -- onNeedReload only

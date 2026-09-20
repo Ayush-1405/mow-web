@@ -28,6 +28,13 @@ import { DEPARTMENT_ROUTES, buildOrderedDepartments } from "./lib/departmentConf
 // switcher lower in this file.
 const TodayTasks = lazy(() => import("./screens/TodayTasks.jsx"));
 const AssignTask = lazy(() => import("./screens/AssignTask.jsx"));
+// Old Job Order links (?job=ID from notifications, reports, bookmarks) land on
+// the one Job Card page; the page itself enforces access through RLS.
+function JobOrdersRedirect() {
+  const id = new URLSearchParams(window.location.search).get("job");
+  return <Navigate to={id ? `/factory-job/${id}` : "/factory/job-cards"} replace />;
+}
+
 const Bridges = lazy(() => import("./screens/Bridges.jsx"));
 const Notifications = lazy(() => import("./screens/Notifications.jsx"));
 const UserCreation = lazy(() => import("./screens/UserCreation.jsx"));
@@ -58,8 +65,9 @@ const InteriorPurchaseManagement = lazy(() => import("./screens/interior/Interio
 const FactoryJobOrders = lazy(() => import("./screens/factory/FactoryJobOrders.jsx"));
 const AiTaskAssistant = lazy(() => import("./screens/AiTaskAssistant.jsx"));
 const FactoryAiIntake = lazy(() => import("./screens/factory/FactoryAiIntake.jsx"));
-const FactoryAiInbox = lazy(() => import("./screens/factory/FactoryAiInbox.jsx"));
-const FactoryControlDashboard = lazy(() => import("./screens/factory/FactoryControlDashboard.jsx"));
+const FactoryInbox = lazy(() => import("./screens/factory/FactoryInbox.jsx"));
+const FactoryJobCardPage = lazy(() => import("./screens/factory/FactoryJobCardPage.jsx"));
+const FactoryDashboard = lazy(() => import("./screens/factory/FactoryDashboard.jsx"));
 const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
 const FactoryInProcessQC = lazy(() => import("./screens/factory/FactoryInProcessQC.jsx"));
@@ -515,12 +523,12 @@ export default function App() {
     // DepartmentDashboard shell's Department Functions grid — decided here,
     // at the route level, so DepartmentDashboard's own hooks are never
     // conditionally skipped for any department.
-    const Body = code === "FACTORY" ? FactoryControlDashboard : DepartmentDashboard;
+    const Body = code === "FACTORY" ? FactoryDashboard : DepartmentDashboard;
     return (
       <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
         <ProtectedRoute allowed={allowed} lang={lang}>
           {dept
-            ? <Body lang={lang} profile={profile} department={dept} onOpenLegacy={openLegacyView} />
+            ? <Body lang={lang} profile={profile} lookups={lookups} department={dept} onOpenLegacy={openLegacyView} />
             : <div className="msg error">Department not configured in the database yet.</div>}
         </ProtectedRoute>
       </DeptShell>
@@ -601,9 +609,20 @@ export default function App() {
           <FactoryAiIntake lang={lang} profile={profile} lookups={lookups} />
         </DeptShell>
       } />
-      <Route path="/factory-inbox" element={
+      <Route path="/factory-inbox" element={<Navigate to="/factory/inbox" replace />} />
+      <Route path="/factory-requests" element={
         <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
-          <FactoryAiInbox lang={lang} profile={profile} lookups={lookups} />
+          <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="requests" />
+        </DeptShell>
+      } />
+      <Route path="/factory-job/:id" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <FactoryJobCardPage lang={lang} profile={profile} lookups={lookups} />
+        </DeptShell>
+      } />
+      <Route path="/notifications" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <Notifications lang={lang} showToast={showToast} />
         </DeptShell>
       } />
       <Route path="/users" element={
@@ -667,7 +686,12 @@ export default function App() {
       <Route path="/inventory" element={deptPage("GODOWN_INV")} />
       <Route path="/dispatch" element={deptPage("DISPATCH")} />
       <Route path="/factory" element={deptPage("FACTORY")} />
-      <Route path="/factory/job-orders" element={deptModulePage("FACTORY", <FactoryJobOrders lang={lang} profile={profile} />)} />
+      <Route path="/factory/inbox" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="inbox" />)} />
+      <Route path="/factory/job-cards" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="jobcards" />)} />
+      <Route path="/factory/my-tasks" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="mytasks" />)} />
+      <Route path="/factory/completed" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="completed" />)} />
+      <Route path="/factory/job-orders" element={<JobOrdersRedirect />} />
+      <Route path="/factory/legacy-job-orders" element={deptModulePage("FACTORY", <FactoryJobOrders lang={lang} profile={profile} />)} />
       <Route path="/factory/wip-stages" element={deptModulePage("FACTORY", <FactoryWipStages lang={lang} profile={profile} />)} />
       <Route path="/factory/in-process-qc" element={deptModulePage("FACTORY", <FactoryInProcessQC lang={lang} profile={profile} />)} />
       <Route path="/factory/final-qc" element={deptModulePage("FACTORY", <FactoryFinalQC lang={lang} profile={profile} />)} />

@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { submitJobCard } from "../../lib/factoryApi";
+import { friendlyRpcError } from "../factory/factoryConstants";
 import { t } from "../../lib/i18n";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
 
@@ -18,6 +21,10 @@ export default function RetailOrders({ lang }) {
   const [payments, setPayments] = useState([]);
   const [payForm, setPayForm] = useState({ amount: "", payment_mode: "", note: "" });
   const [saving, setSaving] = useState(false);
+  const [sentMap, setSentMap] = useState({});
+  const [factoryDate, setFactoryDate] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendMsg, setSendMsg] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -25,6 +32,11 @@ export default function RetailOrders({ lang }) {
     const { data, error: err } = await supabase.from("retail_orders").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(200);
     if (err) { setError(true); setLoading(false); return; }
     setRows(data || []);
+    const ids = (data || []).map((o) => o.id);
+    if (ids.length > 0) {
+      const { data: jobs } = await supabase.from("inhouse_production_requests").select("id, job_order_number, factory_status, source_record_id").eq("source_module", "retail").in("source_record_id", ids);
+      setSentMap(Object.fromEntries((jobs || []).map((j) => [j.source_record_id, j])));
+    }
     setLoading(false);
   }, []);
 
@@ -39,6 +51,21 @@ export default function RetailOrders({ lang }) {
     ]);
     setItems(itemsRes.data || []);
     setPayments(paymentsRes.data || []);
+  }
+
+  async function sendToFactory(order) {
+    if (sending) return;
+    setSending(true); setSendMsg(null);
+    const { data: lines } = await supabase.from("retail_order_items").select("item_name, quantity").eq("order_id", order.id);
+    const { data, error: err } = await submitJobCard({
+      idempotencyKey: `retail-order:${order.id}`, sourceModule: "retail", sourceReference: order.order_number, sourceRecordId: order.id,
+      customerName: order.customer_name, title: `Order ${order.order_number}`, requiredDate: factoryDate || null, priority: "Normal",
+      items: (lines || []).map((l) => ({ item_name: l.item_name, quantity: Number(l.quantity), unit: "Nos" })),
+    });
+    setSending(false);
+    if (err) { console.error("[RetailOrders] send to factory failed", err); setSendMsg({ id: order.id, type: "error", text: friendlyRpcError(err, "Could not send to Factory. Please try again.") }); return; }
+    setSentMap((m) => ({ ...m, [order.id]: { id: data.job_id, job_order_number: data.job_order_number, factory_status: "pending_verification", source_record_id: order.id } }));
+    setSendMsg({ id: order.id, type: "success", text: data.already_submitted ? `Already sent as Job Card ${data.job_order_number}.` : `Sent to Factory — Job Card ${data.job_order_number} created.` });
   }
 
   async function updateStatus(id, status) {
@@ -99,6 +126,20 @@ export default function RetailOrders({ lang }) {
                   <select value={r.status} onChange={(e) => updateStatus(r.id, e.target.value)}>
                     {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
+                </div>
+                <div className="fx-section" style={{ marginTop: 10 }}>
+                  {sentMap[r.id] ? (
+                    <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
+                      <span className="badge VERIFIED">Sent to Factory</span>
+                      <Link to={`/factory-job/${sentMap[r.id].id}`} className="fx-tag gold">Job Card {sentMap[r.id].job_order_number} →</Link>
+                    </div>
+                  ) : (
+                    <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
+                      <div className="field" style={{ margin: 0 }}><label>Required by (optional)</label><input type="date" value={factoryDate} onChange={(e) => setFactoryDate(e.target.value)} disabled={sending} /></div>
+                      <button type="button" className="btn btn-primary" style={{ width: "auto", marginTop: 0 }} disabled={sending} onClick={() => sendToFactory(r)}>{sending ? "Sending…" : "Send to Factory"}</button>
+                    </div>
+                  )}
+                  {sendMsg?.id === r.id && <div className={`msg ${sendMsg.type}`} style={{ marginTop: 8 }}>{sendMsg.text}</div>}
                 </div>
                 <h3 style={{ marginTop: 10 }}>{t("itemNameLabel", lang)}</h3>
                 {items.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}

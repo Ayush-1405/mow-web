@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { formatCurrency } from "../../lib/retailModules";
@@ -7,12 +7,12 @@ import { subscribeTable } from "../../lib/realtime";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 import {
   listProjects, listInteriorPeople,
-  listFactoryLocations, createFactoryLocation, listVendors, createVendor,
+  listFactoryLocations, listVendors, createVendor,
   listPurchaseChecklistItems, listPurchaseRequests, listAllPurchaseRequests,
   createPurchaseRequest, updatePurchaseRequest, archivePurchaseRequest,
   listPurchaseRequestItems, createPurchaseRequestItem, updatePurchaseRequestItem,
-  getInhouseProductionRequest, submitToFactory,
-  submitInhouseFactoryFiles, FACTORY_DRAWING_TYPES, listFactoryDrawingsForJob, factoryUploadDrawing, getAttachmentUrl,
+  getInhouseProductionRequest,
+  listFactoryDrawingsForJob, factoryUploadDrawing, getAttachmentUrl,
   uploadFactoryAttachment, removeFactoryAttachmentFile, deleteWorkingDrawingAttachment,
   getOutsourceRequirement, upsertOutsourceRequirement,
   listVendorQuotations, createVendorQuotation, listPurchaseVendorSelections, selectPurchaseVendor,
@@ -27,6 +27,8 @@ import {
 } from "../../lib/interiorApi";
 import { AttachmentUploader, AttachmentList, ViewDownloadButton, CreateTaskButton } from "./InteriorWorkingDrawings.jsx";
 import InteriorActivityHistory from "./InteriorActivityHistory.jsx";
+import { submitJobCard, uploadJobFile, FACTORY_FILE_MAX_MB } from "../../lib/factoryApi";
+import { friendlyRpcError } from "../factory/factoryConstants";
 
 const OUTSOURCE_TYPES = [
   "Finished Goods Purchase", "Vendor Manufacturing/Job Work", "Material-Only Purchase",
@@ -147,9 +149,14 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
 
   useEffect(() => { if (view === "board") loadBoard(); }, [view, loadBoard]);
 
+  // Skeleton only the FIRST time a request's detail loads. Every later
+  // refresh (realtime event, returning to the tab, a save) swaps the data in
+  // place -- swapping the panels for a skeleton unmounted whatever form the
+  // user was filling in, including a file they had just picked to upload.
+  const detailLoadedFor = useRef(null);
   const loadDetail = useCallback(async () => {
-    if (!requestId) { setDetail(null); return; }
-    setDetailLoading(true);
+    if (!requestId) { setDetail(null); detailLoadedFor.current = null; return; }
+    if (detailLoadedFor.current !== requestId) setDetailLoading(true);
     const [
       itemsRes, inhouseRes, outsourceRes, quotationsRes, selectionsRes, approvalsRes,
       ordersRes, costingRes, checklistResultsRes, followupsRes, receiptsRes, paymentsRes, attachmentsRes,
@@ -167,6 +174,7 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
       followups: followupsRes.data || [], receipts: receiptsRes.data || [], payments: paymentsRes.data || [],
       attachments: attachmentsRes.data || [],
     });
+    detailLoadedFor.current = requestId;
     setDetailLoading(false);
   }, [requestId, isOrgWide]);
 
@@ -536,8 +544,6 @@ function RequestPanel({ lang, projectId, request, items, people, profile, isElev
 // =======================================================================
 // In-house workflow
 // =======================================================================
-const EMPTY_FACTORY_FILE = { title: "", fileType: "", customFileType: "", note: "", drawingDate: "", file: null };
-
 // The only categories shown/uploadable on the simplified Purchase Request
 // screen -- a subset of the full FACTORY_DRAWING_TYPES vocabulary (all 7
 // values are already valid per factory_drawings_category_check, so no
@@ -692,6 +698,7 @@ function FactoryReferenceView({ lang, project, request, inhouse, people, profile
   return (
     <div className="card">
       <h2>Factory / In-house</h2>
+      <div style={{ marginBottom: 8 }}><Link to={`/factory-job/${inhouse.id}`} className="fx-tag gold">Open Factory Job Card →</Link></div>
 
       <h3 style={{ marginTop: 0 }}>Factory Reference</h3>
       <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
@@ -760,205 +767,110 @@ function FactoryReferenceView({ lang, project, request, inhouse, people, profile
   );
 }
 
-function InhousePanel({ lang, projectId, project, request, inhouse, factoryLocations, people, profile, onChanged }) {
-  const [form, setForm] = useState({
-    factory_location_id: "", production_department: "", product_item: "", bom_reference: "", quantity: "", unit: "",
-    required_completion_date: "", delivery_site_date: "", assigned_factory_coordinator: "", second_assignee: "", special_instructions: "",
-    quality_requirements: "", finishing_requirements: "", packing_requirements: "", installation_requirement: "",
-  });
-  const [msg, setMsg] = useState("");
-  const [newLocationName, setNewLocationName] = useState("");
+// Send to Factory (In-house). Deliberately tiny: what is needed, how many,
+// by when, and the drawings. Customer, site, project, requester and source
+// department come from the request and project; the Job Card is created
+// automatically and the Factory Head/Supervisor picks the team AFTER
+// accepting it -- the sender never chooses a Factory employee.
+const FACTORY_SEND_FILE_TYPES = ["Working Drawing", "Production Drawing", "3D Drawing", "Reference Photo", "Material Specification", "Job Card", "Others"];
 
-  // Factory Reference Drawings & Files -- always shown here (this whole
-  // panel only ever renders for purchase_source = 'in_house' in the first
-  // place, so no extra visibility condition is needed on top of that).
-  const [factoryFiles, setFactoryFiles] = useState([{ ...EMPTY_FACTORY_FILE }]);
-  const [noDrawingYet, setNoDrawingYet] = useState(false);
-  const [noDrawingReason, setNoDrawingReason] = useState("");
-  const [expectedDrawingDate, setExpectedDrawingDate] = useState("");
+function InhousePanel({ lang, projectId, project, request, inhouse, people, profile, onChanged }) {
+  const [rows, setRows] = useState([{ item_name: "", quantity: "", unit: "Nos" }]);
+  const [requiredDate, setRequiredDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState([]);
+  const [fileType, setFileType] = useState(FACTORY_SEND_FILE_TYPES[0]);
   const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const idemKey = useRef(request?.id ? `pr:${request.id}` : crypto.randomUUID());
 
-  const factoryPeople = people.filter((p) => p.department_name === "Factory/Manufacturing");
-
-  function updateFileRow(i, patch) {
-    setFactoryFiles((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  }
-  const validFileRows = factoryFiles.filter((r) => r.file);
+  const setRow = (i, patch) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (form.second_assignee && form.second_assignee === form.assigned_factory_coordinator) {
-      setMsg(lang === "gu" ? "કોઓર્ડિનેટર અને બીજી જવાબદાર વ્યક્તિ અલગ હોવી જોઈએ." : "Coordinator and Second Assignee must be different people.");
-      return;
-    }
-    if (!form.special_instructions.trim()) {
-      setMsg("Overall Factory Notes / Production Instructions is required.");
-      return;
-    }
-    if (noDrawingYet) {
-      if (!noDrawingReason.trim() || !expectedDrawingDate) {
-        setMsg("A reason and expected drawing date are required when no drawing is available yet.");
-        return;
-      }
-    } else {
-      if (validFileRows.length === 0) {
-        setMsg("At least one reference drawing/file is required, or check \"No Drawing Available Yet\".");
-        return;
-      }
-      for (const r of validFileRows) {
-        if (!r.title.trim() || !r.fileType || (r.fileType === "Others" && !r.customFileType.trim())) {
-          setMsg("Every file needs a Title and a Drawing/File Type (and a Custom Type if \"Other\").");
-          return;
-        }
-      }
-    }
+    if (submitting) return;
+    setMsg(null);
+    const items = rows.filter((r) => r.item_name.trim()).map((r) => ({
+      item_name: r.item_name.trim(), quantity: r.quantity === "" ? null : Number(r.quantity), unit: r.unit.trim() || null,
+    }));
+    if (items.length === 0) { setMsg({ type: "error", text: "Please add at least one item." }); return; }
+    if (items.some((i) => i.quantity !== null && !(i.quantity >= 0))) { setMsg({ type: "error", text: "Quantity must be a number." }); return; }
+    if (!requiredDate) { setMsg({ type: "error", text: "Please choose the required date." }); return; }
 
     setSubmitting(true);
-    setMsg(t("saving", lang));
-    const { data: submission, error: err, alreadySubmitted } = await submitToFactory(projectId, request.id, {
-      ...form, quantity: form.quantity || null, assigned_factory_coordinator: form.assigned_factory_coordinator || null,
-      no_drawing_reason: noDrawingYet ? noDrawingReason.trim() : null, expected_drawing_date: noDrawingYet ? expectedDrawingDate : null,
-    }, form.second_assignee || null);
-    if (err) {
+    const { data, error } = await submitJobCard({
+      idempotencyKey: idemKey.current, sourceModule: "interior", sourceReference: request.request_number, sourceRecordId: request.id,
+      projectId, customerName: project?.customer, siteLocation: project?.location, title: items[0].item_name,
+      requiredDate, priority: request.priority && ["Normal", "High", "Urgent", "Emergency"].includes(request.priority) ? request.priority : "Normal",
+      notes: notes.trim() || request.purpose || null, items, purchaseRequestId: request.id,
+    });
+    if (error) {
       setSubmitting(false);
-      setMsg(err.message || t("errorSaving", lang));
+      console.error("[Send to Factory] failed", error);
+      setMsg({ type: "error", text: friendlyRpcError(error, "Could not send to Factory. Please try again.") });
       return;
     }
-    if (alreadySubmitted) {
+    if (data.already_submitted) {
       setSubmitting(false);
-      setMsg(t("alreadySubmittedMsg", lang));
+      setMsg({ type: "info", text: t("alreadySubmittedMsg", lang) });
       onChanged();
       return;
     }
-
-    if (!noDrawingYet) {
-      for (let i = 0; i < validFileRows.length; i++) {
-        setMsg(`Uploading file ${i + 1} of ${validFileRows.length}…`);
-        const { error: fileErr } = await submitInhouseFactoryFiles({
-          projectId, jobId: submission.job_id, files: [validFileRows[i]], uploadedBy: profile?.id,
-        });
-        if (fileErr) {
-          setSubmitting(false);
-          setMsg(`Job ${submission.job_order_number} created, but a file upload failed: ${fileErr.message || fileErr}. You can upload it from the Factory Drawings screen.`);
-          onChanged();
-          return;
-        }
-      }
+    let failed = 0;
+    for (let i = 0; i < files.length; i++) {
+      setMsg({ type: "info", text: `Uploading file ${i + 1} of ${files.length}…` });
+      const r = await uploadJobFile(data.job_id, files[i], fileType, files[i].name);
+      if (r.error) { failed += 1; console.error("[Send to Factory] file upload failed", r.error); }
     }
-
     setSubmitting(false);
-    setMsg(`${t("saved", lang)} — Job ${submission.job_order_number}.`);
-    setFactoryFiles([{ ...EMPTY_FACTORY_FILE }]);
-    setNoDrawingYet(false); setNoDrawingReason(""); setExpectedDrawingDate("");
+    setMsg({
+      type: failed ? "error" : "success",
+      text: failed
+        ? `Job Card ${data.job_order_number} was created, but ${failed} file(s) could not be uploaded. Open the Job Card to add them again.`
+        : `Sent to Factory — Job Card ${data.job_order_number} created.`,
+    });
     onChanged();
   }
 
-  async function handleAddLocation() {
-    if (!newLocationName.trim()) return;
-    await createFactoryLocation({ name: newLocationName.trim() });
-    setNewLocationName("");
-    onChanged();
-  }
-
-  // Everything costing/status-update/completion-related that used to live
-  // here moved to the Factory Job Card itself (FactoryJobOrders.jsx) — per
-  // explicit request this page now shows only the Factory Reference summary
-  // + reference attachments once a job exists. Nothing was deleted: the same
-  // inhouse_production_requests row, same factory_drawings rows, same
-  // history are all still there and still fully manageable from the Job
-  // Card / Factory Drawings screens.
   if (inhouse) {
     return <FactoryReferenceView lang={lang} projectId={projectId} project={project} request={request} inhouse={inhouse} people={people} profile={profile} onChanged={onChanged} />;
   }
 
   return (
     <div className="card">
-      <h2>Submit to Factory</h2>
+      <h2>Send to Factory</h2>
+      <div className="sub" style={{ marginBottom: 8 }}>
+        Project: <strong>{project ? `${project.project_code} — ${project.customer}` : "—"}</strong>. Factory will verify the details and choose the team — you do not select a Factory employee.
+      </div>
       <form onSubmit={handleSubmit} className="form-grid">
-        <div className="field"><label>{t("selectFactoryLabel", lang)}</label>
-          <div className="btn-row">
-            <select value={form.factory_location_id} onChange={(e) => setForm((f) => ({ ...f, factory_location_id: e.target.value }))} required>
-              <option value="">—</option>
-              {factoryLocations.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-            <input placeholder="New location name" value={newLocationName} onChange={(e) => setNewLocationName(e.target.value)} style={{ width: "auto" }} />
-            <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={handleAddLocation}>+ Add</button>
-          </div>
+        <div className="field full">
+          <label>Items needed *</label>
+          {rows.map((r, i) => (
+            <div key={i} className="form-grid" style={{ gridTemplateColumns: "2fr 1fr 1fr auto", marginBottom: 6 }}>
+              <input placeholder="Item / product" value={r.item_name} onChange={(e) => setRow(i, { item_name: e.target.value })} disabled={submitting} />
+              <input type="number" min="0" placeholder="Qty" value={r.quantity} onChange={(e) => setRow(i, { quantity: e.target.value })} disabled={submitting} />
+              <input placeholder="Unit" value={r.unit} onChange={(e) => setRow(i, { unit: e.target.value })} disabled={submitting} />
+              {rows.length > 1 && <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 0 }} onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))} disabled={submitting} aria-label="Remove item">✕</button>}
+            </div>
+          ))}
+          <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setRows((rs) => [...rs, { item_name: "", quantity: "", unit: "Nos" }])} disabled={submitting}>+ Add item</button>
         </div>
-        <div className="field"><label>Production Department</label><input value={form.production_department} onChange={(e) => setForm((f) => ({ ...f, production_department: e.target.value }))} /></div>
-        <div className="field"><label>Product/Item</label><input value={form.product_item} onChange={(e) => setForm((f) => ({ ...f, product_item: e.target.value }))} required /></div>
-        <div className="field"><label>BOM Reference</label><input value={form.bom_reference} onChange={(e) => setForm((f) => ({ ...f, bom_reference: e.target.value }))} /></div>
-        <div className="field"><label>Quantity</label><input type="number" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} required /></div>
-        <div className="field"><label>Unit</label><input value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} /></div>
-        <div className="field"><label>Required Completion Date</label><input type="date" value={form.required_completion_date} onChange={(e) => setForm((f) => ({ ...f, required_completion_date: e.target.value }))} required /></div>
-        <div className="field"><label>Delivery/Site Requirement Date</label><input type="date" value={form.delivery_site_date} onChange={(e) => setForm((f) => ({ ...f, delivery_site_date: e.target.value }))} /></div>
-        <div className="field"><label>Assigned Factory Coordinator</label>
-          <select value={form.assigned_factory_coordinator} onChange={(e) => setForm((f) => ({ ...f, assigned_factory_coordinator: e.target.value }))} required>
-            <option value="">—</option>
-            {factoryPeople.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.employee_code || "—"}</option>)}
-          </select>
-          {factoryPeople.length === 0 && <div className="sub" style={{ color: "var(--danger, #b91c1c)" }}>No active Factory employees found — a coordinator is required to submit.</div>}
+        <div className="field"><label>Required date *</label><input type="date" value={requiredDate} onChange={(e) => setRequiredDate(e.target.value)} disabled={submitting} /></div>
+        <div className="field full"><label>Notes for Factory (optional)</label><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={submitting} /></div>
+        <div className="field"><label>File type</label>
+          <select value={fileType} onChange={(e) => setFileType(e.target.value)} disabled={submitting}>{FACTORY_SEND_FILE_TYPES.map((ft) => <option key={ft} value={ft}>{ft}</option>)}</select></div>
+        <div className="field full"><label>Drawings / photos / files (optional)</label>
+          <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.dwg,.dxf,.xlsx,.xls,.csv,.docx" disabled={submitting}
+            onChange={(e) => {
+              const picked = Array.from(e.target.files || []);
+              if (picked.some((f) => f.size > FACTORY_FILE_MAX_MB * 1024 * 1024)) { setMsg({ type: "error", text: `Each file must be under ${FACTORY_FILE_MAX_MB} MB.` }); e.target.value = ""; return; }
+              setMsg(null); setFiles(picked);
+            }} />
+          {files.length > 0 && <div className="sub">{files.map((f) => f.name).join(", ")}</div>}
+          <div className="sub">If you have no drawing yet, send without one — Factory will ask for it.</div>
         </div>
-        <div className="field"><label>Second Assignee (optional)</label>
-          <select value={form.second_assignee} onChange={(e) => setForm((f) => ({ ...f, second_assignee: e.target.value }))}>
-            <option value="">—</option>
-            {factoryPeople.filter((p) => p.id !== form.assigned_factory_coordinator).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.employee_code || "—"}</option>)}
-          </select>
-        </div>
-        <div className="field full"><label>Overall Factory Notes / Production Instructions *</label>
-          <textarea rows={2} value={form.special_instructions} onChange={(e) => setForm((f) => ({ ...f, special_instructions: e.target.value }))} required />
-          <div className="sub" style={{ marginTop: 4 }}>Visible to Factory in the Requirement Inbox and Job Card.</div>
-        </div>
-        <div className="field"><label>Quality Requirements</label><textarea rows={2} value={form.quality_requirements} onChange={(e) => setForm((f) => ({ ...f, quality_requirements: e.target.value }))} /></div>
-        <div className="field"><label>Finishing Requirements</label><textarea rows={2} value={form.finishing_requirements} onChange={(e) => setForm((f) => ({ ...f, finishing_requirements: e.target.value }))} /></div>
-        <div className="field"><label>Packing Requirements</label><textarea rows={2} value={form.packing_requirements} onChange={(e) => setForm((f) => ({ ...f, packing_requirements: e.target.value }))} /></div>
-        <div className="field"><label>Installation Requirement</label><textarea rows={2} value={form.installation_requirement} onChange={(e) => setForm((f) => ({ ...f, installation_requirement: e.target.value }))} /></div>
-
-        <div className="field full" style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}>
-          <h3 style={{ margin: "0 0 4px" }}>Factory Reference Drawings &amp; Files</h3>
-          <label className="sub" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={noDrawingYet} onChange={(e) => setNoDrawingYet(e.target.checked)} />
-            No Drawing Available Yet
-          </label>
-        </div>
-
-        {noDrawingYet ? (
-          <>
-            <div className="field"><label>Reason *</label><input value={noDrawingReason} onChange={(e) => setNoDrawingReason(e.target.value)} required /></div>
-            <div className="field"><label>Expected Drawing Date *</label><input type="date" value={expectedDrawingDate} onChange={(e) => setExpectedDrawingDate(e.target.value)} required /></div>
-            <div className="msg info full" style={{ gridColumn: "1 / -1" }}>This job will start at stage "Drawing Pending" — Factory will see it flagged as awaiting a drawing.</div>
-          </>
-        ) : (
-          <div className="field full">
-            {factoryFiles.map((row, i) => (
-              <div key={i} className="form-grid" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                <div className="field"><label>File Title {row.file ? "*" : ""}</label><input value={row.title} onChange={(e) => updateFileRow(i, { title: e.target.value })} placeholder="e.g. Kitchen Working Drawing" /></div>
-                <div className="field"><label>Drawing/File Type {row.file ? "*" : ""}</label>
-                  <select value={row.fileType} onChange={(e) => updateFileRow(i, { fileType: e.target.value })}>
-                    <option value="">—</option>
-                    {FACTORY_DRAWING_TYPES.map((ft) => <option key={ft} value={ft}>{ft}</option>)}
-                  </select>
-                </div>
-                {row.fileType === "Others" && (
-                  <div className="field"><label>Custom File Type *</label><input value={row.customFileType} onChange={(e) => updateFileRow(i, { customFileType: e.target.value })} /></div>
-                )}
-                <div className="field"><label>File {row.title || row.fileType ? "*" : ""}</label>
-                  <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.dwg,.dxf,.xls,.xlsx,.doc,.docx" onChange={(e) => updateFileRow(i, { file: e.target.files?.[0] || null })} />
-                  {row.file && <div className="sub" style={{ marginTop: 4 }}>{row.file.name}</div>}
-                </div>
-                <div className="field"><label>Drawing Date</label><input type="date" value={row.drawingDate} onChange={(e) => updateFileRow(i, { drawingDate: e.target.value })} /></div>
-                <div className="field full"><label>Note / Factory Instruction for this file</label><textarea rows={2} value={row.note} onChange={(e) => updateFileRow(i, { note: e.target.value })} /></div>
-                {factoryFiles.length > 1 && (
-                  <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setFactoryFiles((rows) => rows.filter((_, idx) => idx !== i))}>Remove File</button>
-                )}
-              </div>
-            ))}
-            <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setFactoryFiles((rows) => [...rows, { ...EMPTY_FACTORY_FILE }])}>+ Add Another File</button>
-          </div>
-        )}
-
-        <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Submitting…" : t("submitToFactoryLabel", lang)}</button>
-        {msg && <div className="sub">{msg}</div>}
+        <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Sending…" : t("submitToFactoryLabel", lang)}</button>
+        {msg && <div className={`msg ${msg.type}`} style={{ gridColumn: "1 / -1" }}>{msg.text}</div>}
       </form>
     </div>
   );

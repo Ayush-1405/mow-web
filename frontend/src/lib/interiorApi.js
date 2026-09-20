@@ -2448,8 +2448,15 @@ export async function factoryAiSubmit({ idempotencyKey, projectId, workTitle, wo
     }
   }
 
-  // Extraction runs server-side; a failure here never loses the request or its
-  // files -- it just lands as status "failed" for a reviewer (and Retry).
+  // The Job Card is created RIGHT NOW from what the sender provided, so it
+  // reaches the Factory Inbox even if the AI step is slow, unconfigured or
+  // fails. AI extraction below only enriches this untouched draft.
+  const { data: fin, error: finErr } = await supabase.rpc("factory_ai_finalize_submission", { p_request_id: requestId });
+  if (finErr) return { ...out, step: "finalize", error: finErr };
+  const jobRow = Array.isArray(fin) ? fin[0] : fin;
+  out.jobId = jobRow?.job_id;
+  out.jobNumber = jobRow?.job_order_number;
+
   const { error: fnErr } = await factoryAiRunExtraction(requestId);
   return { ...out, step: fnErr ? "extract" : "done", error: fnErr || null };
 }

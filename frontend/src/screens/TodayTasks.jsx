@@ -10,6 +10,9 @@ import { useForegroundRefresh } from "../lib/useForegroundRefresh";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { kolkataDateStr, addDaysToDateStr, daysBetweenDateStrs, kolkataDateOf, msUntilNextKolkataMidnight } from "../lib/kolkataTime";
 import VoiceRecorder from "./VoiceRecorder.jsx";
+import { DateNavigator, QuickDateChips, TaskSearchBar, FilterButton, FilterFields, ActiveFilterChips, MobileFilterSheet } from "./TaskFilterBar.jsx";
+import { activeFilterList } from "../lib/taskFilters";
+import { useBreakpoint } from "../lib/useBreakpoint";
 
 const CLOSED_STATUS_CODES = new Set(["COMPLETED", "VERIFIED", "CLOSED"]);
 const DATE_FILTER_STORAGE_KEY = "todayTasks.dateFilter.v1";
@@ -67,7 +70,6 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [unreadByTask, setUnreadByTask] = useState({});
   const [interiorProfilesById, setInteriorProfilesById] = useState({});
   const interiorProfilesLoadedRef = useRef(false);
-  const [projectFilter, setProjectFilter] = useState("");
   const interiorDeptId = lookups.departments.find((d) => d.code === "INTERIOR")?.id;
 
   // ---- Date filter bar state -- persisted in sessionStorage so the
@@ -80,20 +82,30 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [dateMode, setDateMode] = useState(savedFilter.dateMode || "all"); // "all" | "date" | "week" | "overdue"
   const [selectedDate, setSelectedDate] = useState(savedFilter.selectedDate || kolkataDateStr());
   const [filterType, setFilterType] = useState(savedFilter.filterType || "due"); // "due" | "assigned" -- only affects "date" mode
-  const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("");
-  const [primaryAssigneeFilter, setPrimaryAssigneeFilter] = useState("");
-  const [secondAssigneeFilter, setSecondAssigneeFilter] = useState("");
-  const [searchInput, setSearchInput] = useState("");
+  const [projectFilter, setProjectFilter] = useState(savedFilter.project || "");
+  const [statusFilter, setStatusFilter] = useState(savedFilter.status || "");
+  const [priorityFilter, setPriorityFilter] = useState(savedFilter.priority || "");
+  const [departmentFilter, setDepartmentFilter] = useState(savedFilter.department || "");
+  const [primaryAssigneeFilter, setPrimaryAssigneeFilter] = useState(savedFilter.primary || "");
+  const [secondAssigneeFilter, setSecondAssigneeFilter] = useState(savedFilter.second || "");
+  const [searchInput, setSearchInput] = useState(savedFilter.search || "");
+  const breakpoint = useBreakpoint();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const searchText = useDebouncedValue(searchInput, 250);
   const [showClosedSection, setShowClosedSection] = useState(false);
   const [today, setToday] = useState(() => kolkataDateStr());
   const todayRef = useRef(today);
 
   useEffect(() => {
-    try { sessionStorage.setItem(DATE_FILTER_STORAGE_KEY, JSON.stringify({ dateMode, selectedDate, filterType })); } catch { /* private-browsing storage can throw — non-fatal */ }
-  }, [dateMode, selectedDate, filterType]);
+    try {
+      sessionStorage.setItem(DATE_FILTER_STORAGE_KEY, JSON.stringify({
+        dateMode, selectedDate, filterType,
+        project: projectFilter, status: statusFilter, priority: priorityFilter, department: departmentFilter,
+        primary: primaryAssigneeFilter, second: secondAssigneeFilter, search: searchInput,
+      }));
+    } catch { /* private-browsing storage can throw — non-fatal */ }
+  }, [dateMode, selectedDate, filterType, projectFilter, statusFilter, priorityFilter, departmentFilter, primaryAssigneeFilter, secondAssigneeFilter, searchInput]);
 
   // Midnight rollover in Asia/Kolkata, no reload required. If the user was
   // pinned to "today" (either via the Today quick button or simply never
@@ -151,8 +163,13 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     setAssignedItems(items);
   }, [lookups.departments, profile.department_id, profile.id]);
 
+  // Skeleton only on the very first load. A later reload (returning to the
+  // tab, after an action, the file picker closing) swaps data in place --
+  // hiding every task card behind `loading` unmounted whatever the user was
+  // doing inside one, including the file they had just picked to attach.
+  const loadedOnce = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!loadedOnce.current) setLoading(true);
     // requirement_text/quantity now live directly on staff_tasks (every
     // task, not just Bridges — see mvp_pilot_task_requirement_quantity_
     // v2_2z.sql), so a plain select("*") picks them up like any other field.
@@ -209,6 +226,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     } else {
       setAssigneesByTask({});
     }
+    loadedOnce.current = true;
     setLoading(false);
   }, [showToast]);
 
@@ -591,8 +609,25 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
 
   function clearAllFilters() {
     setProjectFilter(""); setStatusFilter(""); setPriorityFilter(""); setDepartmentFilter("");
-    setPrimaryAssigneeFilter(""); setSecondAssigneeFilter(""); setSearchInput(""); setDateMode("all");
+    setPrimaryAssigneeFilter(""); setSecondAssigneeFilter(""); setSearchInput(""); setDateMode("all"); setFilterType("due");
   }
+
+  // ---- Toolbar view-model (the responsive components are purely
+  // presentational; the state above stays the single source of truth) ----
+  const filterValues = {
+    project: projectFilter, status: statusFilter, priority: priorityFilter, department: departmentFilter,
+    primary: primaryAssigneeFilter, second: secondAssigneeFilter, filterType,
+  };
+  const filterSetters = {
+    project: setProjectFilter, status: setStatusFilter, priority: setPriorityFilter, department: setDepartmentFilter,
+    primary: setPrimaryAssigneeFilter, second: setSecondAssigneeFilter, filterType: setFilterType,
+  };
+  function setFilterValue(key, value) { filterSetters[key]?.(value); }
+  function applyFilterValues(next) {
+    Object.keys(filterSetters).forEach((k) => filterSetters[k](next[k] ?? (k === "filterType" ? "due" : "")));
+    setSheetOpen(false);
+  }
+  function clearFromSheet() { clearAllFilters(); setSheetOpen(false); }
 
   // Options for the assignee filters are drawn from people actually
   // present in the currently loaded tasks (not the entire company
@@ -605,6 +640,15 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     });
     return Array.from(ids).map((id) => usersById[id]).filter(Boolean).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
   }, [tasks, assigneesByTask, usersById]);
+
+  const filterOptions = useMemo(() => ({
+    projects: Object.values(projectsById).map((p) => ({ value: p.id, label: `${p.project_code} — ${p.customer}${p.location ? ` — ${p.location}` : ""}` })),
+    statuses: (lookups.statuses || []).map((st) => ({ value: st.code, label: lang === "gu" ? st.name_gu : st.name_en })),
+    priorities: (lookups.priorities || []).map((pr) => ({ value: pr.id, label: lang === "gu" ? pr.name_gu : pr.name_en })),
+    departments: (lookups.departments || []).map((d) => ({ value: d.id, label: lang === "gu" ? d.name_gu : d.name_en })),
+    assignees: assigneeOptions.map((u) => ({ value: u.id, label: u.full_name })),
+  }), [projectsById, lookups.statuses, lookups.priorities, lookups.departments, lang, assigneeOptions]);
+  const activeFilters = activeFilterList(filterValues, filterOptions, lang);
 
   function renderTaskCard(task) {
     const status = statusOf(task.status_id);
@@ -973,97 +1017,79 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const totalVisible = tasks.length;
 
   return (
-    <div>
-      <div className="section-title">{t("todaysTasks", lang)}</div>
-      <button className="btn btn-outline" style={{ marginBottom: 10 }} onClick={load} disabled={loading}>
-        {t("refresh", lang)}
-      </button>
+    <div className="tt-page">
+      <div className="tt-header">
+        <div className="section-title">{t("todaysTasks", lang)}</div>
+        <button type="button" className="btn btn-outline tt-refresh" onClick={load} disabled={loading}>
+          {t("refresh", lang)}
+        </button>
+      </div>
 
-      {/* ---------------- Date filter bar ---------------- */}
-      <div className="card" style={{ marginBottom: 10 }}>
-        <div className="task-meta" style={{ flexWrap: "wrap", gap: 8 }}>
-          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate((d) => addDaysToDateStr(d, -1)); }}>
-            {t("previousDayLabel", lang)}
-          </button>
-          <input
-            type="date"
+      {/* ---------------- Date + search + filter toolbar ---------------- */}
+      <div className="tt-toolbar">
+        <div className="tt-toolbar-top">
+          <DateNavigator
+            lang={lang}
             value={selectedDate}
-            onChange={(e) => { setDateMode("date"); setSelectedDate(e.target.value); }}
-            style={{ width: "auto" }}
+            onChange={(v) => { setDateMode("date"); setSelectedDate(v); }}
+            onPrev={() => { setDateMode("date"); setSelectedDate((d) => addDaysToDateStr(d, -1)); }}
+            onNext={() => { setDateMode("date"); setSelectedDate((d) => addDaysToDateStr(d, 1)); }}
           />
-          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate(today); }}>
-            {t("todayButtonLabel", lang)}
-          </button>
-          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate((d) => addDaysToDateStr(d, 1)); }}>
-            {t("nextDayLabel", lang)}
-          </button>
-          <button className="btn btn-outline" style={{ width: "auto" }} onClick={() => setDateMode("all")}>
-            {t("allDatesLabel", lang)}
-          </button>
+          <QuickDateChips
+            lang={lang}
+            chips={[
+              { key: "today", label: t("todayButtonLabel", lang), active: dateMode === "date" && selectedDate === today, onSelect: () => { setDateMode("date"); setSelectedDate(today); } },
+              { key: "tomorrow", label: t("tomorrowLabel", lang), active: dateMode === "date" && selectedDate === addDaysToDateStr(today, 1), onSelect: () => { setDateMode("date"); setSelectedDate(addDaysToDateStr(today, 1)); } },
+              { key: "week", label: t("thisWeekLabel", lang), active: dateMode === "week", onSelect: () => setDateMode("week") },
+              { key: "overdue", label: t("overdueQuickLabel", lang), active: dateMode === "overdue", onSelect: () => setDateMode("overdue") },
+              { key: "all", label: breakpoint === "mobile" ? t("tfAllChip", lang) : t("allTasksLabel", lang), active: dateMode === "all", onSelect: () => setDateMode("all") },
+            ]}
+          />
         </div>
 
-        <div className="task-meta" style={{ flexWrap: "wrap", gap: 6, marginTop: 8, overflowX: "auto" }}>
-          <button className={`btn ${dateMode === "date" && selectedDate === today ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate(today); }}>
-            {t("todayButtonLabel", lang)}
-          </button>
-          <button className={`btn ${dateMode === "date" && selectedDate === addDaysToDateStr(today, 1) ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => { setDateMode("date"); setSelectedDate(addDaysToDateStr(today, 1)); }}>
-            {t("tomorrowLabel", lang)}
-          </button>
-          <button className={`btn ${dateMode === "week" ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("week")}>
-            {t("thisWeekLabel", lang)}
-          </button>
-          <button className={`btn ${dateMode === "overdue" ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("overdue")}>
-            {t("overdueQuickLabel", lang)}
-          </button>
-          <button className={`btn ${dateMode === "all" ? "btn-gold" : "btn-outline"}`} style={{ width: "auto" }} onClick={() => setDateMode("all")}>
-            {t("allTasksLabel", lang)}
-          </button>
-        </div>
-
-        <div className="task-meta" style={{ flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-          <label style={{ margin: 0 }}>{t("filterTypeLabel", lang)}</label>
-          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: "auto" }}>
-            <option value="due">{t("dueDateFilterTypeLabel", lang)}</option>
-            <option value="assigned">{t("assignedDateFilterTypeLabel", lang)}</option>
-          </select>
-        </div>
-      </div>
-
-      {/* ---------------- Other filters ---------------- */}
-      <div className="card" style={{ marginBottom: 10 }}>
-        <div className="task-meta" style={{ flexWrap: "wrap", gap: 8 }}>
-          <input placeholder={t("searchLabel", lang)} value={searchInput} onChange={(e) => setSearchInput(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
-          {Object.keys(projectsById).length > 0 && (
-            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={{ width: "auto" }}>
-              <option value="">{t("allInteriorProjectsLabel", lang)}</option>
-              {Object.values(projectsById).map((p) => (
-                <option key={p.id} value={p.id}>{p.project_code} — {p.customer}{p.location ? ` — ${p.location}` : ""}</option>
-              ))}
-            </select>
+        <TaskSearchBar lang={lang} value={searchInput} onChange={setSearchInput}>
+          {breakpoint === "desktop" ? (
+            <button type="button" className="btn btn-outline tt-clearbtn" onClick={clearAllFilters}>{t("clearFiltersAction", lang)}</button>
+          ) : (
+            <FilterButton
+              lang={lang}
+              count={activeFilters.length}
+              expanded={breakpoint === "mobile" ? sheetOpen : panelOpen}
+              controls={breakpoint === "mobile" ? undefined : "tt-filter-panel"}
+              hasPopup={breakpoint === "mobile"}
+              onClick={() => (breakpoint === "mobile" ? setSheetOpen(true) : setPanelOpen((o) => !o))}
+            />
           )}
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: "auto" }}>
-            <option value="">{t("allStatusesLabel", lang)}</option>
-            {(lookups.statuses || []).map((s) => <option key={s.id} value={s.code}>{lang === "gu" ? s.name_gu : s.name_en}</option>)}
-          </select>
-          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ width: "auto" }}>
-            <option value="">{t("allPrioritiesLabel", lang)}</option>
-            {(lookups.priorities || []).map((p) => <option key={p.id} value={p.id}>{lang === "gu" ? p.name_gu : p.name_en}</option>)}
-          </select>
-          <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} style={{ width: "auto" }}>
-            <option value="">{t("allDepartmentsLabel", lang)}</option>
-            {(lookups.departments || []).map((d) => <option key={d.id} value={d.id}>{lang === "gu" ? d.name_gu : d.name_en}</option>)}
-          </select>
-          <select value={primaryAssigneeFilter} onChange={(e) => setPrimaryAssigneeFilter(e.target.value)} style={{ width: "auto" }}>
-            <option value="">{t("primaryAssigneeFilterLabel", lang)}</option>
-            {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-          </select>
-          <select value={secondAssigneeFilter} onChange={(e) => setSecondAssigneeFilter(e.target.value)} style={{ width: "auto" }}>
-            <option value="">{t("secondAssigneeFilterLabel", lang)}</option>
-            {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-          </select>
-          <button className="btn btn-outline" style={{ width: "auto" }} onClick={clearAllFilters}>{t("clearFiltersAction", lang)}</button>
-        </div>
+        </TaskSearchBar>
+
+        {/* Tablet: collapsible two-column panel. Desktop: always open. Phone: lives in the sheet instead. */}
+        {breakpoint !== "mobile" && (breakpoint === "desktop" || panelOpen) && (
+          <div id="tt-filter-panel">
+            <FilterFields lang={lang} idPrefix="tt-inline" values={filterValues} options={filterOptions} onChange={setFilterValue} />
+          </div>
+        )}
+
+        {breakpoint !== "desktop" && !(breakpoint === "tablet" && panelOpen) && (
+          <ActiveFilterChips
+            lang={lang}
+            filters={activeFilters}
+            onRemove={(k) => setFilterValue(k, k === "filterType" ? "due" : "")}
+            onClearAll={clearAllFilters}
+          />
+        )}
       </div>
+
+      {breakpoint === "mobile" && sheetOpen && (
+        <MobileFilterSheet
+          lang={lang}
+          open={sheetOpen}
+          values={filterValues}
+          options={filterOptions}
+          onApply={applyFilterValues}
+          onClearAll={clearFromSheet}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
 
       {assignedItems.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
