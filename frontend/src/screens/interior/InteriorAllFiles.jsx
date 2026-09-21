@@ -92,7 +92,7 @@ export default function InteriorAllFiles({ lang, projectId }) {
   return (
     <div className="card">
       <h2>{t("tabFiles", lang)}</h2>
-      <div className="filter-bar">
+      <div className="filter-bar filter-grid">
         <input placeholder={t("searchLabel", lang)} value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "auto", minWidth: 160 }} />
         <select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}>
           <option value="">{t("allModulesLabel", lang)}</option>

@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import { subscribeTable } from "./realtime";
 import { ACCEPT_ATTR, logUploadFailure, typedFile, validateUploadFile, UploadError } from "./fileTypes";
 import { downloadChatAttachment } from "./api";
+import { applyViewToQuery } from "./chatFilters";
 
 // Internal chat data layer. Authorization lives in the database: reads are RLS-limited to conversations the
 // caller is an ACTIVE participant of, and every write (create / send / edit / delete / read / mute / open)
@@ -22,7 +23,11 @@ export const unreadTotal = () => rpc("chat_unread_total");
 export const getDetails = (id) => rpc("chat_conversation_details", { p_conversation: id });
 export const searchUsers = (q) => rpc("chat_search_users", { p_query: q || null, p_limit: 30 });
 export const startDirect = (userId) => rpc("chat_get_or_create_direct", { p_other: userId });
-export const openTaskChat = (taskId) => rpc("chat_open_task", { p_task: taskId });
+// A Project-linked task opens its PROJECT chat with the task as context ({conversation_id, project_id, task_id, mode: "project"});
+// a standalone task opens its own conversation (mode: "task"). No task conversation is ever created for a project task.
+export const openTaskChat = (taskId) => rpc("chat_open_task_chat", { p_task: taskId });
+export const taskRefs = (ids) => rpc("chat_task_refs", { p_tasks: ids });
+export const projectJobs = (projectId) => rpc("chat_project_jobs", { p_project: projectId });
 export const openJobChat = (jobId) => rpc("chat_open_job", { p_job: jobId });
 // The database creates-or-reuses the ONE canonical Project Chat and only returns it to people authorized for that project.
 export const openProjectChat = (projectId) => rpc("chat_open_project", { p_project: projectId });
@@ -42,9 +47,10 @@ export const searchMessages = (q, conversationId) => rpc("chat_search_messages",
 export const managementDirectory = (q, type) => rpc("chat_management_directory", { p_query: q || null, p_type: type || null });
 export const managementOpen = (id, reason) => rpc("chat_management_open", { p_conversation: id, p_reason: reason });
 
-export function sendMessage({ conversationId, body, replyTo, mentions, attachments }) {
+export function sendMessage({ conversationId, body, replyTo, mentions, attachments, taskId, jobId, dailyId }) {
   return rpc("chat_send_message", {
     p_conversation: conversationId, p_body: body || "", p_reply_to: replyTo || null, p_mentions: mentions || [], p_attachments: attachments || [],
+    p_task: taskId || null, p_job: jobId || null, p_daily: dailyId || null,
   });
 }
 
@@ -61,8 +67,9 @@ async function withAttachments(rows) {
 }
 
 // newest first from the server, returned oldest -> newest; pass `before` (ISO) for older pages.
-export async function fetchMessages(conversationId, before, limit = 40) {
+export async function fetchMessages(conversationId, before, limit = 40, view = "all", taskId = null) {
   let q = supabase.from("chat_messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: false }).limit(limit);
+  q = applyViewToQuery(q, view, taskId);
   if (before) q = q.lt("created_at", before);
   const { data, error } = await q;
   if (error) return { data: [], error };

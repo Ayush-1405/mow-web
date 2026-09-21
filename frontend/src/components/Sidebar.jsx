@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import { NavLink } from "react-router-dom";
 import { t } from "../lib/i18n";
 
-// Mood of Wood — Staff Pilot — department sidebar.
+// Mood of Wood — Staff Pilot — department sidebar (desktop rail / mobile drawer). The open/close state and the menu button live in
+// DeptShell's single header, so there is no second top bar here.
 //
 // `items` is already filtered to ONLY the departments the current user is
 // authorized for (see useCurrentUserAccess in lib/access.js) and already
@@ -11,27 +12,13 @@ import { t } from "../lib/i18n";
 // happens after profile+lookups have both finished loading (App.jsx already
 // gates the whole authenticated shell on that), so there is no moment where
 // an item can flash and then disappear.
-export default function Sidebar({ lang, items, managementLinks, onBackToTasks }) {
-  const [open, setOpen] = useState(false);
-
+export default function Sidebar({ lang, items, managementLinks, onBackToTasks, open, onClose }) {
   function close() {
-    setOpen(false);
+    onClose();
   }
 
   return (
     <>
-      <div className="dept-topbar">
-        <button
-          className="dept-sidebar-toggle"
-          onClick={() => setOpen((o) => !o)}
-          aria-label={open ? t("closeMenu", lang) : t("openMenu", lang)}
-          aria-expanded={open}
-        >
-          <span aria-hidden="true">{open ? "✕" : "☰"}</span>
-        </button>
-        <div className="dept-topbar-title">{t("departmentsNav", lang)}</div>
-      </div>
-
       {open && <div className="dept-sidebar-backdrop" onClick={close} />}
 
       <nav className={`dept-sidebar${open ? " open" : ""}`} aria-label={t("departmentsNav", lang)}>

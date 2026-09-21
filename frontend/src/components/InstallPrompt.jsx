@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 
 const DISMISS_KEY = "moodOfWood_installDismissedAt";
@@ -29,6 +30,7 @@ function recentlyDismissed() {
 // event at all, so it gets a plain "Tap Share, then Add to Home Screen"
 // instruction instead — there is no programmatic install API on iOS.
 export default function InstallPrompt() {
+  const { pathname } = useLocation();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [iosVisible, setIosVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -67,7 +69,8 @@ export default function InstallPrompt() {
     setDeferredPrompt(null);
   }
 
-  if (dismissed || (!deferredPrompt && !iosVisible)) return null;
+  // never cover the chat composer / message list
+  if (dismissed || pathname.startsWith("/chat") || (!deferredPrompt && !iosVisible)) return null;
 
   return (
     <div className="install-banner" role="dialog" aria-label="Install app">

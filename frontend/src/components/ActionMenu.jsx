@@ -9,7 +9,7 @@ import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "reac
 const EDGE = 8;
 const BOTTOM_BAR = 72;
 
-export default function ActionMenu({ label = "More", items = [] }) {
+export default function ActionMenu({ label = "More", items = [], buttonClassName = "btn btn-outline action-menu-btn", ariaLabel, hideCaret = false }) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState({ h: "right", v: "down" });
   const rootRef = useRef(null);
@@ -56,8 +56,8 @@ export default function ActionMenu({ label = "More", items = [] }) {
 
   return (
     <span className="action-menu" ref={rootRef}>
-      <button ref={btnRef} type="button" className="btn btn-outline action-menu-btn" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((v) => !v)}>
-        {label}<span className="action-menu-caret" aria-hidden="true">▾</span>
+      <button ref={btnRef} type="button" className={buttonClassName} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={ariaLabel} title={ariaLabel} onClick={() => setOpen((v) => !v)}>
+        {label}{!hideCaret && <span className="action-menu-caret" aria-hidden="true">▾</span>}
       </button>
       {open && (
         <div ref={menuRef} id={menuId} role="menu" className={`action-menu-list ${place.h} ${place.v}`} onKeyDown={onMenuKey}>

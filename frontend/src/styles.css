@@ -1,4 +1,11 @@
 :root {
+  /* iOS safe areas (notch / Dynamic Island / home indicator). Applied ONCE per screen edge, on the element that is at that edge. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  /* the VISIBLE viewport height (keyboard / browser chrome aware); useAppViewport() sets it on touch devices, dvh is the fallback */
+  --app-height: 100dvh;
   /* Warm "walnut & amber" brand palette — modernized from the original
      wood/gold theme, kept on-brand for a furniture/interior company. */
   --ink: #23180f;
@@ -71,54 +78,59 @@ button, input, select, textarea { font-family: inherit; }
    .main-area scrolls. Mirrors the same fix on .dept-shell. */
 .app-shell {
   height: 100vh;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
+  height: var(--app-height, 100dvh);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "header" "main" "nav";
   overflow: hidden;
 }
 
 .app-header {
-  background: linear-gradient(120deg, var(--brand-dark), var(--brand) 65%, var(--brand-light));
-  color: #fff;
-  padding: 14px 20px;
-  padding-top: calc(14px + env(safe-area-inset-top, 0px));
-  padding-left: calc(20px + env(safe-area-inset-left, 0px));
-  padding-right: calc(20px + env(safe-area-inset-right, 0px));
+  grid-area: header;
+  position: relative;
+  z-index: 30;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  row-gap: 8px;
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  gap: 8px;
+  min-width: 0;
+  background: linear-gradient(120deg, var(--brand-dark), var(--brand) 65%, var(--brand-light));
+  color: #fff;
+  /* the header is the top-most element of both shells, so it is the ONE place that clears the notch / Dynamic Island */
+  padding: 8px 16px;
+  padding-top: calc(8px + var(--safe-top));
+  padding-left: calc(16px + var(--safe-left));
+  padding-right: calc(16px + var(--safe-right));
   box-shadow: var(--shadow);
 }
-
-/* The title block (h1 + .sub) is a flex child of .app-header alongside
-   .header-actions — flex items default to min-width:auto, which refuses
-   to shrink below the text's own intrinsic width. A long title (or a
-   long unbroken Gujarati run the browser finds no break point in) then
-   forces .app-header itself wider than the viewport instead of wrapping,
-   which is what pushes the ENTIRE page into horizontal overflow. */
-.app-header > div:first-child { min-width: 0; }
-
+.app-header-title { flex: 1 1 auto; min-width: 0; }
 .app-header h1 {
   font-family: var(--font-display);
   font-size: 17px;
+  line-height: 1.2;
   margin: 0;
   font-weight: 700;
   letter-spacing: 0.2px;
-  overflow-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.app-header .sub { font-size: 11.5px; color: var(--accent-soft); margin-top: 2px; font-weight: 500; overflow-wrap: break-word; }
-
-/* flex-wrap + row-gap here (not just on .app-header) so that when there
-   isn't room for every button on one line, whole buttons drop to a second
-   row, right-aligned to match the title/actions split above — the
-   alternative (buttons shrinking below their own text's width) is what
-   made "ગુજરાતી" and "Logout" wrap THEIR OWN TEXT onto two lines instead. */
-.header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; row-gap: 8px; }
+.app-header .sub { font-size: 11.5px; color: var(--accent-soft); margin-top: 2px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-actions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+/* responsive actions (AppHeader): labelled buttons on wide screens, icon buttons + a "more" menu on phones */
+.hdr-btn { gap: 6px; }
+.hdr-only-mobile { display: none; }
+.hdr-more { min-width: 44px; padding: 0; font-size: 20px; line-height: 1; }
+.app-header .action-menu-list { color: var(--ink); text-align: left; }
+@media (max-width: 767px) {
+  /* .app-header prefix: .icon-btn (declared later) also sets display, so these need the extra specificity to win */
+  .app-header .hdr-hide-mobile, .app-header .hdr-label { display: none; }
+  .hdr-only-mobile { display: inline-flex; }
+  .app-header .sub { display: none; }
+  .header-actions { gap: 6px; }
+  .app-header .icon-btn { min-width: 44px; min-height: 44px; padding: 0 10px; }
+}
 
 .icon-btn {
   background: rgba(255, 255, 255, 0.14);
@@ -141,22 +153,16 @@ button, input, select, textarea { font-family: inherit; }
 .icon-btn:active { transform: translateY(0); }
 
 @media (max-width: 420px) {
-  .app-header {
-    padding: 12px 14px;
-    padding-top: calc(12px + env(safe-area-inset-top, 0px));
-    padding-left: calc(14px + env(safe-area-inset-left, 0px));
-    padding-right: calc(14px + env(safe-area-inset-right, 0px));
-  }
-  .header-actions { gap: 6px; }
-  .icon-btn { padding: 8px 11px; font-size: 12.5px; }
+  .app-header { padding-left: calc(12px + var(--safe-left)); padding-right: calc(12px + var(--safe-right)); }
+  .app-header h1 { font-size: 16px; }
   /* Reclaim horizontal room on the smallest phones (iPhone SE and similar,
      ~360-390px) — every extra pixel matters for the 2-column KPI/function-
      card/dept-card grids that otherwise sit right at their wrap threshold. */
   .main-area {
     padding: 14px 10px;
-    padding-left: calc(10px + env(safe-area-inset-left, 0px));
-    padding-right: calc(10px + env(safe-area-inset-right, 0px));
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(10px + var(--safe-left));
+    padding-right: calc(10px + var(--safe-right));
+    padding-bottom: 24px;
   }
   .card { padding: 14px; }
 }
@@ -186,29 +192,28 @@ button, input, select, textarea { font-family: inherit; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 18px 16px;
-  padding-left: calc(16px + env(safe-area-inset-left, 0px));
-  padding-right: calc(16px + env(safe-area-inset-right, 0px));
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(16px + var(--safe-left));
+  padding-right: calc(16px + var(--safe-right));
+  padding-bottom: 24px;   /* the tab bar is a grid row now, not an overlay: no reserved space */
   overscroll-behavior-y: contain;
+  grid-area: main;
   max-width: 760px;
   width: 100%;
   margin: 0 auto;
 }
 
 .bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  grid-area: nav;
+  position: relative;
+  z-index: 20;
   background: var(--surface);
   border-top: 1px solid var(--border);
   box-shadow: 0 -8px 24px -8px rgba(35, 24, 15, 0.16);
   display: flex;
   overflow-x: auto;
-  z-index: 20;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
@@ -818,7 +823,7 @@ textarea { min-height: 84px; resize: vertical; }
    The sidebar and header stay put; only .dept-main (below) scrolls. */
 .dept-shell {
   height: 100vh;
-  height: 100dvh;
+  height: var(--app-height, 100dvh);
   display: flex;
   overflow: hidden;
 }
@@ -832,46 +837,43 @@ textarea { min-height: 84px; resize: vertical; }
   overflow: hidden;
 }
 
-.dept-main-header { position: sticky; top: 0; z-index: 15; flex-shrink: 0; }
-
 .dept-main {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   padding: 18px 16px 40px;
-  padding-left: calc(16px + env(safe-area-inset-left, 0px));
-  padding-right: calc(16px + env(safe-area-inset-right, 0px));
-  padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(16px + var(--safe-left));
+  padding-right: calc(16px + var(--safe-right));
+  padding-bottom: calc(40px + var(--safe-bottom));
   max-width: 980px;
   width: 100%;
   margin: 0 auto;
 }
+/* Pages that manage their OWN scroll area (Chat): <main> is a plain flex box, the page fills it, nothing else scrolls */
+.dept-main.dept-main-flush {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-width: none;
+  padding-bottom: 16px;
+}
+.dept-main-flush > * { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 899px) { .dept-main.dept-main-flush { padding: 0; } }
 
 /* ---------- Sidebar ---------- */
 
-.dept-topbar {
-  display: none;
-  align-items: center;
-  gap: 10px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 10px 14px;
-  padding-top: calc(10px + env(safe-area-inset-top, 0px));
-  padding-left: calc(14px + env(safe-area-inset-left, 0px));
-  padding-right: calc(14px + env(safe-area-inset-right, 0px));
-  position: sticky;
-  top: 0;
-  z-index: 25;
-}
-.dept-topbar-title { font-family: var(--font-display); font-weight: 700; color: var(--brand-dark); font-size: 15px; }
 
 .dept-sidebar-toggle {
-  background: var(--brand-dark);
+  display: none;
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   color: #fff;
-  border: none;
   border-radius: var(--radius-sm);
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   font-size: 18px;
   cursor: pointer;
 }
@@ -967,19 +969,20 @@ textarea { min-height: 84px; resize: vertical; }
      desktop layout where .dept-sidebar sits statically to the left). Below
      900px .dept-sidebar becomes position:fixed/off-canvas (below), but
      .dept-shell was never told to stop laying its children out in a row —
-     so .dept-topbar (hamburger + "Departments" title, no explicit width)
+     so the old top bar (hamburger + "Departments" title, no explicit width)
      kept shrinking to its own content width and sitting as a narrow left
      column, shoving .dept-shell-right's actual page content into whatever
      space was left on the right. This is the real fix: stack them. */
   .dept-shell { flex-direction: column; }
-  .dept-topbar { display: flex; width: 100%; }
   .dept-sidebar-toggle { display: inline-flex; align-items: center; justify-content: center; }
   .dept-sidebar {
+    padding-top: calc(18px + var(--safe-top));
+    padding-bottom: calc(18px + var(--safe-bottom));
     position: fixed;
     left: 0;
     top: 0;
     height: 100vh;
-    height: 100dvh;
+    height: var(--app-height, 100dvh);
     width: 84vw;
     max-width: 320px;
     z-index: 40;
@@ -1204,7 +1207,7 @@ textarea { min-height: 84px; resize: vertical; }
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(12px + var(--safe-bottom));
   z-index: 70;
   max-width: 480px;
   margin: 0 auto;
@@ -1218,7 +1221,7 @@ textarea { min-height: 84px; resize: vertical; }
   gap: 12px;
 }
 /* the bottom tab bar (60px + safe area) is on screen below 900px: sit above it instead of covering its first tabs */
-@media (max-width: 899px) { body:has(.bottom-nav) .install-banner { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); } }
+@media (max-width: 899px) { body:has(.bottom-nav) .install-banner { bottom: calc(72px + var(--safe-bottom)); } }
 .install-banner-icon { font-size: 26px; line-height: 1; flex-shrink: 0; }
 .install-banner-text { flex: 1; font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
 .install-banner-text strong { display: block; font-size: 13.5px; color: var(--brand-dark); margin-bottom: 2px; }
@@ -1438,7 +1441,7 @@ textarea { min-height: 84px; resize: vertical; }
 
 /* ---------- Project Master Report — print / PDF export ---------- */
 @media print {
-  .no-print, .dept-sidebar, .top-nav, .dept-shell-header, .filter-bar { display: none !important; }
+  .no-print, .dept-sidebar, .top-nav, .dept-shell-header, .filter-bar, .app-header { display: none !important; }
   body { background: #fff; }
   .master-report .card { break-inside: avoid; border: 1px solid #ccc; box-shadow: none; }
   .master-report h1 { font-size: 18px; }
@@ -1546,7 +1549,7 @@ textarea { min-height: 84px; resize: vertical; }
 .tt-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px; }
 .tt-sheet-foot {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 0 0 auto;
-  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 12px 16px calc(12px + var(--safe-bottom));
   border-top: 1px solid var(--border); background: var(--surface);
 }
 .tt-sheet-foot .btn { margin: 0; width: 100%; min-height: 46px; }
@@ -1554,7 +1557,7 @@ textarea { min-height: 84px; resize: vertical; }
 /* Task cards on phones: tighter padding so the list starts high. */
 @media (max-width: 767px) {
   .tt-page .card { padding: 14px; margin-bottom: 12px; }
-  .tt-page { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+  .tt-page { padding-left: var(--safe-left); padding-right: var(--safe-right); }
 }
 
 /* ---- tablet ---- */
@@ -1658,3 +1661,65 @@ img, video { height: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
+/* ================= iPhone / iOS Safari layout fixes (shared, not per-screen) ================= */
+
+/* Horizontal tab strips: a real scroller, snap points, the LAST tab is always reachable (end padding), no scrollbar */
+.mobile-tab-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 12px;
+  padding-inline-end: 16px;
+}
+.mobile-tab-list::-webkit-scrollbar { display: none; }
+.mobile-tab-list > * { flex: 0 0 auto; scroll-snap-align: start; }
+
+/* Date fields: iOS collapses an EMPTY date input to a blank strip -- keep a real height, left-aligned value and a visible affordance */
+input[type="date"], input[type="time"], input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-height: 46px;
+  text-align: left;
+}
+input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; min-height: 1.4em; }
+input[type="date"], input[type="date"]:focus {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%238a4b23' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='18' rx='2'/><path d='M16 2v4M8 2v4M3 10h18'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px;
+  padding-right: 40px;
+}
+
+/* Filter bars made of form fields: a clean grid below 1024px (auto columns on tablets, 2 on phones, 1 on narrow phones), labels above inputs */
+@media (max-width: 1023px) {
+  .filter-bar.filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; align-items: end; }
+  .filter-grid > * { min-width: 0 !important; }
+  .filter-grid > select, .filter-grid > input, .filter-grid > label, .filter-grid > .btn { width: 100% !important; max-width: 100%; margin: 0 !important; }
+  .filter-grid > label { display: flex; flex-direction: column; gap: 4px; }
+  .filter-grid > label input, .filter-grid > label select { width: 100%; margin: 0; }
+}
+@media (max-width: 767px) {
+  .filter-bar.filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filter-grid > * { min-width: 0 !important; }
+  .filter-grid > select, .filter-grid > input, .filter-grid > label, .filter-grid > .btn { width: 100% !important; max-width: 100%; margin: 0 !important; }
+  .filter-grid > label { display: flex; flex-direction: column; gap: 4px; }
+  .filter-grid > label input, .filter-grid > label select { width: 100%; margin: 0; }
+  .filter-grid > .btn { grid-column: 1 / -1; }
+  .filter-grid > input[type="search"], .filter-grid > input[placeholder] { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .filter-bar.filter-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* One calendar icon: Chromium adds its own picker indicator on top of the background icon above (Safari draws none). Keep the native one
+   as an invisible, field-wide tap target so the whole date field still opens the picker. */
+input[type="date"], input[type="time"], input[type="datetime-local"] { position: relative; }
+input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator, input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; background: transparent;
+}

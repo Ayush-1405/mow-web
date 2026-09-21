@@ -236,7 +236,7 @@ export default function InteriorTasks({ lang, lockedProjectId }) {
       </div>
 
       <div className="card">
-        <div className="filter-bar" style={{ flexWrap: "wrap" }}>
+        <div className="filter-bar filter-grid" style={{ flexWrap: "wrap" }}>
           <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
             <option value="">{t("allAssigneesLabel", lang)}</option>
             {Array.from(new Map(merged.map((m) => [m.assigneeKey, m.assigneeName])).entries()).filter(([k]) => k).map(([k, name]) => (

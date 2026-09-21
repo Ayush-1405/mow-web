@@ -606,7 +606,7 @@ export default function InteriorWorkingDrawings({ lang, lockedProjectId: lockedP
       </div>
 
       <div className="card">
-        <div className="filter-bar" style={{ flexWrap: "wrap" }}>
+        <div className="filter-bar filter-grid" style={{ flexWrap: "wrap" }}>
           <input placeholder={t("searchLabel", lang)} value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "auto", minWidth: 180 }} />
           <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
             <option value="">{t("allCategoriesLabel", lang)}</option>

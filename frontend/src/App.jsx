@@ -6,6 +6,8 @@ import { t } from "./lib/i18n";
 import { requestNotificationPermission, showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
 import { useForegroundRefresh } from "./lib/useForegroundRefresh";
 import ChatNavButton from "./components/ChatNavButton.jsx";
+import AppHeader from "./components/AppHeader.jsx";
+import { useAppViewport } from "./lib/useAppViewport";
 import UpdateBanner from "./components/UpdateBanner.jsx";
 import Login from "./screens/Login.jsx";
 import ChangePassword from "./screens/ChangePassword.jsx";
@@ -164,6 +166,7 @@ function RedirectToProjectTimeline() {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  useAppViewport(); // shell height follows the VISIBLE viewport (on-screen keyboard / browser chrome) via one CSS variable
   const [booting, setBooting] = useState(true);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -632,7 +635,7 @@ export default function App() {
         </DeptShell>
       } />
       <Route path="/chat" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout} flush>
           <ChatPage lang={lang} profile={profile} />
         </DeptShell>
       } />
@@ -738,30 +741,29 @@ export default function App() {
       <Route path="/customer-service" element={deptPage("CUST_SERVICE")} />
       <Route path="*" element={
     <div className="app-shell">
-      <header className="app-header">
-        <div>
-          <h1>Mood of Wood</h1>
-          <div className="sub">{profile.full_name} · {profile.roles?.[lang === "gu" ? "name_gu" : "name_en"] || profile.roleCode}</div>
-        </div>
-        <div className="header-actions">
-          <button className="icon-btn" onClick={() => window.location.reload()} aria-label={t("refresh", lang)} title={t("refresh", lang)}>🔄</button>
-          <button className="icon-btn" onClick={() => setLang(lang === "en" ? "gu" : "en")}>{lang === "en" ? "ગુજરાતી" : "EN"}</button>
-          {myDepartmentRoute && (
-            <button className="icon-btn" onClick={() => navigate(myDepartmentRoute)}>
-              🗼 {t("departmentsNav", lang)}
+      <AppHeader
+        moreLabel={t("moreActions", lang)}
+        subtitle={`${profile.full_name} · ${profile.roles?.[lang === "gu" ? "name_gu" : "name_en"] || profile.roleCode}`}
+        primary={(
+          <>
+            <ChatNavButton />
+            <button
+              className="icon-btn bell"
+              onClick={() => { setView("notifications"); loadUnread(); }}
+              aria-label={t("notifications", lang)}
+              title={t("notifications", lang)}
+            >
+              🔔{unreadCount > 0 && <span className="dot">{unreadCount > 9 ? "9+" : unreadCount}</span>}
             </button>
-          )}
-          <ChatNavButton />
-          <button
-            className="icon-btn bell"
-            onClick={() => { setView("notifications"); loadUnread(); }}
-            aria-label={t("notifications", lang)}
-          >
-            🔔{unreadCount > 0 && <span className="dot">{unreadCount > 9 ? "9+" : unreadCount}</span>}
-          </button>
-          <button className="icon-btn" onClick={handleLogout}>{t("logout", lang)}</button>
-        </div>
-      </header>
+          </>
+        )}
+        secondary={[
+          { key: "refresh", icon: "🔄", label: t("refresh", lang), iconOnly: true, onClick: () => window.location.reload() },
+          { key: "lang", label: lang === "en" ? "ગુજરાતી" : "EN", onClick: () => setLang(lang === "en" ? "gu" : "en") },
+          ...(myDepartmentRoute ? [{ key: "departments", icon: "🗼", label: t("departmentsNav", lang), onClick: () => navigate(myDepartmentRoute) }] : []),
+          { key: "logout", label: t("logout", lang), onClick: handleLogout },
+        ]}
+      />
 
       <main className="main-area">
         {toast && <div className={`msg ${toast.kind}`}>{toast.message}</div>}

@@ -90,7 +90,7 @@ export default function InteriorMasterReportSelect({ lang }) {
       </div>
 
       <div className="card">
-        <div className="filter-bar">
+        <div className="filter-bar filter-grid">
           <input placeholder={t("searchLabel", lang)} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "auto", minWidth: 200, flex: 1 }} />
           <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
             <option value="">{t("filterByStageLabel", lang)}</option>
@@ -101,7 +101,7 @@ export default function InteriorMasterReportSelect({ lang }) {
             {pmOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
-        <div className="filter-bar" style={{ marginTop: 8 }}>
+        <div className="filter-bar filter-grid" style={{ marginTop: 8 }}>
           <label className="sub">{t("startDateFromLabel", lang)}<input type="date" value={startFrom} onChange={(e) => setStartFrom(e.target.value)} /></label>
           <label className="sub">{t("startDateToLabel", lang)}<input type="date" value={startTo} onChange={(e) => setStartTo(e.target.value)} /></label>
           <label className="sub">{t("dueDateFromLabel", lang)}<input type="date" value={dueFrom} onChange={(e) => setDueFrom(e.target.value)} /></label>

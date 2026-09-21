@@ -515,7 +515,7 @@ export default function InteriorMaterialSelection({ lang, staffProfile, lockedPr
       ) : (
         <>
           <div className="card no-print">
-            <div className="filter-bar">
+            <div className="filter-bar filter-grid">
               <input placeholder={t("searchLabel", lang)} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "auto", minWidth: 180, flex: 1 }} />
               <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
                 <option value="">{t("materialCategoryLabel", lang)}</option>

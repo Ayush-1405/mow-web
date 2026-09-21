@@ -180,7 +180,7 @@ export default function Reports({ lang, lookups, departments }) {
 
       <div className="card">
         <h2>{t("filters", lang)}</h2>
-        <div className="filter-bar">
+        <div className="filter-bar filter-grid">
           <select value={filters.departmentId} onChange={(e) => updateFilter("departmentId", e.target.value)}>
             <option value="">{t("allDepartments", lang)}</option>
             {activeDepartments.map((d) => (

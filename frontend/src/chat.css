@@ -1,5 +1,5 @@
 /* ---- Internal Chat ---- */
-.chat-shell { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 0; height: calc(100vh - 96px); height: calc(100dvh - 96px); min-height: 420px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; box-shadow: var(--shadow-sm); }
+.chat-shell { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 0; height: 100%; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; box-shadow: var(--shadow-sm); }
 .chat-list-pane { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-right: 1px solid var(--border); min-width: 0; min-height: 0; overflow-y: auto; }
 .chat-list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .chat-list-head h1 { margin: 0; font-size: 19px; font-family: var(--font-display); color: var(--brand-dark); display: flex; gap: 6px; align-items: center; }
@@ -83,16 +83,24 @@
 .chat-people button { display: grid; gap: 1px; width: 100%; text-align: left; padding: 10px 12px; min-height: 56px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); font: inherit; cursor: pointer; }
 .chat-people button:hover:not(:disabled) { border-color: var(--accent); }
 
-/* phone: one full-screen pane at a time */
+/* phone: one pane at a time, IN FLOW inside the shell (no position:fixed overlay, which iOS Safari mispositions inside scrolling parents).
+   Rows: [conversation header] [context / filters] [messages -- the ONLY scroller] [composer above the home indicator] */
 @media (max-width: 899px) {
-  .chat-shell { display: block; height: auto; min-height: 0; border: none; box-shadow: none; background: transparent; overflow: visible; }
-  .chat-list-pane { border: none; padding: 0; overflow: visible; }
-  .chat-conv-pane { display: none; }
+  .chat-shell { display: flex; flex-direction: column; height: 100%; border: none; border-radius: 0; box-shadow: none; background: var(--bg); }
+  .chat-list-pane { flex: 1 1 auto; border: none; padding: 10px 12px; padding-left: calc(12px + var(--safe-left)); padding-right: calc(12px + var(--safe-right)); padding-bottom: calc(12px + var(--safe-bottom)); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .chat-conv-pane { display: none; flex: 1 1 auto; }
   .chat-shell.has-conv .chat-list-pane { display: none; }
-  .chat-shell.has-conv .chat-conv-pane { display: flex; position: fixed; inset: 0; z-index: 60; height: 100vh; height: 100dvh; background: var(--bg); }
+  .chat-shell.has-conv .chat-conv-pane { display: flex; }
+  .chat-conv { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100%; min-height: 0; overflow: hidden; }
+  .chat-topbar { padding-left: calc(6px + var(--safe-left)); padding-right: calc(6px + var(--safe-right)); }
+  .chat-composer { padding-left: calc(10px + var(--safe-left)); padding-right: calc(10px + var(--safe-right)); }
   .chat-back { display: inline-flex; align-items: center; justify-content: center; }
   .chat-msg { max-width: 92%; }
 }
+/* the header stack of a conversation may scroll on its own if it ever gets tall; the message list always keeps the remaining height */
+.chat-head { flex: 0 1 auto; max-height: 40vh; max-height: 40dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.chat-conv { min-width: 0; }
+.chat-scroll { -webkit-overflow-scrolling: touch; }
 
 /* ---- Reply -> Chat consolidation: context badges, imported marker, project chat, highlight ---- */
 .chat-ctxrow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 4px; }
@@ -107,3 +115,80 @@
 .chat-tasklist li { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chat-tasklist li > span { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
 .chat-hits .chat-hit:disabled { opacity: .6; }
+
+/* ---- Project chat: task context card, message task chips, views ---- */
+.chat-taskref { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border-strong); border-left: 4px solid var(--accent); flex: 0 0 auto; }
+.chat-taskref-main { flex: 1 1 220px; min-width: 0; font-size: 13.5px; }
+.chat-taskref-title { overflow-wrap: anywhere; }
+.chat-taskref-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chat-taskref-tags .fx-tag { margin-right: 0; }
+.chat-taskref-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.chat-taskref .btn { width: auto; margin: 0; min-height: 44px; padding: 8px 12px; }
+.chat-taskchip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; border: 1px solid var(--border-strong); background: var(--accent-soft); color: var(--brand-dark); border-radius: 999px; padding: 2px 10px; font-size: 12px; cursor: pointer; min-height: 28px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-taskchip:hover { border-color: var(--accent); }
+.chat-taskbar { background: var(--accent-soft); border-radius: 8px; padding: 6px 10px; }
+.chat-viewbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--surface-2); flex: 0 0 auto; }
+.chat-views { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+.chat-views::-webkit-scrollbar { display: none; }
+.chat-views button { flex: 0 0 auto; white-space: nowrap; }
+.chat-taskselect { max-width: 100%; min-height: 44px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); padding: 6px 10px; font: inherit; }
+.chat-composer .chat-taskselect { width: 100%; margin-bottom: 6px; }
+@media (max-width: 640px) { .chat-viewbar .chat-taskselect { width: 100%; } }
+
+/* ---- compact project header + task context on phones ---- */
+.chat-ctx-project { display: block; padding: 0 10px; }
+.chat-ctx-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 6px 0; background: none; border: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.chat-ctx-toggle .chat-ctx-main { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-ctx-toggle .fx-tag { margin-right: 0; flex: 0 0 auto; }
+.chat-ctx-tags { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 6px; }
+.chat-ctx-tags .fx-tag { margin-right: 0; }
+.chat-ctx-project .chat-ctx-actions { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+.chat-ctx-project .chat-ctx-actions::-webkit-scrollbar { display: none; }
+.chat-ctx-project .chat-ctx-actions .btn { flex: 0 0 auto; white-space: nowrap; }
+.chat-taskref-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chat-taskref-tags { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.chat-taskref-tags::-webkit-scrollbar { display: none; }
+.chat-taskref-tags .fx-tag { flex: 0 0 auto; white-space: nowrap; }
+.chat-taskref-actions { flex: 0 0 auto; }
+.chat-taskbar { display: flex; align-items: center; gap: 6px; }
+.chat-taskbar-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) {
+  .chat-notice { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-taskref { padding: 6px 10px; }
+}
+/* touch: every control in the conversation is a full-size target (chat.css loads after styles.css, so this must live here) */
+@media (pointer: coarse) {
+  .chat-actions button { min-height: 44px; padding: 8px 12px; }
+  .chat-title { min-height: 44px; }
+  .chat-replybar button, .chat-pending button { min-width: 44px; min-height: 44px; }
+}
+
+/* a long task title in the composer must never widen the composer (it pushed the Send button off-screen) */
+.chat-composer, .chat-composer > *, .chat-inputrow { min-width: 0; max-width: 100%; }
+.chat-taskbar { flex-wrap: nowrap; min-width: 0; }
+.chat-inputrow textarea { min-width: 0; }
+
+/* ---- phone conversation: the conversation header replaces the app header (no stacked bars), context is compact ---- */
+@media (max-width: 767px) {
+  .dept-shell:has(.chat-shell.has-conv) .app-header { display: none; }
+  .chat-shell.has-conv .chat-topbar { padding-top: calc(8px + var(--safe-top)); }
+}
+@media (max-width: 640px) {
+  .chat-taskref { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; padding: 6px 10px; }
+  .chat-taskref-title { -webkit-line-clamp: 1; }
+  .chat-taskref-actions { grid-column: 2; grid-row: 1 / span 2; flex-wrap: nowrap; }
+  .chat-taskref .btn { padding: 8px 10px; font-size: 13px; }
+  .chat-taskref .lbl { display: none; }
+  .chat-taskbar { display: none; }   /* the task card above already shows (and clears) the reference */
+}
+
+/* ---- landscape phones: very little height, so the conversation gets it all (no app header, no banners, a shorter context stack) ---- */
+@media (max-height: 500px) and (pointer: coarse) {
+  .dept-shell:has(.chat-shell.has-conv) .app-header { display: none; }
+  .chat-shell.has-conv .chat-topbar { padding-top: calc(4px + var(--safe-top)); padding-bottom: 4px; }
+  .chat-head { max-height: 26dvh; }
+  .chat-taskbar, .chat-notice { display: none; }
+  .chat-composer { padding-top: 6px; }
+}
+.chat-topbar { padding-right: calc(10px + var(--safe-right)); }
+@media (max-width: 899px) { .chat-topbar { padding-right: calc(10px + var(--safe-right)); } }

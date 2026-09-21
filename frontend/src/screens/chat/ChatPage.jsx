@@ -39,6 +39,9 @@ export default function ChatPage({ profile }) {
   const [params, setParams] = useSearchParams();
   const rawC = params.get("c");
   const selected = rawC && UUID_RE.test(rawC) ? rawC : null;
+  const rawT = params.get("task");
+  const taskParam = rawT && UUID_RE.test(rawT) ? rawT : null;   // the task the project chat is currently "about"
+  const rawP = params.get("project");
   const rawM = params.get("m");
   const highlightId = rawM && UUID_RE.test(rawM) ? rawM : null;
   // An OLD Reply link (notification / bookmark): ?legacy_message=<old reply id>&legacy_task=<task id> (or legacy_project / legacy_job)
@@ -88,6 +91,28 @@ export default function ChatPage({ profile }) {
     });
     return () => { alive = false; };
   }, [legacyMessage, legacyTask, legacyProject, legacyJob, setParams]);
+
+  // /chat?project=<id>&task=<id>  ->  that project's canonical chat (created if missing; server checks access) with the task as context
+  useEffect(() => {
+    if (!rawP || selected) return undefined;
+    if (!UUID_RE.test(rawP)) { setParams({}, { replace: true }); return undefined; }
+    let alive = true;
+    openProjectChat(rawP).then(({ data, error: err }) => {
+      if (!alive) return;
+      if (err || !data) { setLegacyError("Project chat is limited to the people working on this project."); setParams({}, { replace: true }); return; }
+      setParams(taskParam ? { c: data, task: taskParam } : { c: data }, { replace: true });
+    });
+    return () => { alive = false; };
+  }, [rawP, selected, taskParam, setParams]);
+
+  // the open project chat asks to change / clear its task context; an archived old task conversation redirects to its project chat
+  const onTaskChange = useCallback((id) => setParams((prev) => {
+    const next = new URLSearchParams(prev);
+    if (id) next.set("task", id); else next.delete("task");
+    next.delete("m");
+    return next;
+  }, { replace: true }), [setParams]);
+  const onRedirect = useCallback((dest, task) => setParams(task ? { c: dest, task } : { c: dest }, { replace: true }), [setParams]);
 
   // ---- list data ----
   const listToken = useRef(0);
@@ -182,10 +207,10 @@ export default function ChatPage({ profile }) {
         {filter === "project" && <ProjectFinder q={q} onOpened={(id) => { refreshRow(id); open(id); }} />}
         {filter !== "project" && hits.length > 0 && (
           <div className="chat-hits">
-            {hits.map((h) => <button key={h.id} type="button" className="chat-hit" onClick={() => { setQ(""); open(h.conversation_id); }}><b>{h.conversation_title}</b><span className="sub">{h.sender} · {new Date(h.created_at).toLocaleDateString()}</span><div>{h.body}</div></button>)}
+            {hits.map((h) => <button key={h.id} type="button" className="chat-hit" onClick={() => { setQ(""); setParams(h.task_id ? { c: h.conversation_id, task: h.task_id, m: h.id } : { c: h.conversation_id, m: h.id }); }}><b>{h.conversation_title}</b><span className="sub">{h.task_number ? `${h.task_number} · ` : ""}{h.sender} · {new Date(h.created_at).toLocaleDateString()}</span><div>{h.body}</div></button>)}
           </div>
         )}
-        <div className="fx-tabs chat-filters" role="tablist" aria-label="Filter conversations">
+        <div className="fx-tabs chat-filters mobile-tab-list" role="tablist" aria-label="Filter conversations">
           {chips.map(([k, lbl]) => <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? "active" : ""} onClick={() => setFilter(k)}>{lbl}</button>)}
         </div>
         {error && <div className="msg error">{error} <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 0 }} onClick={loadAll}>Retry</button></div>}
@@ -208,7 +233,7 @@ export default function ChatPage({ profile }) {
                   {!c.is_active && <span className="fx-tag">Archived</span>}
                 </span>
                 <span className="chat-row-bot">
-                  <span className="prev">{c.last_message_preview ? `${c.last_sender ? `${c.last_sender}: ` : ""}${c.last_message_preview}` : <i className="sub">No messages yet</i>}</span>
+                  <span className="prev">{c.last_message_preview ? `${c.last_task_number ? `${c.last_task_number} · ` : ""}${c.last_sender ? `${c.last_sender}: ` : ""}${c.last_message_preview}` : <i className="sub">No messages yet</i>}</span>
                   {c.unread > 0 && <span className="chat-badge" aria-label={`${c.unread} unread`}>{c.unread > 99 ? "99+" : c.unread}</span>}
                 </span>
               </button>
@@ -219,7 +244,7 @@ export default function ChatPage({ profile }) {
 
       <section className="chat-conv-pane" aria-label="Conversation">
         {selected ? (
-          <ChatConversation key={selected} conversationId={selected} me={me} onBack={back} onRead={onRead} highlightId={highlightId} />
+          <ChatConversation key={selected} conversationId={selected} me={me} onBack={back} onRead={onRead} highlightId={highlightId} taskId={taskParam} onTaskChange={onTaskChange} onRedirect={onRedirect} />
         ) : (
           <div className="chat-placeholder">
             <div style={{ fontSize: 40 }} aria-hidden="true">💬</div>
