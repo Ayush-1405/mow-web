@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createFactoryTask, listFactoryLocations, listFactoryStaff, listJobItems, listJobFiles, listProductionStages, searchJobCards } from "../../lib/factoryApi";
 import { uploadTaskProof, resolveMimeType } from "../../lib/api";
+import { useTaskVoice } from "../../lib/useTaskVoice";
+import VoiceRecorder from "../VoiceRecorder.jsx";
+import VoiceSubmitStatus from "../../components/VoiceSubmitStatus.jsx";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { detectFileType } from "../TaskDetail.jsx";
 import { STATUS, friendlyRpcError, fmtDate } from "./factoryConstants";
@@ -28,6 +31,9 @@ export default function FactoryTaskForm({ lang, lookups, presetJob = null, onCre
   const [files, setFiles] = useState([]);
   const [scope, setScope] = useState("job");
   const [attach, setAttach] = useState([]);
+  // Optional voice instruction: uploaded first, then the task is created, then the recording is linked (see lib/useTaskVoice).
+  const tv = useTaskVoice();
+  const [voiceKey, setVoiceKey] = useState(0);
 
   const [f, setF] = useState({
     title: "", description: "", factory_location_id: "", production_department: "", primary_user: "", second_user: "",
@@ -79,30 +85,37 @@ export default function FactoryTaskForm({ lang, lookups, presetJob = null, onCre
   }
 
   async function submit(e) {
-    e.preventDefault();
-    if (busy) return;
+    e?.preventDefault();
+    if (busy || tv.busy) return;
     setError(null);
-    if (!f.title.trim()) return setError("Please enter a task title.");
-    if (!f.primary_user) return setError("Please choose the primary assignee.");
-    if (f.second_user && f.second_user === f.primary_user) return setError("Primary and second assignee must be different people.");
-    if (!f.due_date) return setError("Please choose a due date.");
-    if (f.start_date && f.due_date < f.start_date) return setError("Due date cannot be before the start date.");
-    if (job && scope === "item" && !f.item_id) return setError("Please choose the item.");
-    if (job && scope === "stage" && !f.stage) return setError("Please choose the production stage.");
-    setBusy(true);
-    const { data, error: err } = await createFactoryTask({
-      title: f.title.trim(), description: f.description.trim() || null,
-      job_card_id: job?.id || null, job_card_item_id: job && scope === "item" ? f.item_id : null, production_stage: job && scope === "stage" ? f.stage : null,
-      factory_location_id: f.factory_location_id || null, production_department: f.production_department.trim() || null,
-      primary_user: f.primary_user, second_user: f.second_user || null, priority_code: f.priority_code,
-      start_date: f.start_date || null, due_date: f.due_date, proof_type_code: f.proof_type_code, requires_acceptance: f.requires_acceptance,
-      total_quantity: f.total_quantity === "" ? null : Number(f.total_quantity),
-    });
-    if (err || !data?.task_id) {
-      setBusy(false);
-      console.error("[FactoryTaskForm] create failed", err);
-      return setError(friendlyRpcError(err, "Could not create the task. Please try again."));
+    // Validation only applies before the task exists; once it does, "Retry" just finishes attaching the voice message.
+    if (!tv.taskPending) {
+      if (!f.title.trim()) return setError("Please enter a task title.");
+      if (!f.primary_user) return setError("Please choose the primary assignee.");
+      if (f.second_user && f.second_user === f.primary_user) return setError("Primary and second assignee must be different people.");
+      if (!f.due_date) return setError("Please choose a due date.");
+      if (f.start_date && f.due_date < f.start_date) return setError("Due date cannot be before the start date.");
+      if (job && scope === "item" && !f.item_id) return setError("Please choose the item.");
+      if (job && scope === "stage" && !f.stage) return setError("Please choose the production stage.");
     }
+    const outcome = await tv.submit(async () => {
+      const { data, error: err } = await createFactoryTask({
+        title: f.title.trim(), description: f.description.trim() || null,
+        job_card_id: job?.id || null, job_card_item_id: job && scope === "item" ? f.item_id : null, production_stage: job && scope === "stage" ? f.stage : null,
+        factory_location_id: f.factory_location_id || null, production_department: f.production_department.trim() || null,
+        primary_user: f.primary_user, second_user: f.second_user || null, priority_code: f.priority_code,
+        start_date: f.start_date || null, due_date: f.due_date, proof_type_code: f.proof_type_code, requires_acceptance: f.requires_acceptance,
+        total_quantity: f.total_quantity === "" ? null : Number(f.total_quantity),
+      });
+      if (err || !data?.task_id) {
+        console.error("[FactoryTaskForm] create failed", err);
+        throw new Error(friendlyRpcError(err, "Could not create the task. Please try again."));
+      }
+      return data;
+    });
+    if (!outcome.ok) return; // the status panel explains why; nothing was reset and the recording is still here
+    const data = outcome.task;
+    setBusy(true);
     // Attachments use the same signed-upload path as every other task attachment.
     let failed = 0;
     for (const file of attach) {
@@ -111,11 +124,24 @@ export default function FactoryTaskForm({ lang, lookups, presetJob = null, onCre
       try { await uploadTaskProof({ entityType: "task", entityId: data.task_id, file, fileType }); } catch { failed += 1; }
     }
     setBusy(false);
-    onCreated?.({ ...data, attachmentsFailed: failed });
+    tv.reset();
+    setVoiceKey((k) => k + 1); // remounts the recorder (releases its preview URL) only now that everything succeeded
+    onCreated?.({ ...data, attachmentsFailed: failed, voiceAttached: outcome.hadVoice });
+  }
+
+  function keepWithoutVoice() {
+    const data = tv.keepTaskWithoutVoice();
+    setVoiceKey((k) => k + 1);
+    onCreated?.({ ...data, attachmentsFailed: 0, voiceAttached: false });
+  }
+  async function cancelCreatedTask() {
+    const res = await tv.cancelCreatedTask();
+    if (!res.ok) setError(res.message || "Could not cancel the task.");
   }
 
   return (
     <form className="fx-form" onSubmit={submit}>
+      <fieldset className="fx-fieldset" disabled={busy || tv.busy || tv.taskPending}>
       <div className="field">
         <label>Task title *</label>
         <input value={f.title} onChange={(e) => set("title", e.target.value)} maxLength={200} required />
@@ -243,6 +269,11 @@ export default function FactoryTaskForm({ lang, lookups, presetJob = null, onCre
         <textarea value={f.description} onChange={(e) => set("description", e.target.value)} maxLength={2000} />
       </div>
 
+      <div className="field">
+        <label>Voice instruction <span className="sub">(optional)</span></label>
+        <VoiceRecorder key={voiceKey} lang={lang} disabled={busy || tv.busy || tv.taskPending} onRecorded={tv.onRecorded} />
+      </div>
+
       <div className="fx-two">
         <div className="field">
           <label>Proof required <span className="sub">(optional)</span></label>
@@ -264,9 +295,11 @@ export default function FactoryTaskForm({ lang, lookups, presetJob = null, onCre
 
       {error && <div className="msg error" role="alert">{error}</div>}
       <div className="btn-row">
-        <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Creating…" : "Create Factory Task"}</button>
-        {onCancel && <button type="button" className="btn btn-outline" onClick={onCancel} disabled={busy}>Cancel</button>}
+        <button type="submit" className="btn btn-primary" disabled={busy || tv.busy || tv.taskPending}>{busy || tv.busy ? "Creating…" : "Create Factory Task"}</button>
+        {onCancel && <button type="button" className="btn btn-outline" onClick={onCancel} disabled={busy || tv.busy}>Cancel</button>}
       </div>
+      </fieldset>
+      <VoiceSubmitStatus lang={lang} tv={tv} onRetry={submit} onKeepWithout={keepWithoutVoice} onCancelTask={cancelCreatedTask} taskLabel={tv.failure?.task?.task_number} />
     </form>
   );
 }

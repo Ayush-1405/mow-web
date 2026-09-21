@@ -446,7 +446,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
                     onChanged={load}
                   />
                 )}
-                <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} />
+                <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} usersById={usersById} canManageVoice={task.assigned_by === profile.id || profile.permissions.canLead} />
               </>
             )}
           </div>

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { uploadTaskProof } from "../lib/api";
+import { useTaskVoice } from "../lib/useTaskVoice";
+import VoiceSubmitStatus from "../components/VoiceSubmitStatus.jsx";
 import { t } from "../lib/i18n";
 import { subscribeTable } from "../lib/realtime";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
@@ -57,10 +58,10 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   const [directoryLoading, setDirectoryLoading] = useState(true);
   const [directoryError, setDirectoryError] = useState(null);
   const [assigneeSearch, setAssigneeSearch] = useState("");
-  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const [voiceFile, setVoiceFile] = useState(null);
-  const [voiceDuration, setVoiceDuration] = useState(0);
+  // Optional voice instruction. The recorded File lives in the hook until the whole sequence (upload -> create task -> link) has succeeded.
+  const tv = useTaskVoice();
+  const busy = tv.busy;
   const [voiceKey, setVoiceKey] = useState(0);
 
   // Project/Site — shown whenever To Department resolves to Interior
@@ -271,19 +272,45 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     setForm((f) => ({ ...f, assigned_to: userId, second_assignee: f.second_assignee === userId ? "" : f.second_assignee }));
   }
 
+  function resetFormAfterSuccess() {
+    // Preserve from_department_id (including management's selected value), task_type_code, priority_code, proof_type_code, due_date and
+    // due_time. Clear everything specific to the task just created plus the whole To Department -> Assignee -> Verifier chain, so the next
+    // task starts the same explicit flow rather than silently reusing a stale target.
+    setForm((f) => ({
+      ...f,
+      title: "",
+      description: "",
+      to_department_id: "",
+      assigned_to: "",
+      second_assignee: "",
+      verifier_id: "",
+      reference_number: "",
+      requirement_text: "",
+      quantity: "",
+      project_id: "",
+    }));
+    setAssigneeSearch("");
+    setProjectSearch("");
+    tv.reset();
+    setVoiceKey((k) => k + 1); // remounts the recorder: this is where its preview URL is released -- only after everything succeeded
+  }
+
   async function handleSubmit(e) {
-    e.preventDefault();
-    if (!form.from_department_id || !form.title || !form.to_department_id || !form.assigned_to || !form.due_date) {
-      showToast("error", "Please fill in the required fields. / કૃપા કરીને જરૂરી ફીલ્ડ ભરો.");
-      return;
+    e?.preventDefault();
+    if (tv.busy) return; // a second click while a submit is running is ignored (the button is also disabled)
+    // Validation only applies before the task exists; once it does, "Retry" just finishes attaching the voice message.
+    if (!tv.taskPending) {
+      if (!form.from_department_id || !form.title || !form.to_department_id || !form.assigned_to || !form.due_date) {
+        showToast("error", "Please fill in the required fields. / કૃપા કરીને જરૂરી ફીલ્ડ ભરો.");
+        return;
+      }
+      if (form.second_assignee && form.second_assignee === form.assigned_to) {
+        showToast("error", t("samePersonErrorMsg", lang));
+        return;
+      }
     }
-    if (form.second_assignee && form.second_assignee === form.assigned_to) {
-      showToast("error", t("samePersonErrorMsg", lang));
-      return;
-    }
-    setBusy(true);
     setResult(null);
-    try {
+    const outcome = await tv.submit(async () => {
       const { data, error } = await supabase.rpc("staff_create_task", {
         p_title: form.title,
         p_description: form.description || null,
@@ -302,63 +329,27 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         p_second_assignee: form.second_assignee || null,
         p_project_id: form.project_id || null,
       });
-      if (error) throw error;
+      if (error) throw error; // surfaced with its real reason (e.g. a role/department restriction inside staff_create_task)
       const row = Array.isArray(data) ? data[0] : data;
-      setResult(row);
-      showToast("success", t("taskCreated", lang));
+      if (!row?.task_id) throw new Error("The task could not be created. Please try again. / ટાસ્ક બનાવી શકાયો નથી. કૃપા કરીને ફરી પ્રયાસ કરો.");
+      return row;
+    });
+    if (!outcome.ok) return; // the status panel shows the reason; the form and the recording are untouched
+    setResult(outcome.task);
+    showToast("success", t(outcome.hadVoice ? "taskAssignedWithVoice" : "taskCreated", lang));
+    resetFormAfterSuccess();
+  }
 
-      // Voice message is optional and only ever recorded locally in memory
-      // until this point — the task must exist first since staff_record_
-      // attachment/staff-file-url both require a real entity_id to check
-      // access against. A failed voice upload never rolls back or blocks
-      // the already-created task; it just surfaces its own toast.
-      if (voiceFile) {
-        try {
-          await uploadTaskProof({
-            entityType: "task",
-            entityId: row.task_id,
-            file: voiceFile,
-            fileType: "voice",
-            durationSeconds: voiceDuration,
-          });
-          showToast("success", t("voiceRecorded", lang));
-        } catch (voiceErr) {
-          showToast("error", voiceErr.message);
-        }
-        setVoiceFile(null);
-        setVoiceDuration(0);
-        setVoiceKey((k) => k + 1);
-      }
-
-      // Preserve from_department_id (including management's selected value),
-      // task_type_code, priority_code, proof_type_code, due_date and due_time.
-      // Clear everything specific to the task just created plus the whole
-      // To Department -> Assignee -> Verifier chain, so the next task starts
-      // the same explicit flow rather than silently reusing a stale target.
-      setForm((f) => ({
-        ...f,
-        title: "",
-        description: "",
-        to_department_id: "",
-        assigned_to: "",
-        second_assignee: "",
-        verifier_id: "",
-        reference_number: "",
-        requirement_text: "",
-        quantity: "",
-        project_id: "",
-      }));
-      setAssigneeSearch("");
-      setProjectSearch("");
-    } catch (err) {
-      // Surface the real reason (e.g. a role/department restriction inside
-      // staff_create_task) instead of a generic message — a swallowed error
-      // here previously made a legitimate server-side rejection look
-      // indistinguishable from "nothing happened."
-      showToast("error", err.message || "Could not create the task. Please try again. / ટાસ્ક બનાવી શકાયો નથી. કૃપા કરીને ફરી પ્રયાસ કરો.");
-    } finally {
-      setBusy(false);
-    }
+  // The task exists but its voice could not be attached, and the user decides.
+  function keepWithoutVoice() {
+    const task = tv.keepTaskWithoutVoice();
+    setResult(task);
+    showToast("success", t("taskCreated", lang));
+    resetFormAfterSuccess();
+  }
+  async function cancelCreatedTask() {
+    const res = await tv.cancelCreatedTask();
+    showToast(res.ok ? "success" : "error", res.ok ? t("voiceTaskCancelled", lang) : res.message);
   }
 
   return (
@@ -377,11 +368,13 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         <div className="card">
           <FactoryTaskForm lang={lang} lookups={lookups}
             onCancel={() => setTaskScope("general")}
-            onCreated={(r) => { showToast("success", `Factory task ${r.task_number} created.`); navigate("/factory/tasks"); }} />
+            onCreated={(r) => { showToast("success", `Factory task ${r.task_number} created${r.voiceAttached ? " with its voice instruction" : ""}.`); navigate("/factory/tasks"); }} />
         </div>
       ) : (
       <div className="card">
-        <form onSubmit={handleSubmit} className="form-grid">
+        <form onSubmit={handleSubmit}>
+          <fieldset className="fx-fieldset" disabled={busy || tv.taskPending}>
+          <div className="form-grid">
           <div className="field full">
             <label>{t("title", lang)} *</label>
             <input value={form.title} onChange={(e) => set("title", e.target.value)} required maxLength={200} />
@@ -397,8 +390,8 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
             <VoiceRecorder
               key={voiceKey}
               lang={lang}
-              disabled={busy}
-              onRecorded={(file, duration) => { setVoiceFile(file); setVoiceDuration(duration); }}
+              disabled={busy || tv.taskPending}
+              onRecorded={tv.onRecorded}
             />
           </div>
 
@@ -610,11 +603,15 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
           </div>
 
           <div className="field full">
-            <button className="btn btn-primary" type="submit" disabled={busy}>
+            <button className="btn btn-primary" type="submit" disabled={busy || tv.taskPending}>
               {busy && <span className="spinner" />}
               {t("createTask", lang)}
             </button>
           </div>
+          </div>
+          </fieldset>
+          <VoiceSubmitStatus lang={lang} tv={tv} onRetry={handleSubmit} onKeepWithout={keepWithoutVoice} onCancelTask={cancelCreatedTask}
+            taskLabel={tv.failure?.task?.task_number} />
         </form>
 
         {result && (

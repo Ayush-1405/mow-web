@@ -6,6 +6,7 @@ import { ACCEPT_ATTR } from "../lib/fileTypes";
 import { t } from "../lib/i18n";
 import { listProjects } from "../lib/interiorApi";
 import VoiceRecorder from "./VoiceRecorder.jsx";
+import VoiceInstruction from "../components/VoiceInstruction.jsx";
 
 // Shared accountability-timeline + reassign UI used by both TodayTasks and
 // Bridges (a Bridge IS a staff_tasks row underneath — same shape). Every
@@ -238,7 +239,7 @@ export function detectFileType(mimeType) {
 // (staff_attachments_select_matches_parent decides visibility), plus a
 // generic "attach a file" control usable any time — not only at Complete,
 // unlike the existing photo-proof uploader on TodayTasks.
-export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lang, showToast, usersById }) {
+export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lang, showToast, usersById, voiceInitial = null, canManageVoice = false }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -365,13 +366,17 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
     }
   }
 
-  const imageItems = items.filter((a) => a.file_type === "image");
+  // The voice INSTRUCTION (recorded when the task was assigned) has its own section above; everything else is listed here as before.
+  const listed = items.filter((a) => a.purpose !== "instruction");
+  const hasInstruction = items.some((a) => a.purpose === "instruction");
+  const imageItems = listed.filter((a) => a.file_type === "image");
 
   return (
     <div style={{ marginTop: 10 }}>
+      <VoiceInstruction taskId={taskId} initial={voiceInitial} canManage={canManageVoice} lang={lang} showToast={showToast} onChanged={load} />
       <label>{t("attachments", lang)}</label>
       {loading && <div className="msg info">…</div>}
-      {!loading && items.length === 0 && <div className="msg info">{t("noAttachments", lang)}</div>}
+      {!loading && listed.length === 0 && !hasInstruction && <div className="msg info">{t("noAttachments", lang)}</div>}
 
       {imageItems.length > 0 && (
         <div className="proof-thumb-grid">
@@ -389,7 +394,7 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
         </div>
       )}
 
-      {items.map((a) => (
+      {listed.map((a) => (
         <div key={a.id}>
           <div className="notif-row">
             <div>
@@ -418,7 +423,7 @@ export const AttachmentsList = React.memo(function AttachmentsList({ taskId, lan
             )}
           </div>
           {playing?.id === a.id && (
-            <audio controls autoPlay src={playing.url} style={{ width: "100%", marginTop: -4, marginBottom: 8 }} />
+            <audio controls preload="metadata" playsInline src={playing.url} style={{ width: "100%", marginTop: -4, marginBottom: 8 }} />
           )}
         </div>
       ))}

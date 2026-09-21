@@ -124,7 +124,7 @@ export default function FactoryTasks({ lang, profile, lookups }) {
         <div className="fx-section">
           <h2>New Factory task</h2>
           <FactoryTaskForm lang={lang} lookups={lookups} onCancel={() => setShowForm(false)}
-            onCreated={(r) => { setShowForm(false); done(`Task ${r.task_number} created${r.attachmentsFailed ? ` (${r.attachmentsFailed} attachment(s) could not be uploaded — open the task to retry)` : ""}.`); }} />
+            onCreated={(r) => { setShowForm(false); done(`Task ${r.task_number} created${r.voiceAttached ? " with its voice instruction" : ""}${r.attachmentsFailed ? ` (${r.attachmentsFailed} attachment(s) could not be uploaded — open the task to retry)` : ""}.`); }} />
         </div>
       )}
 

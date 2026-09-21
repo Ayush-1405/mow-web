@@ -1,5 +1,6 @@
 import { supabase, SUPABASE_URL_BASE, SUPABASE_ANON_KEY_VALUE } from "./supabase";
 import { FILE_RULES, UploadError, extensionOf, logUploadFailure, typedFile, validateUploadFile } from "./fileTypes";
+import { extensionForMime, validateRecording } from "./voiceRecording";
 
 // Mood of Wood — Staff Pilot — thin client for the four staff-* Edge
 // Functions (staff-login, staff-create-user, staff-password-change,
@@ -168,16 +169,16 @@ const doneUploads = new WeakMap();
 
 // Authenticated: uploads a proof file for a task/bridge and records its metadata. Resolves only when BOTH the stored object and
 // the attachment row exist. Throws UploadError (message = human-readable) otherwise; nothing is left half-recorded.
-export function uploadTaskProof({ entityType, entityId, file, fileType, durationSeconds }) {
+export function uploadTaskProof({ entityType, entityId, file, fileType, durationSeconds, purpose }) {
   const hit = doneUploads.get(file);
   if (hit && hit.entityId === entityId) return hit.promise;
-  const promise = doTaskProofUpload({ entityType, entityId, file, fileType, durationSeconds });
+  const promise = doTaskProofUpload({ entityType, entityId, file, fileType, durationSeconds, purpose });
   doneUploads.set(file, { entityId, promise });
   promise.catch(() => { if (doneUploads.get(file)?.promise === promise) doneUploads.delete(file); });
   return promise;
 }
 
-async function doTaskProofUpload({ entityType, entityId, file, fileType, durationSeconds }) {
+async function doTaskProofUpload({ entityType, entityId, file, fileType, durationSeconds, purpose }) {
   let category = fileType;
   let mimeType;
   let ext = extensionOf(file.name || "");
@@ -207,6 +208,7 @@ async function doTaskProofUpload({ entityType, entityId, file, fileType, duratio
     p_entity_type: entityType, p_entity_id: entityId, p_file_type: category, p_storage_path: storagePath,
     p_original_filename: fileName, p_mime_type: contentType, p_file_size: file.size,
     ...(durationSeconds != null ? { p_duration_seconds: durationSeconds } : {}),
+    ...(purpose ? { p_purpose: purpose } : {}),
   });
   let { data: attachmentId, error: recordError } = await record();
   if (recordError && /fetch|network|timeout|5\d\d/i.test(recordError.message || "")) { await sleep(800); ({ data: attachmentId, error: recordError } = await record()); }
@@ -229,3 +231,91 @@ export function downloadTaskProof(attachmentId) {
 export function downloadChatAttachment(attachmentId) {
   return callFunction("staff-file-url", { action: "download", chat_attachment_id: attachmentId }, { auth: true });
 }
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Voice instruction pipeline (Assign Task):  stage (upload)  ->  create the task  ->  attach (link).
+//
+// The recording is uploaded BEFORE the task is created, so a task is never created without the recording it was meant to carry, and a
+// failed upload never leaves a half-made task behind. The stored object is only linked to the task by attachVoiceInstruction (one RPC that
+// re-checks access, the mime type and the size). Nothing here ever stores a blob: URL or base64.
+// ---------------------------------------------------------------------------------------------------------------------
+
+const VOICE_ERR = { EMPTY: "VOICE_EMPTY", TOO_SHORT: "VOICE_TOO_SHORT", TOO_LONG: "VOICE_TOO_LONG", TOO_LARGE: "VOICE_TOO_LARGE", UNSUPPORTED_TYPE: "VOICE_UNSUPPORTED" };
+
+// Technical details for debugging (never secrets, never the audio itself).
+export function logVoiceFailure(stage, err, extra = {}) {
+  console.error("[voice]", stage, { code: err?.code, status: err?.status ?? err?.statusCode, message: err?.message, ...extra });
+}
+
+// Uploads a recorded File to the private bucket. Resolves { storagePath, contentType, size, fileName, durationSeconds } -- nothing is linked yet.
+export async function stageVoiceRecording({ file, durationSeconds }) {
+  const seconds = Math.round(durationSeconds || 0);
+  const bad = validateRecording({ size: file?.size, seconds, mime: file?.type });
+  if (bad) throw new UploadError(VOICE_ERR[bad]);
+  const ctx = { ext: extensionForMime(file.type), size: file.size, mime: file.type, fileName: file.name };
+  try {
+    const { storagePath, contentType } = await putWithSignedUrl(
+      { action: "upload", entity_type: "staging", filename: file.name, mime_type: file.type, file_type: "voice", file_size: file.size, duration_seconds: seconds },
+      file, ctx,
+    );
+    return { storagePath, contentType, size: file.size, fileName: file.name, durationSeconds: seconds };
+  } catch (err) {
+    logVoiceFailure("upload", err, { mime: file.type, size: file.size });
+    throw err;
+  }
+}
+
+// Links a staged recording to a task as its voice INSTRUCTION. Retried once for a transient failure. The stored object is KEPT on failure
+// so the caller can simply retry (nothing is deleted here).
+export async function attachVoiceInstruction({ taskId, staged }) {
+  const call = () => supabase.rpc("staff_record_attachment", {
+    p_entity_type: "task", p_entity_id: taskId, p_file_type: "voice", p_storage_path: staged.storagePath, p_original_filename: staged.fileName,
+    p_mime_type: staged.contentType, p_file_size: staged.size, p_duration_seconds: staged.durationSeconds, p_purpose: "instruction",
+  });
+  let { data, error } = await call();
+  if (error && /fetch|network|timeout|5\d\d/i.test(error.message || "")) { await sleep(800); ({ data, error } = await call()); }
+  if (error || !data) {
+    logVoiceFailure("link", error, { taskId });
+    if (error && /access to attach|not authorized|permission|only the person/i.test(error.message || "")) throw new UploadError("DENIED");
+    throw new UploadError("VOICE_NOT_LINKED", error?.message);
+  }
+  return { attachmentId: data };
+}
+
+// Removes a staged recording that was never linked (task creation failed and the user gave up, or re-recorded). Best effort.
+export function discardStagedVoice(storagePath) {
+  return storagePath ? removeOrphan(storagePath) : Promise.resolve();
+}
+
+// Archives an attachment (the storage object is retained). Used by "Remove" / "Re-record" on a voice instruction.
+export function removeTaskAttachment(attachmentId, reason) {
+  return supabase.rpc("staff_remove_attachment", { p_attachment_id: attachmentId, p_reason: reason || null });
+}
+
+// One round trip for a whole list of tasks: the voice instructions the caller may see (with the recorder's name).
+export async function fetchVoiceInstructions(taskIds) {
+  const ids = [...new Set((taskIds || []).filter(Boolean))];
+  if (ids.length === 0) return { data: [], error: null };
+  return supabase.rpc("staff_task_voice_instructions", { p_task_ids: ids });
+}
+
+// Playback URL for <audio>: a private signed URL, minted on demand and cached until shortly before it expires (so re-renders and re-opens do
+// not mint a new one every time), refreshed with { force: true } after the browser reports a load error. Never persisted anywhere.
+const voiceUrlCache = new Map();
+const voiceUrlInflight = new Map();
+export async function getVoicePlaybackUrl(attachmentId, { force = false } = {}) {
+  const hit = voiceUrlCache.get(attachmentId);
+  if (!force && hit && hit.expiresAt > Date.now()) return hit.url;
+  if (voiceUrlInflight.has(attachmentId)) return voiceUrlInflight.get(attachmentId);
+  const p = callFunction("staff-file-url", { action: "download", attachment_id: attachmentId, inline: true }, { auth: true })
+    .then((res) => {
+      voiceUrlCache.set(attachmentId, { url: res.signed_url, expiresAt: Date.now() + Math.max(15, (res.expires_in_seconds || 120) - 30) * 1000 });
+      return res.signed_url;
+    })
+    .finally(() => voiceUrlInflight.delete(attachmentId));
+  voiceUrlInflight.set(attachmentId, p);
+  return p;
+}
+// signed links belong to the person who requested them
+supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") voiceUrlCache.clear(); });

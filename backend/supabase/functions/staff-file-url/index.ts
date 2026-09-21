@@ -13,6 +13,9 @@ import {
 import { resolveDocument, voiceExtension } from "../_shared/fileTypes.ts";
 
 const BUCKET = "staff-attachments";
+const MAX_VOICE_BYTES = 5 * 1024 * 1024; // 60 s of Opus/AAC is well under 1 MB; 5 MB is a generous hard cap
+const STALE_VOICE_MS = 24 * 60 * 60 * 1000;
+const VOICE_DOWNLOAD_TTL_SECONDS = 600; // long enough to seek around a 60 s clip; the browser is handed a fresh URL when it expires
 
 const DOWNLOAD_TTL_SECONDS = clampDownloadTtlSeconds(
   Number.parseInt(Deno.env.get("STAFF_SIGNED_URL_TTL_SECONDS") ?? "120", 10),
@@ -88,11 +91,17 @@ async function handleUpload(
   const { entity_type, entity_id, filename, mime_type, file_type, file_size, duration_seconds } = payload;
 
   // Replies are read-only (their history lives in Chat), so "task_message" staging uploads are no longer accepted.
-  if (entity_type !== "task" && entity_type !== "bridge") {
+  // "staging" is a VOICE recording made while a task is being assigned: it is stored first (before the task exists, so a task is never
+  // created without the recording it was meant to carry) and is linked to the task afterwards by staff_record_attachment.
+  const staging = entity_type === "staging";
+  if (entity_type !== "task" && entity_type !== "bridge" && !staging) {
     return errorResponse(400, MSG.missingFields, origin);
   }
-  if (!isUuid(entity_id) || !isNonEmptyString(filename, 200) || !isNonEmptyString(mime_type, 200)) {
+  if ((!staging && !isUuid(entity_id)) || !isNonEmptyString(filename, 200) || !isNonEmptyString(mime_type, 200)) {
     return errorResponse(400, MSG.missingFields, origin);
+  }
+  if (staging && file_type !== "voice") {
+    return errorResponse(400, MSG.fileTypeNotAllowed, origin);
   }
   if (!isPositiveInt(file_size)) {
     return errorResponse(400, MSG.missingFields, origin);
@@ -119,29 +128,32 @@ async function handleUpload(
     ext = resolved.ext;
     contentType = resolved.contentType;
   }
-  if (file_size > MAX_FILE_BYTES) {
+  if (file_size > MAX_FILE_BYTES || (file_type === "voice" && file_size > MAX_VOICE_BYTES)) {
     return errorResponse(400, MSG.fileTooLarge, origin);
   }
 
   const userClient = userScopedClient(token);
-  const parentTable = entity_type === "bridge" ? "bridges" : "staff_tasks";
-  const { data: parentRow, error: parentError } = await userClient
-    .from(parentTable)
-    .select("id")
-    .eq("id", entity_id)
-    .maybeSingle();
+  if (!staging) {
+    const parentTable = entity_type === "bridge" ? "bridges" : "staff_tasks";
+    const { data: parentRow, error: parentError } = await userClient
+      .from(parentTable)
+      .select("id")
+      .eq("id", entity_id)
+      .maybeSingle();
 
-  if (parentError) {
-    console.error("staff-file-url: parent access check failed:", parentError.message);
-    return errorResponse(500, MSG.serverError, origin);
-  }
-  if (!parentRow) {
-    return errorResponse(403, MSG.noAccessToParent, origin);
+    if (parentError) {
+      console.error("staff-file-url: parent access check failed:", parentError.message);
+      return errorResponse(500, MSG.serverError, origin);
+    }
+    if (!parentRow) {
+      return errorResponse(403, MSG.noAccessToParent, origin);
+    }
   }
 
-  // Server-controlled path: uploader prefix (ownership is re-checked by the RPCs) + random id + validated extension.
-  // The original file name is kept only as attachment metadata -- it never becomes part of a storage path.
-  const storagePath = `${verifiedUserId}/${crypto.randomUUID()}.${ext}`;
+  // Uploader prefix (ownership is re-checked by the RPCs) + a folder that says what it is + timestamp + random id + validated extension.
+  const storagePath = file_type === "voice"
+    ? `${verifiedUserId}/voice/${Date.now()}-${crypto.randomUUID()}.${ext}`
+    : `${verifiedUserId}/${crypto.randomUUID()}.${ext}`;
 
   const admin = adminClient();
   const { data: signed, error: signError } = await admin.storage.from(BUCKET).createSignedUploadUrl(storagePath);
@@ -149,6 +161,12 @@ async function handleUpload(
   if (signError || !signed) {
     console.error("staff-file-url: createSignedUploadUrl failed:", signError?.message);
     return errorResponse(500, MSG.serverError, origin);
+  }
+
+  if (staging) {
+    // Best effort, never blocks the upload: recordings this user made but never attached to a task (tab closed, task creation failed)
+    // are removed once they are a day old. Only their own voice/ folder, and only objects no attachment row references.
+    try { await sweepStaleVoice(verifiedUserId, userClient, admin); } catch (e) { console.error("staff-file-url: voice sweep failed:", (e as Error)?.message); }
   }
 
   return okResponse(
@@ -162,6 +180,17 @@ async function handleUpload(
     },
     origin,
   );
+}
+
+async function sweepStaleVoice(userId: string, userClient: ReturnType<typeof userScopedClient>, admin: ReturnType<typeof adminClient>) {
+  const { data: objs } = await admin.storage.from(BUCKET).list(`${userId}/voice`, { limit: 100, sortBy: { column: "created_at", order: "asc" } });
+  const old = (objs ?? []).filter((o) => o.created_at && Date.now() - new Date(o.created_at).getTime() > STALE_VOICE_MS).map((o) => `${userId}/voice/${o.name}`);
+  if (old.length === 0) return;
+  const { data: linked, error } = await userClient.from("staff_attachments").select("storage_path").in("storage_path", old);
+  if (error) return; // fail SAFE: unknown => delete nothing
+  const keep = new Set((linked ?? []).map((r: { storage_path: string }) => r.storage_path));
+  const drop = old.filter((p) => !keep.has(p));
+  if (drop.length > 0) await admin.storage.from(BUCKET).remove(drop);
 }
 
 // Removes an object that was uploaded but never linked (metadata insert failed). Only the uploader's own prefix, and only
@@ -206,7 +235,7 @@ async function handleDownload(
   token: string,
   origin: string | null,
 ): Promise<Response> {
-  const { attachment_id, message_id, chat_attachment_id } = payload;
+  const { attachment_id, message_id, chat_attachment_id, inline } = payload;
 
   if (isUuid(chat_attachment_id)) {
     return handleDownloadChatAttachment(chat_attachment_id, token, origin);
@@ -223,7 +252,7 @@ async function handleDownload(
   const userClient = userScopedClient(token);
   const { data: attachment, error: attachmentError } = await userClient
     .from("staff_attachments")
-    .select("id, storage_path, original_filename, mime_type")
+    .select("id, storage_path, original_filename, mime_type, file_type")
     .eq("id", attachment_id)
     .maybeSingle();
 
@@ -236,9 +265,12 @@ async function handleDownload(
   }
 
   const admin = adminClient();
+  // inline=true is for PLAYBACK (an <audio> element): no forced-download header, and a longer-lived link for voice so seeking keeps working.
+  const wantInline = inline === true;
+  const ttl = wantInline && attachment.file_type === "voice" ? VOICE_DOWNLOAD_TTL_SECONDS : DOWNLOAD_TTL_SECONDS;
   const { data: signed, error: signError } = await admin.storage
     .from(BUCKET)
-    .createSignedUrl(attachment.storage_path, DOWNLOAD_TTL_SECONDS, { download: attachment.original_filename });
+    .createSignedUrl(attachment.storage_path, ttl, wantInline ? undefined : { download: attachment.original_filename });
 
   if (signError || !signed) {
     console.error("staff-file-url: createSignedUrl failed:", signError?.message);
@@ -249,7 +281,7 @@ async function handleDownload(
     {
       action: "download",
       signed_url: signed.signedUrl,
-      expires_in_seconds: DOWNLOAD_TTL_SECONDS,
+      expires_in_seconds: ttl,
       original_filename: attachment.original_filename,
       mime_type: attachment.mime_type,
     },

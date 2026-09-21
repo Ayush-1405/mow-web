@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { uploadTaskProof, resolveMimeType } from "../lib/api";
+import { uploadTaskProof, resolveMimeType, fetchVoiceInstructions } from "../lib/api";
 import { ACCEPT_ATTR, UPLOAD_MSG, UploadError, humanSize, validateUploadFile } from "../lib/fileTypes";
 import { t } from "../lib/i18n";
 import { TaskTimeline, ReassignPanel, AttachmentsList, AssignedTeamSection, ProjectSiteSection, detectFileType } from "./TaskDetail.jsx";
@@ -93,6 +93,9 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   }
   const [tasks, setTasks] = useState([]);
   const [assigneesByTask, setAssigneesByTask] = useState({});
+  // Voice instructions of the visible tasks ({ [taskId]: row }), one batched query; drives the 🎙 chip and the expanded section.
+  const [voiceByTask, setVoiceByTask] = useState({});
+  const taskIdsRef = useRef([]);
   const [projectsById, setProjectsById] = useState({});
   const [usersById, setUsersById] = useState({});
   const [directory, setDirectory] = useState([]);
@@ -228,6 +231,12 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // hiding every task card behind `loading` unmounted whatever the user was
   // doing inside one, including the file they had just picked to attach.
   const loadedOnce = useRef(false);
+  const refreshVoice = useCallback(async () => {
+    const ids = taskIdsRef.current;
+    if (!ids.length) { setVoiceByTask({}); return; }
+    const { data, error } = await fetchVoiceInstructions(ids);
+    if (!error) setVoiceByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r])));
+  }, []);
   const load = useCallback(async () => {
     if (!loadedOnce.current) setLoading(true);
     // requirement_text/quantity now live directly on staff_tasks (every
@@ -279,6 +288,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     // and lets action-button gating check the caller's own row instead of
     // only the shared assigned_to/current_owner_id scalar columns.
     const taskIds = (data || []).map((tsk) => tsk.id);
+    taskIdsRef.current = taskIds;
+    refreshVoice();
     if (taskIds.length) {
       const { data: assigneeRows } = await supabase.from("staff_task_assignees").select("*").in("task_id", taskIds).eq("is_active", true);
       const grouped = {};
@@ -289,7 +300,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
     loadedOnce.current = true;
     setLoading(false);
-  }, [showToast, scopeDef.key, scopeDef.col]);
+  }, [showToast, scopeDef.key, scopeDef.col, refreshVoice]);
 
   useEffect(() => { loadRef.current = load; }, [load]);
   // Switching list: show the skeleton for the new list, never the previous list's rows.
@@ -354,6 +365,17 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     });
     return () => { window.clearTimeout(timer); unsub(); };
   }, []);
+
+  // A voice instruction is linked to its task a moment AFTER the task itself appears (upload -> create -> link), so the assignee's open list
+  // hears about the new attachment live (RLS decides who receives it) and re-reads the voice map -- no refresh needed.
+  useEffect(() => {
+    let timer = null;
+    const unsub = subscribeTable("staff_attachments_today", "staff_attachments", null, () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => refreshVoice(), 250);
+    });
+    return () => { window.clearTimeout(timer); unsub(); };
+  }, [refreshVoice]);
 
   // Second Assignee: merge INSERT/UPDATE/DELETE straight into
   // assigneesByTask instead of a full refetch -- when someone is newly
@@ -799,6 +821,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               ) : (
                 <span className="fx-tag">{deptName(task.to_department_id)}</span>
               )}
+              {voiceByTask[task.id] && <span className="fx-tag gold" title={t("voiceInstruction", lang)}>🎙 {t("voiceInstruction", lang)}</span>}
               {usersById[task.assigned_to] && (
                 <span className="fx-tag">
                   👤 {usersById[task.assigned_to].full_name}
@@ -1071,7 +1094,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                 onChanged={load}
               />
             )}
-            <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} usersById={usersById} />
+            <AttachmentsList taskId={task.id} lang={lang} showToast={showToast} usersById={usersById} voiceInitial={voiceByTask[task.id] || null} canManageVoice={iCreatedIt || profile.permissions.canLead} />
           </>
         )}
       </div>

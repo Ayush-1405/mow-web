@@ -79,6 +79,12 @@ export const UPLOAD_MSG = {
   NOT_LINKED: "The file was uploaded but could not be linked to the task, so it was removed. Please retry. / ફાઇલ અપલોડ થઈ પણ કાર્ય સાથે જોડાઈ શકી નહીં.",
   SESSION: "Your session has expired. Please sign in again. / તમારું સત્ર સમાપ્ત થયું છે.",
   NOT_COMPLETED: "The task was not completed because the document upload failed. / દસ્તાવેજ અપલોડ નિષ્ફળ થવાથી કાર્ય પૂર્ણ થયું નથી.",
+  VOICE_EMPTY: "The recording is empty. Please record again. / રેકોર્ડિંગ ખાલી છે. કૃપા કરીને ફરી રેકોર્ડ કરો.",
+  VOICE_TOO_SHORT: "The recording is too short (minimum 1 second). / રેકોર્ડિંગ ખૂબ ટૂંકું છે (ઓછામાં ઓછું 1 સેકન્ડ).",
+  VOICE_TOO_LONG: "The recording is longer than 60 seconds. Please record a shorter message. / રેકોર્ડિંગ 60 સેકન્ડથી લાંબું છે.",
+  VOICE_TOO_LARGE: "The recording is larger than 5 MB. Please record a shorter message. / રેકોર્ડિંગ 5 MB કરતાં મોટું છે.",
+  VOICE_UNSUPPORTED: "This browser recorded an audio format that is not supported. Please try another browser. / આ બ્રાઉઝરનું ઑડિયો ફોર્મેટ સમર્થિત નથી.",
+  VOICE_NOT_LINKED: "The voice message was uploaded but could not be attached to the task. Press Retry — your recording is still kept. / વોઇસ સંદેશ કાર્ય સાથે જોડાઈ શક્યો નહીં. ફરી પ્રયાસ કરો — તમારું રેકોર્ડિંગ સાચવેલું છે.",
   REQUIRED: "A document or drawing must be uploaded successfully before completing this task. / આ કાર્ય પૂર્ણ કરતાં પહેલાં દસ્તાવેજ અથવા ડ્રોઇંગ સફળતાપૂર્વક અપલોડ થવું જોઈએ.",
 };
 
