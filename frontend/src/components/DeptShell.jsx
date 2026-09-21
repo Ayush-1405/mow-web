@@ -3,6 +3,7 @@ import Sidebar from "./Sidebar.jsx";
 import AppHeader from "./AppHeader.jsx";
 import { t } from "../lib/i18n";
 import ChatNavButton from "./ChatNavButton.jsx";
+import ManagementBadge from "./ManagementBadge.jsx";
 
 // Layout used by every department page and the Management Control Tower: the responsive Sidebar (desktop rail / mobile drawer, see
 // Sidebar.jsx) plus ONE header (AppHeader) with the menu button, chat, back-to-tasks and logout, so a user who navigates here never
@@ -11,7 +12,7 @@ import ChatNavButton from "./ChatNavButton.jsx";
 // Layout contract (styles.css): .dept-shell is exactly the visible viewport tall and never scrolls; the header is a normal flex item
 // (no sticky/fixed); only <main> scrolls -- or, for `flush` pages such as Chat, <main> is a non-scrolling flex box that the page fills
 // itself (the page then owns its own single scroll area).
-export default function DeptShell({ lang, items, managementLinks, onBackToTasks, onLogout, flush = false, children }) {
+export default function DeptShell({ lang, items, managementLinks, managementBadge = false, onBackToTasks, onLogout, flush = false, children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div className="dept-shell">
@@ -31,7 +32,10 @@ export default function DeptShell({ lang, items, managementLinks, onBackToTasks,
             { key: "logout", label: t("logout", lang), onClick: onLogout },
           ]}
         />
-        <main className={`dept-main${flush ? " dept-main-flush" : ""}`}>{children}</main>
+        <main className={`dept-main${flush ? " dept-main-flush" : ""}`}>
+          {managementBadge && !flush && <ManagementBadge />}
+          {children}
+        </main>
       </div>
     </div>
   );

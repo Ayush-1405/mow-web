@@ -58,7 +58,7 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
   // Management/Super Admin/Interior Dept Head server-side regardless, so
   // this can't be bypassed by forging the request. No PM/Designer/
   // Execution role gets this button, however senior on this one project.
-  const canDeleteProject = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead;
+  const canDeleteProject = !!(staffProfile?.permissions?.canDelete || staffProfile?.permissions?.isDepartmentHead);
 
   const load = useCallback(async () => {
     setLoading(true);

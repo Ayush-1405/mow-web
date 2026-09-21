@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom";
 import ChatConversation from "./ChatConversation.jsx";
 import {
-  TYPE_LABEL, UUID_RE, listConversations, managementDirectory, managementOpen, openProjectChat, resolveLegacyLink, searchMessages, searchProjects, searchUsers, startDirect,
+  TYPE_LABEL, UUID_RE, listConversations, managementDirectory, managementOpen, oversightOpen, openProjectChat, resolveLegacyLink, searchMessages, searchProjects, searchUsers, startDirect,
   subscribeConversationList,
 } from "../../lib/chatApi";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
@@ -60,7 +60,7 @@ export default function ChatPage({ profile }) {
   const [q, setQ] = useState("");
   const dq = useDebouncedValue(q, 300);
   const [hits, setHits] = useState([]);
-  const isMgmt = !!(profile.isManagement || profile.isSuperAdmin);
+  const isMgmt = profile.permissions.canViewAllOperationalChats;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
@@ -342,7 +342,9 @@ function NewChat({ onClose, onStarted }) {
   );
 }
 
-// Management oversight: conversation NAMES only. Opening one needs a reason, is logged, and posts a visible "Management joined" notice.
+// Management oversight. The directory lists conversation NAMES only. Two separate ways in:
+//   - "View read-only": a logged, 12-hour read session. NOT participation: no member entry, no notice to others, no notifications, cannot post.
+//   - "Join & participate": needs a reason, is logged, and posts a visible "Management joined" notice (the older behaviour).
 function Oversight({ onClose, onOpened }) {
   const [q, setQ] = useState("");
   const dq = useDebouncedValue(q, 300);
@@ -364,11 +366,18 @@ function Oversight({ onClose, onOpened }) {
     if (err) return setError(err.message || "Could not open.");
     onOpened(data);
   }
+  async function view() {
+    setBusy(true);
+    const { error: err } = await oversightOpen(target.id, reason.trim());
+    setBusy(false);
+    if (err) return setError(err.message || "Could not open.");
+    onOpened(target.id);
+  }
   return (
     <div className="chat-modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="chat-modal" role="dialog" aria-modal="true" aria-label="Management oversight">
         <div className="chat-modal-head"><b>Management oversight</b><button type="button" className="chat-x" onClick={onClose} aria-label="Close">×</button></div>
-        <div className="sub">Opening a conversation is recorded and other members see “Management joined this conversation for oversight”.</div>
+        <div className="sub">Viewing is read-only and recorded in the audit log; other members are not notified. Joining is recorded too and other members see “Management joined this conversation for oversight”.</div>
         {!target ? (
           <>
             <input type="search" placeholder="Search conversations…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search conversations" />
@@ -385,9 +394,13 @@ function Oversight({ onClose, onOpened }) {
         ) : (
           <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
             <b>{target.title}</b>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for opening this conversation (required)" maxLength={300} aria-label="Reason" />
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={target.oversight_allowed ? "Reason (optional to view, required to join)" : "Reason for opening this conversation (required)"} maxLength={300} aria-label="Reason" />
             {error && <div className="msg error" role="alert">{error}</div>}
-            <div className="btn-row"><button type="button" className="btn btn-primary" disabled={busy} onClick={enter}>Open &amp; join</button><button type="button" className="btn btn-outline" onClick={() => { setTarget(null); setReason(""); }}>Back</button></div>
+            <div className="btn-row">
+              {target.oversight_allowed && <button type="button" className="btn btn-primary" disabled={busy} onClick={view}>View read-only</button>}
+              <button type="button" className={`btn ${target.oversight_allowed ? "btn-outline" : "btn-primary"}`} disabled={busy} onClick={enter}>Join &amp; participate</button>
+              <button type="button" className="btn btn-outline" onClick={() => { setTarget(null); setReason(""); setError(null); }}>Back</button>
+            </div>
           </div>
         )}
       </div>

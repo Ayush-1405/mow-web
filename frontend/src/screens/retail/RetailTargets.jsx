@@ -16,7 +16,7 @@ export default function RetailTargets({ lang, profile, lookups }) {
   const [form, setForm] = useState({ location_id: "", period_start: "", period_end: "", target_amount: "" });
 
   const retailDept = useMemo(() => lookups.departments.find((d) => d.code === "RETAIL"), [lookups.departments]);
-  const canWrite = profile.isManagement || profile.isDeptHead;
+  const canWrite = profile.permissions.canLead;
 
   const load = useCallback(async () => {
     setLoading(true);

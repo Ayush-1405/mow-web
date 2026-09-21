@@ -34,7 +34,7 @@ export default function DepartmentDashboard({ lang, profile, department, onOpenL
   const code = department?.code;
   const deptName = lang === "gu" ? department?.name_gu : department?.name_en;
   const deptNameOther = lang === "gu" ? department?.name_en : department?.name_gu;
-  const isElevated = !!profile?.isManagement || ELEVATED_ROSTER_ROLES.has(profile?.roleCode);
+  const isElevated = !!profile?.permissions?.isManagementUser || ELEVATED_ROSTER_ROLES.has(profile?.roleCode);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

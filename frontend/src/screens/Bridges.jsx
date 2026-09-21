@@ -49,16 +49,23 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
   // Inbox = incoming Bridge Tasks still waiting for acceptance (destination Head / Supervisor only).
   // Incoming = every Bridge Task routed to the department. Sent = ones this user / their department sent.
   // Assigned to me = the personal slice. Each is a different question -- never one merged list.
-  const isLead = !!(profile.isDeptHead || profile.roleCode === "supervisor" || profile.isManagement || profile.isSuperAdmin);
+  const isLead = !!(profile.permissions.canLead || profile.permissions.isSupervisor);
+  // Director / Management see EVERY Bridge in the organization (RLS returns them all); the department-relative tabs below would be
+  // empty for someone whose own department is not involved, so "All Bridges" is their default.
+  const seeAll = profile.permissions.canViewAllBridges;
   const bridgeTabs = [
+    ...(seeAll ? [["all", "All Bridges"]] : []),
     ...(isLead ? [["inbox", "Bridge Inbox"], ["incoming", "All Incoming"]] : []),
     ["sent", "Bridge Sent"], ["mine", "Assigned to me"],
   ];
-  const [bridgeTab, setBridgeTab] = useState(isLead ? "inbox" : "mine");
+  const [bridgeTab, setBridgeTab] = useState(seeAll ? "all" : isLead ? "inbox" : "mine");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const AWAITING = new Set(["ASSIGNED", "PARTIALLY_ACCEPTED", "RETURNED", "REOPENED"]);
   function inTab(task) {
     if (!task) return false;
     switch (bridgeTab) {
+      case "all": return true;
       case "inbox": return task.scope_bridge_in && AWAITING.has(lookups.statusById?.[task.status_id]?.code);
       case "incoming": return task.scope_bridge_in;
       case "sent": return task.scope_bridge_sent;
@@ -78,7 +85,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
       .select("*")
       .eq("is_active", true)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(seeAll ? 500 : 100);
     if (bridgeErr) {
       showToast("error", bridgeErr.message);
       setLoading(false);
@@ -123,7 +130,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
     }
 
     setLoading(false);
-  }, [showToast]);
+  }, [showToast, seeAll]);
 
   const loadDirectory = useCallback(async () => {
     const { data, error } = await supabase.rpc("staff_list_assignable_users_all");
@@ -207,6 +214,19 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
     return task.due_date < new Date().toISOString().slice(0, 10);
   };
 
+  // One row per bridge id (a record can never appear twice), narrowed by the active tab and the optional project / department / status filters.
+  const seenBridge = new Set();
+  const shownBridges = bridges.filter((b) => {
+    if (seenBridge.has(b.id)) return false;
+    seenBridge.add(b.id);
+    const tk = tasksById[b.task_id];
+    if (!inTab(tk)) return false;
+    if (projectFilter && tk?.project_id !== projectFilter) return false;
+    if (deptFilter && b.from_department_id !== deptFilter && b.to_department_id !== deptFilter) return false;
+    if (statusFilter && lookups.statusById?.[tk?.status_id]?.code !== statusFilter) return false;
+    return true;
+  });
+
   return (
     <div>
       <div className="section-title">{t("bridges", lang)}</div>
@@ -226,21 +246,40 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
         </div>
       )}
 
-      <div className="fx-tabs" role="tablist" aria-label="Bridge lists" style={{ marginBottom: 8 }}>
+      {seeAll && (
+        <div className="filter-bar filter-grid" style={{ marginBottom: 10 }}>
+          <div className="field">
+            <label>{t("department", lang)}</label>
+            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+              <option value="">{t("allDepartments", lang)}</option>
+              {lookups.departments.map((d) => <option key={d.id} value={d.id}>{lang === "gu" ? d.name_gu : d.name_en}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>{t("status", lang)}</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">{t("allStatuses", lang)}</option>
+              {lookups.statuses.map((st) => <option key={st.id} value={st.code}>{lang === "gu" ? st.name_gu : st.name_en}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div className="fx-tabs mobile-tab-list" role="tablist" aria-label="Bridge lists" style={{ marginBottom: 8 }}>
         {bridgeTabs.map(([k, lbl]) => (
           <button key={k} type="button" role="tab" aria-selected={bridgeTab === k} className={bridgeTab === k ? "active" : ""} onClick={() => setBridgeTab(k)}>{lbl}</button>
         ))}
       </div>
-      {!loading && bridges.filter((b) => inTab(tasksById[b.task_id])).length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
+      {!loading && shownBridges.length === 0 && <div className="msg info">{t("noTasks", lang)}</div>}
 
-      {bridges.filter((b) => inTab(tasksById[b.task_id]) && (!projectFilter || tasksById[b.task_id]?.project_id === projectFilter)).map((bridge) => {
+      {shownBridges.map((bridge) => {
         const task = tasksById[bridge.task_id];
         const status = task ? lookups.statusById[task.status_id] : null;
         const statusCode = status?.code || "";
         const mine = task && task.current_owner_id === profile.id;
         const isAssignee = task && task.assigned_to === profile.id;
         const iAmVerifier = task && task.verifier_id === profile.id;
-        const canManage = profile.isManagement || profile.isDeptHead;
+        const canManage = profile.permissions.canLead;
         const busy = busyId === bridge.task_id;
 
         return (
@@ -340,7 +379,7 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
                     {t("verify", lang)}
                   </button>
                 )}
-                {statusCode === "VERIFIED" && (profile.isManagement || profile.isDeptHead) && (
+                {statusCode === "VERIFIED" && profile.permissions.canLead && (
                   <button className="btn btn-primary" disabled={busy} onClick={() => runAction("staff_close_task", task.id)}>
                     {t("close", lang)}
                   </button>

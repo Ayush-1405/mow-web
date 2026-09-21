@@ -46,6 +46,8 @@ export const deleteMessage = (id, reason) => rpc("chat_delete_message", { p_mess
 export const searchMessages = (q, conversationId) => rpc("chat_search_messages", { p_query: q, p_conversation: conversationId || null, p_limit: 30 });
 export const managementDirectory = (q, type) => rpc("chat_management_directory", { p_query: q || null, p_type: type || null });
 export const managementOpen = (id, reason) => rpc("chat_management_open", { p_conversation: id, p_reason: reason });
+// View-only oversight: opens a LOGGED, 12-hour read session without joining -- no member entry, no "joined" notice, no unread counts, no notifications, no posting.
+export const oversightOpen = (id, reason) => rpc("chat_oversight_open", { p_conversation: id, p_reason: reason || null });
 
 export function sendMessage({ conversationId, body, replyTo, mentions, attachments, taskId, jobId, dailyId }) {
   return rpc("chat_send_message", {

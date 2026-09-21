@@ -99,7 +99,7 @@ export default function InteriorProjectDetail({ lang, staffProfile, lookups }) {
   useEffect(() => { setActiveTab(initialTab); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const personName = useCallback((id) => people.find((p) => p.id === id)?.name || "—", [people]);
-  const isElevated = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead;
+  const isElevated = !!staffProfile?.permissions?.canLead;
 
   if (loading) {
     return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 90 }} /><div className="skeleton-block" style={{ height: 300 }} /></div>;

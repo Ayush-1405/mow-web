@@ -95,7 +95,7 @@ export default function InteriorMaterialSelection({ lang, staffProfile, lockedPr
   const [confirmArchiveId, setConfirmArchiveId] = useState(null);
   const [confirmDeleteAttId, setConfirmDeleteAttId] = useState(null);
 
-  const isElevated = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead;
+  const isElevated = !!staffProfile?.permissions?.canLead;
 
   const [q, setQ] = useState("");
   const [filterCategory, setFilterCategory] = useState("");

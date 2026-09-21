@@ -89,7 +89,7 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
   const { projectId: routeProjectId } = useParams();
   const lockedProjectId = lockedProjectIdProp || routeProjectId;
   const profile = useInteriorProfile();
-  const isElevated = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead;
+  const isElevated = !!staffProfile?.permissions?.canLead;
   const isOrgWide = isElevated || ["head", "director", "purchase", "crm"].includes(profile?.role);
 
   const [loading, setLoading] = useState(true);

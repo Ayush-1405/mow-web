@@ -55,7 +55,7 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
   // row (matching this screen's existing inline-expand convention, not a
   // separate modal component) with a live impact preview from
   // staff_user_deletion_impact() before anything is submitted.
-  const canDeleteUsers = profile.isSuperAdmin || profile.isManagement;
+  const canDeleteUsers = profile.permissions.canManageUsers;
   const [deleteFor, setDeleteFor] = useState(null);
   const [deleteImpact, setDeleteImpact] = useState(null);
   const [deleteReasonCode, setDeleteReasonCode] = useState("");
@@ -143,7 +143,7 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
   // Only Super Admin/Management may change an existing user's role
   // (staff_update_user_role — Management is blocked server-side from
   // granting sysadmin itself, so the option is simply not offered here).
-  const canChangeRoles = profile.isSuperAdmin || profile.isManagement;
+  const canChangeRoles = profile.permissions.canManageUsers;
   const assignableRoleCodes = lookups.roles.filter((r) => profile.isSuperAdmin || r.code !== "sysadmin");
 
   // "Reset Password" — for a staff member who forgot theirs and can't use
@@ -152,11 +152,11 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
   // Head: only within their own scope, never an elevated role); these two
   // client-side checks only decide whether to SHOW the button, so a Dept
   // Head never sees an option that would just be rejected server-side.
-  const canResetPasswords = profile.isSuperAdmin || profile.isManagement || profile.isDeptHead;
+  const canResetPasswords = profile.permissions.canResetPasswords;
   const ELEVATED_RESET_BLOCKED_ROLES = ["management", "cfo", "accounts_head", "sysadmin"];
   function canResetPasswordFor(u) {
     if (u.id === profile.id) return false;
-    if (profile.isDeptHead && !profile.isManagement && !profile.isSuperAdmin) {
+    if (profile.permissions.isLeadership && !profile.permissions.hasGlobalOversight) {
       return !ELEVATED_RESET_BLOCKED_ROLES.includes(u.role_code);
     }
     return true;

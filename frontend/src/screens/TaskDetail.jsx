@@ -123,7 +123,7 @@ export const ProjectSiteSection = React.memo(function ProjectSiteSection({ task,
   const project = task.project_id ? projectsById[task.project_id] : null;
   const personName = (id) => (id ? profilesById?.[id]?.name : null) || "—";
 
-  const canChange = profile.isManagement || profile.isSuperAdmin || profile.isDeptHead || task.assigned_by === profile.id;
+  const canChange = profile.permissions.canChangeStatus || profile.permissions.isLeadership || task.assigned_by === profile.id;
   if (!task.project_id && !canChange) return null;
 
   async function startChange() {

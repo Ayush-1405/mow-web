@@ -51,7 +51,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // choice; the RPC re-checks the role either way.
   const [taskScope, setTaskScope] = useState("general");
   const isFactoryDept = lookups.departmentById?.[profile.department_id]?.code === "FACTORY";
-  const canFactoryTask = !!(profile.isManagement || profile.isSuperAdmin || (isFactoryDept && ["dept_head", "supervisor"].includes(profile.roleCode)));
+  const canFactoryTask = !!(profile.permissions.hasGlobalOversight || (isFactoryDept && (profile.permissions.isDepartmentHead || profile.permissions.isSupervisor)));
   const [departments, setDepartments] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [directoryLoading, setDirectoryLoading] = useState(true);
@@ -431,7 +431,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
 
           <div className="field">
             <label>{t("fromDepartment", lang)} *</label>
-            {profile.isManagement && !profile.department_id ? (
+            {profile.permissions.isManagementUser && !profile.department_id ? (
               // Only reached when the caller is management AND has no home
               // department. A non-management profile with a missing
               // department is NOT covered by this branch — it falls through

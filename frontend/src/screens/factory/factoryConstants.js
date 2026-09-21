@@ -75,7 +75,7 @@ export function roleInfo(profile, lookups) {
   const factoryId = (lookups?.departments || []).find((d) => d.code === "FACTORY")?.id;
   const code = profile?.roleCode;
   const inFactory = !!factoryId && profile?.department_id === factoryId;
-  const admin = !!(profile?.isManagement || profile?.isSuperAdmin);
+  const admin = !!profile?.permissions?.hasGlobalOversight;
   const isHead = admin || (inFactory && code === "dept_head");
   const isManager = isHead || (inFactory && code === "supervisor");
   return { inFactory, admin, isHead, isManager, isEmployee: inFactory && !isManager };

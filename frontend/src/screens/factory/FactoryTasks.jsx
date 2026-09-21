@@ -44,7 +44,7 @@ function classify(t, leader, today) {
 export default function FactoryTasks({ lang, profile, lookups }) {
   const navigate = useNavigate();
   const role = profile.roleCode;
-  const headLike = !!(profile.isManagement || profile.isSuperAdmin || role === "dept_head");
+  const headLike = !!(profile.permissions.hasGlobalOversight || profile.permissions.isDepartmentHead);
   const leader = headLike || role === "supervisor";
   const tabs = useMemo(() => {
     const all = [["my", "My Tasks"], ["team", "Team Tasks"], ["unassigned", "Unassigned"], ["jobcard", "Job Card Tasks"], ["standalone", "Standalone"], ["blocked", "Blocked"], ["completed", "Completed"]];

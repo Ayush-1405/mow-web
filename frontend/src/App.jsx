@@ -12,9 +12,10 @@ import UpdateBanner from "./components/UpdateBanner.jsx";
 import Login from "./screens/Login.jsx";
 import ChangePassword from "./screens/ChangePassword.jsx";
 import DeptShell from "./components/DeptShell.jsx";
+import ManagementBadge from "./components/ManagementBadge.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import InteriorProfileGate from "./components/InteriorProfileGate.jsx";
-import { useCurrentUserAccess } from "./lib/access.js";
+import { useCurrentUserAccess, withPermissions } from "./lib/access.js";
 import { DEPARTMENT_ROUTES, buildOrderedDepartments } from "./lib/departmentConfig.js";
 
 // Route-level code splitting: every screen below used to be a static
@@ -122,16 +123,10 @@ function RouteLoadingSkeleton() {
   );
 }
 
-// Nav/screen visibility only — never the real authorization boundary. The
-// actual gate for every action is server-side: staff-create-user's own
-// role_creation_rules lookup, and RLS/RPC scoping (staff_is_dept_head(),
-// staff_dept_in_hod_scope(), etc.) for tasks/Bridge/dashboard data. This set
-// exists only to decide which tabs render, keyed strictly off the exact
-// role code from user_profiles.roles.code — never off a display label.
-// "management" sees every tab via the separate isManagement flag below
-// (OR'd in everywhere this set is consulted), so it is deliberately not
-// listed here.
-const ELEVATED_ROLES = new Set(["dept_head", "accounts_head", "cfo", "sysadmin"]);
+// Nav/screen visibility only — never the real authorization boundary. The actual gate for every action is server-side: staff-create-user's
+// own role_creation_rules lookup, and RLS/RPC scoping for tasks/Bridge/dashboard data (all keyed off auth.uid()). Every role and
+// capability decision in the UI comes from `profile.permissions` (lib/access.js), built once in loadProfile from the exact role code plus
+// the server's own capability list -- never from a display label and never scattered per screen.
 
 // Design / Design Approval / Design Lock / Drawings / Material Selection
 // were consolidated into one Working Drawings module — old bookmarked URLs
@@ -240,24 +235,19 @@ export default function App() {
   }, []);
 
   const loadProfile = useCallback(async (userId) => {
-    const { data, error } = await supabase
-      .from("user_profiles")
-      .select("*, roles(code, name_en, name_gu)")
-      .eq("id", userId)
-      .maybeSingle();
+    // The capability list is computed by the database from the caller's own role (auth.uid()); the browser never supplies a role.
+    const [{ data, error }, capsRes] = await Promise.all([
+      supabase.from("user_profiles").select("*, roles(code, name_en, name_gu)").eq("id", userId).maybeSingle(),
+      supabase.rpc("staff_my_capabilities"),
+    ]);
     if (error || !data) {
       setBootError(BOOT_ERROR_PROFILE);
       return null;
     }
+    if (capsRes.error) console.warn("Could not load capabilities; sensitive features stay hidden:", capsRes.error.message);
     const roleCode = data.roles?.code || "";
     setLang(data.language_pref === "gu" ? "gu" : "en");
-    const p = {
-      ...data,
-      roleCode,
-      isManagement: roleCode === "management",
-      isSuperAdmin: roleCode === "sysadmin",
-      isDeptHead: ELEVATED_ROLES.has(roleCode),
-    };
+    const p = withPermissions({ ...data, roleCode }, capsRes.data?.capabilities);
     setProfile(p);
     return p;
   }, [showToast]);
@@ -448,7 +438,7 @@ export default function App() {
   }, [access]);
   const myDepartmentRoute = useMemo(() => {
     if (!profile) return null;
-    if (profile.isManagement) return DEPARTMENT_ROUTES.CONTROL_TOWER;
+    if (profile.permissions.hasGlobalOversight) return DEPARTMENT_ROUTES.CONTROL_TOWER;
     const own = orderedAccessibleDepartments.find((d) => d.id === profile.department_id);
     return own?.route || orderedAccessibleDepartments[0]?.route || null;
   }, [profile, orderedAccessibleDepartments]);
@@ -469,12 +459,12 @@ export default function App() {
       { key: "bridges", icon: "🌉", label: t("bridges", lang) },
       { key: "notifications", icon: "🔔", label: t("notifications", lang) },
     ];
-    if (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) {
+    if (profile.permissions.canViewLeadershipScreens) {
       items.push({ key: "users", icon: "👥", label: t("userCreation", lang) });
       items.push({ key: "dashboard", icon: "📊", label: t("dashboard", lang) });
       items.push({ key: "auditlog", icon: "🗂️", label: t("auditLog", lang) });
     }
-    if (profile.isSuperAdmin) {
+    if (profile.permissions.isSuperAdmin) {
       items.push({ key: "admindepartments", icon: "🏛️", label: t("adminDepartmentsTitle", lang) });
     }
     return items;
@@ -539,7 +529,7 @@ export default function App() {
     // conditionally skipped for any department.
     const Body = code === "FACTORY" ? FactoryDashboard : DepartmentDashboard;
     return (
-      <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+      <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
         <ProtectedRoute allowed={allowed} lang={lang}>
           {dept
             ? <Body lang={lang} profile={profile} lookups={lookups} department={dept} onOpenLegacy={openLegacyView} />
@@ -558,7 +548,7 @@ export default function App() {
     const dept = lookups.departments.find((d) => d.code === code);
     const allowed = dept ? access.canAccessDepartment(dept) : false;
     return (
-      <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+      <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
         <ProtectedRoute allowed={allowed} lang={lang}>
           {dept ? element : <div className="msg error">Department not configured in the database yet.</div>}
         </ProtectedRoute>
@@ -574,21 +564,21 @@ export default function App() {
     <Suspense fallback={<RouteLoadingSkeleton />}>
     <Routes>
       <Route path="/management" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <ProtectedRoute allowed={controlTowerAllowed} lang={lang}>
             <ManagementControlTower lang={lang} lookups={lookups} departments={lookups.departments} />
           </ProtectedRoute>
         </DeptShell>
       } />
       <Route path="/reports" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <ProtectedRoute allowed={controlTowerAllowed} lang={lang}>
             <Reports lang={lang} lookups={lookups} departments={lookups.departments} />
           </ProtectedRoute>
         </DeptShell>
       } />
       <Route path="/analytics" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <ProtectedRoute allowed={controlTowerAllowed} lang={lang}>
             <Analytics lang={lang} lookups={lookups} departments={lookups.departments} />
           </ProtectedRoute>
@@ -604,49 +594,49 @@ export default function App() {
           logged in — same as the bottom-nav's own "Today's Tasks"/"Bridge"
           buttons, which are open to every role today. */}
       <Route path="/tasks" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <TodayTasks lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
         </DeptShell>
       } />
       <Route path="/bridges" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <Bridges lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
         </DeptShell>
       } />
       <Route path="/ai-tasks" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <AiTaskAssistant profile={profile} lookups={lookups} />
         </DeptShell>
       } />
       <Route path="/factory-request" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <FactoryAiIntake lang={lang} profile={profile} lookups={lookups} />
         </DeptShell>
       } />
       <Route path="/factory-inbox" element={<Navigate to="/factory/inbox" replace />} />
       <Route path="/factory-requests" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="requests" />
         </DeptShell>
       } />
       <Route path="/factory-job/:id" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <FactoryJobCardPage lang={lang} profile={profile} lookups={lookups} />
         </DeptShell>
       } />
       <Route path="/chat" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout} flush>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout} flush>
           <ChatPage lang={lang} profile={profile} />
         </DeptShell>
       } />
       <Route path="/notifications" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <Notifications lang={lang} showToast={showToast} />
         </DeptShell>
       } />
       <Route path="/users" element={
-        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
-          <ProtectedRoute allowed={!!(profile.isDeptHead || profile.isManagement || profile.isSuperAdmin)} lang={lang}>
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <ProtectedRoute allowed={profile.permissions.canViewLeadershipScreens} lang={lang}>
             <UserCreation lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
           </ProtectedRoute>
         </DeptShell>
@@ -696,7 +686,7 @@ export default function App() {
       <Route path="/interior-projects/working-drawings" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorWorkingDrawings lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/working-drawings/:projectId" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorWorkingDrawings lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/deleted-files" element={deptModulePage("INTERIOR",
-        <ProtectedRoute allowed={!!(profile.isManagement || profile.isSuperAdmin || profile.isDeptHead)} lang={lang}>
+        <ProtectedRoute allowed={profile.permissions.canViewLeadershipScreens} lang={lang}>
           <InteriorProfileGate lang={lang}><InteriorDeletedFiles lang={lang} staffProfile={profile} /></InteriorProfileGate>
         </ProtectedRoute>
       )} />
@@ -766,21 +756,22 @@ export default function App() {
       />
 
       <main className="main-area">
+        {profile.permissions.showManagementBadge && <ManagementBadge />}
         {toast && <div className={`msg ${toast.kind}`}>{toast.message}</div>}
         {view === "tasks" && <TodayTasks lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
         {view === "assign" && <AssignTask lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
         {view === "bridges" && <Bridges lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
         {view === "notifications" && <Notifications lang={lang} showToast={showToast} />}
-        {view === "users" && (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) && (
+        {view === "users" && profile.permissions.canViewLeadershipScreens && (
           <UserCreation lang={lang} profile={profile} lookups={lookups} showToast={showToast} />
         )}
-        {view === "dashboard" && (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) && (
+        {view === "dashboard" && profile.permissions.canViewLeadershipScreens && (
           <ManagementDashboard lang={lang} lookups={lookups} showToast={showToast} />
         )}
-        {view === "auditlog" && (profile.isDeptHead || profile.isManagement || profile.isSuperAdmin) && (
+        {view === "auditlog" && profile.permissions.canViewLeadershipScreens && (
           <AuditLog lang={lang} lookups={lookups} showToast={showToast} />
         )}
-        {view === "admindepartments" && profile.isSuperAdmin && (
+        {view === "admindepartments" && profile.permissions.isSuperAdmin && (
           <AdminDepartments lang={lang} lookups={lookups} showToast={showToast} onChanged={loadLookups} />
         )}
       </main>

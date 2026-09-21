@@ -78,7 +78,7 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
   const [showReconciliation, setShowReconciliation] = useState(false);
   const [staffUsersById, setStaffUsersById] = useState({});
 
-  const isElevated = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead;
+  const isElevated = !!staffProfile?.permissions?.canLead;
   // Mirrors interior_is_org_wide() client-side, only to skip a request
   // (the materials catalog) known in advance to 403 for anyone else — RLS
   // is still the real enforcement regardless of this value.

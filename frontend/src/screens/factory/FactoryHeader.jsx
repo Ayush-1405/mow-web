@@ -68,7 +68,7 @@ export default function FactoryHeader({ lang, profile, title, onRefresh, refresh
           )}
         </div>
       </div>
-      {showNav && <FactoryNav lang={lang} leader={!!(profile?.isManagement || profile?.isSuperAdmin || profile?.roleCode === "dept_head" || profile?.roleCode === "supervisor")} />}
+      {showNav && <FactoryNav lang={lang} leader={!!(profile?.permissions?.hasGlobalOversight || profile?.permissions?.isDepartmentHead || profile?.permissions?.isSupervisor)} />}
     </div>
   );
 }

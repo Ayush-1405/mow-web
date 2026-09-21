@@ -57,7 +57,7 @@ function workingDaysSince(dateStr) {
 export default function InteriorHeadDashboard({ lang, staffProfile }) {
   const navigate = useNavigate();
   const profile = useInteriorProfile();
-  const isElevated = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || ELEVATED_ROLES.has(staffProfile?.roleCode);
+  const isElevated = !!staffProfile?.permissions?.hasGlobalOversight || ELEVATED_ROLES.has(staffProfile?.roleCode);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -291,7 +291,7 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
               <span className="function-card-label">{l.icon} {lang === "gu" ? l.gu : l.en}</span>
             </button>
           ))}
-          {(!!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin || !!staffProfile?.isDeptHead) && (
+          {!!staffProfile?.permissions?.canLead && (
             <button className="function-card" onClick={() => navigate("/interior-projects/deleted-files")}>
               <span className="function-card-label">🗑️ {t("deletedFilesTitle", lang)}</span>
             </button>

@@ -68,15 +68,25 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const focusedRef = useRef(null);
-  const isLead = !!(profile.isDeptHead || profile.roleCode === "supervisor" || profile.roleCode === "accounts_head");
-  const isGlobal = !!(profile.isManagement || profile.isSuperAdmin);
+  const isLead = !!(profile.permissions.isLeadership || profile.permissions.isSupervisor);
+  const isGlobal = profile.permissions.canViewAllTasks;
   const availableScopes = SCOPES.filter((sc) => !sc.only || (sc.only === "lead" && (isLead || isGlobal)) || (sc.only === "global" && isGlobal));
   const [scope, setScopeState] = useState(() => {
     let saved = null;
     try { saved = sessionStorage.getItem(SCOPE_STORAGE_KEY); } catch { /* storage unavailable */ }
-    return saved && availableScopes.some((sc) => sc.key === saved) ? saved : "my";
+    // Director / Management open on the organization-wide list (their own "My Tasks" is a click away)
+    return saved && availableScopes.some((sc) => sc.key === saved) ? saved : isGlobal ? "all" : "my";
   });
   const scopeDef = SCOPES.find((sc) => sc.key === scope) || SCOPES[0];
+  // The list tabs scroll sideways on a phone; keep the selected one (e.g. "All Tasks" for Management, the last tab) in view.
+  const scopeTabsRef = useRef(null);
+  useEffect(() => {
+    const box = scopeTabsRef.current;
+    const el = box?.querySelector('[aria-selected="true"]');
+    if (!box || !el) return;
+    const left = el.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft;
+    box.scrollLeft = Math.max(0, left - (box.clientWidth - el.offsetWidth) / 2);
+  }, [scope]);
   function setScope(next) {
     setScopeState(next);
     try { sessionStorage.setItem(SCOPE_STORAGE_KEY, next); } catch { /* non-fatal */ }
@@ -736,13 +746,13 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const priority = priorityOf(task.priority_id);
     const isAssignee = task.assigned_to === profile.id;
     const iAmVerifier = task.verifier_id === profile.id;
-    const canManage = profile.isManagement || profile.isDeptHead;
+    const canManage = profile.permissions.canLead;
     const iCreatedIt = task.assigned_by === profile.id;
     // staff_delete_task server-side also allows Management/Super Admin/
     // Department Head to delete ANY task, not just their own creations
     // — this mirrors that exactly (it's only the optimistic UI gate;
     // the RPC re-checks regardless of what this computes).
-    const canDeleteTask = iCreatedIt || profile.isManagement || profile.isSuperAdmin || profile.isDeptHead;
+    const canDeleteTask = iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership;
     const busy = busyId === task.id;
     // Undefined here means either an unrecognized proof_type_id or one
     // that's since been deactivated (e.g. "voice" — see
@@ -1092,7 +1102,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       </div>
 
       {/* ---------------- Which list: personal vs department vs bridge ---------------- */}
-      <div className="fx-tabs" role="tablist" aria-label="Task lists" style={{ marginBottom: 8 }}>
+      <div className="fx-tabs mobile-tab-list" role="tablist" aria-label="Task lists" ref={scopeTabsRef} style={{ marginBottom: 8 }}>
         {availableScopes.map((sc) => (
           <button key={sc.key} type="button" role="tab" aria-selected={scope === sc.key} className={scope === sc.key ? "active" : ""} onClick={() => setScope(sc.key)}>
             {lang === "gu" ? sc.gu : sc.en}

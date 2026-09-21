@@ -66,7 +66,7 @@ function PermanentDeleteModal({ lang, file, onCancel, onConfirm }) {
 // working_drawing_attachments_select_scoped only return is_deleted=true
 // rows to interior_files_can_view_deleted()), this is just the UI home for it.
 export default function InteriorDeletedFiles({ lang, staffProfile }) {
-  const canPurge = !!staffProfile?.isManagement || !!staffProfile?.isSuperAdmin;
+  const canPurge = !!(staffProfile?.permissions?.hasGlobalOversight && staffProfile?.permissions?.canDelete);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

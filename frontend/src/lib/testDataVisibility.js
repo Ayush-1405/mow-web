@@ -16,7 +16,8 @@ const STORAGE_KEY = "mow_factory_include_test_data";
 
 export function canToggleTestData(profile) {
   if (!profile) return false;
-  return !!profile.isManagement || !!profile.isSuperAdmin || profile.roleCode === "dept_head";
+  const p = profile.permissions;
+  return !!p && (p.hasGlobalOversight || p.isDepartmentHead);
 }
 
 export function useIncludeTestData(profile) {

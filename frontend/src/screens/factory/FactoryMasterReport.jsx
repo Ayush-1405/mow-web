@@ -70,7 +70,7 @@ export default function FactoryMasterReport({ lang, profile }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { includeTestData, canToggle, setIncludeTestData } = useIncludeTestData(profile);
-  const canSeeCosting = !!profile?.isManagement || !!profile?.isSuperAdmin || CAN_SEE_COSTING_ROLES.has(profile?.roleCode);
+  const canSeeCosting = !!profile?.permissions?.hasGlobalOversight || CAN_SEE_COSTING_ROLES.has(profile?.roleCode);
 
   const load = useCallback(async () => {
     setLoading(true);

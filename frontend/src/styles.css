@@ -1723,3 +1723,12 @@ input[type="date"], input[type="time"], input[type="datetime-local"] { position:
 input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator, input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; background: transparent;
 }
+
+/* Director / Management scope indicator (in-flow strip, never fixed/sticky) */
+.mgmt-badge {
+  display: flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%;
+  margin: 0 0 10px; padding: 4px 12px; min-height: 28px;
+  border-radius: 999px; border: 1px solid var(--gold, #c9a45c);
+  background: rgba(201, 164, 92, 0.14); color: var(--brown, #5a3a1c);
+  font-size: 12px; font-weight: 700; line-height: 1.2;
+}
