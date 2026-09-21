@@ -4,6 +4,7 @@ import AppHeader from "./AppHeader.jsx";
 import { t } from "../lib/i18n";
 import ChatNavButton from "./ChatNavButton.jsx";
 import ManagementBadge from "./ManagementBadge.jsx";
+import NotificationPrompt from "./NotificationPrompt.jsx";
 
 // Layout used by every department page and the Management Control Tower: the responsive Sidebar (desktop rail / mobile drawer, see
 // Sidebar.jsx) plus ONE header (AppHeader) with the menu button, chat, back-to-tasks and logout, so a user who navigates here never
@@ -33,6 +34,7 @@ export default function DeptShell({ lang, items, managementLinks, managementBadg
           ]}
         />
         <main className={`dept-main${flush ? " dept-main-flush" : ""}`}>
+          {!flush && <NotificationPrompt lang={lang} />}
           {managementBadge && !flush && <ManagementBadge />}
           {children}
         </main>

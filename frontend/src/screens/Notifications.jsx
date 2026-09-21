@@ -3,35 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
 import { subscribeTable, upsertById } from "../lib/realtime";
-
-// entity_type -> where clicking a notification should land. staff_tasks
-// notifications ("task") deep-link straight to that task via TodayTasks'
-// own ?focus= param (see the useEffect there); "project" similarly
-// pre-selects the right project in InteriorTimeline. The others land on
-// the relevant list screen without a specific-row deep link — the
-// underlying screens don't currently support focusing one row, and
-// building that per screen is more than this needed. Unrecognized/legacy
-// entity_types (e.g. "daily_reminder", whose entity_id is the recipient's
-// own id, not a real record) fall through to null — not clickable.
-function routeFor(n) {
-  switch (n.entity_type) {
-    case "task": return `/tasks?focus=${n.entity_id}`;
-    // A legacy Reply notification: Replies now live in Chat, so it resolves to the migrated message (server-checked access)
-    case "task_message": return n.task_id ? `/chat?legacy_message=${n.entity_id}&legacy_task=${n.task_id}` : `/chat?legacy_message=${n.entity_id}`;
-    case "project": return `/interior-projects/detail/${n.entity_id}`;
-    case "snag": return "/interior-projects/site-execution";
-    case "interior_task": return "/interior-projects/tasks";
-    case "site_report": return "/interior-projects/daily-updates";
-    case "retail_lead": return "/retail/leads";
-    case "retail_complaint": return "/retail/complaints";
-    case "retail_vm_task": return "/retail/display";
-    case "FACTORY_AI_REQUEST": return "/factory-requests";
-    case "FACTORY_JOB": return `/factory-job/${n.entity_id}`;
-    // a Chat notification opens the conversation; for a project chat it also carries the task the message was about (task context / filter)
-    case "CHAT": return n.task_id ? `/chat?c=${n.entity_id}&task=${n.task_id}` : `/chat?c=${n.entity_id}`;
-    default: return null;
-  }
-}
+import { routeFor } from "../lib/notificationRoutes";
+import NotificationPrompt from "../components/NotificationPrompt.jsx";
 
 // Module grouping for the filter chips. Anything unrecognised still shows
 // under "All" (and "Other"), so a new notification type is never hidden.
@@ -143,6 +116,7 @@ export default function Notifications({ lang, showToast }) {
   return (
     <div>
       <div className="section-title">{t("notifications", lang)}</div>
+      <NotificationPrompt lang={lang} detailed />
       <div className="btn-row" style={{ marginBottom: 10 }}>
         <button className="btn btn-outline" onClick={load} disabled={loading}>
           {t("refresh", lang)}

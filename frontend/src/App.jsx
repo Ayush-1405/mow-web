@@ -3,7 +3,9 @@ import { friendlyError } from "./lib/friendlyError";
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { t } from "./lib/i18n";
-import { requestNotificationPermission, showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
+import { showBrowserNotification, subscribeToPush } from "./lib/pushNotifications";
+import { routeFor } from "./lib/notificationRoutes";
+import NotificationPrompt from "./components/NotificationPrompt.jsx";
 import { useForegroundRefresh } from "./lib/useForegroundRefresh";
 import ChatNavButton from "./components/ChatNavButton.jsx";
 import AppHeader from "./components/AppHeader.jsx";
@@ -255,6 +257,8 @@ export default function App() {
   const loadUnread = useCallback(async () => {
     const { count } = await supabase.from("notifications").select("id", { count: "exact", head: true }).eq("is_read", false);
     setUnreadCount(count || 0);
+    // the number on the app icon (installed app on Android / iPhone / desktop)
+    try { if (count > 0) navigator.setAppBadge?.(count); else navigator.clearAppBadge?.(); } catch { /* not supported */ }
   }, []);
 
   useEffect(() => {
@@ -297,9 +301,9 @@ export default function App() {
   // elsewhere) only refreshes the count, never re-shows a popup.
   useEffect(() => {
     if (!session || !profile) return undefined;
-    requestNotificationPermission().then((perm) => {
-      if (perm === "granted") subscribeToPush(supabase);
-    });
+    // Permission is asked from a button (NotificationPrompt) -- browsers ignore a request made on load. If it was already granted, make sure
+    // this device is (still) registered for background push.
+    subscribeToPush(supabase);
     // Defensive: this effect re-runs whenever `profile` or `lang` changes
     // (a language toggle, or a role/department change reloading the
     // profile) — if a same-named channel from the previous run hasn't
@@ -314,7 +318,9 @@ export default function App() {
     if (stale) supabase.removeChannel(stale);
     const channel = supabase
       .channel("app_unread_badge")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
+      // Filtered to this user's rows: the server no longer evaluates every other person's notifications for this connection, which is what
+      // made delivery slower as more people were online. (RLS still applies as the security boundary.)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `recipient_id=eq.${profile.id}` }, (payload) => {
         loadUnread();
         const row = payload.new;
         if (row) {
@@ -322,13 +328,26 @@ export default function App() {
             id: row.id,
             title: "Mood of Wood",
             body: lang === "gu" ? row.title_gu : row.title_en,
+            url: routeFor(row) || "/",
           });
         }
       })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications" }, () => loadUnread())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter: `recipient_id=eq.${profile.id}` }, () => loadUnread())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [session, profile, loadUnread, lang]);
+
+  // Messages from the service worker: a tapped notification asks the already-open app to go to its target (instant, no reload); a rotated
+  // push subscription asks it to re-save the new one.
+  useEffect(() => {
+    if (!session || !("serviceWorker" in navigator)) return undefined;
+    const onMessage = (e) => {
+      if (e.data?.type === "mow-navigate" && typeof e.data.url === "string" && e.data.url.startsWith("/")) navigate(e.data.url);
+      else if (e.data?.type === "mow-push-resync") subscribeToPush(supabase);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [session, navigate]);
 
   // Live permission refresh: if this user's own role/department/active
   // status changes mid-session (e.g. a Super Admin grant, or any future
@@ -361,7 +380,7 @@ export default function App() {
   // listeners for this, not two.
   const refreshOnForeground = useCallback(() => {
     if (session?.user?.id) loadProfile(session.user.id);
-    if (session) loadUnread();
+    if (session) { loadUnread(); subscribeToPush(supabase); }
   }, [session, loadProfile, loadUnread]);
   useForegroundRefresh(session ? refreshOnForeground : undefined);
 
@@ -756,6 +775,7 @@ export default function App() {
       />
 
       <main className="main-area">
+        <NotificationPrompt lang={lang} />
         {profile.permissions.showManagementBadge && <ManagementBadge />}
         {toast && <div className={`msg ${toast.kind}`}>{toast.message}</div>}
         {view === "tasks" && <TodayTasks lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}

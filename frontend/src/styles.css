@@ -1732,3 +1732,19 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
   background: rgba(201, 164, 92, 0.14); color: var(--brown, #5a3a1c);
   font-size: 12px; font-weight: 700; line-height: 1.2;
 }
+
+/* Notification set-up banner / status card (in-flow, never fixed) */
+.notif-prompt {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 12px; padding: 10px 12px; border-radius: 14px;
+  border: 1px solid var(--gold, #c9a45c); background: rgba(201, 164, 92, 0.12);
+  font-size: 14px; line-height: 1.35;
+}
+.notif-prompt.ok { border-color: rgba(60, 140, 90, 0.5); background: rgba(60, 140, 90, 0.10); }
+.notif-prompt-text { flex: 1 1 220px; min-width: 0; }
+.notif-prompt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.notif-prompt-actions .btn { width: auto; margin: 0; min-height: 44px; }
+@media (max-width: 480px) {
+  .notif-prompt-actions { width: 100%; }
+  .notif-prompt-actions .btn { flex: 1 1 auto; }
+}
