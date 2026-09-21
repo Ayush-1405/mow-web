@@ -141,13 +141,23 @@ button, input, select, textarea { font-family: inherit; }
 .icon-btn:active { transform: translateY(0); }
 
 @media (max-width: 420px) {
-  .app-header { padding: 12px 14px; }
+  .app-header {
+    padding: 12px 14px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-left: calc(14px + env(safe-area-inset-left, 0px));
+    padding-right: calc(14px + env(safe-area-inset-right, 0px));
+  }
   .header-actions { gap: 6px; }
   .icon-btn { padding: 8px 11px; font-size: 12.5px; }
   /* Reclaim horizontal room on the smallest phones (iPhone SE and similar,
      ~360-390px) — every extra pixel matters for the 2-column KPI/function-
      card/dept-card grids that otherwise sit right at their wrap threshold. */
-  .main-area { padding: 14px 10px; padding-bottom: 96px; }
+  .main-area {
+    padding: 14px 10px;
+    padding-left: calc(10px + env(safe-area-inset-left, 0px));
+    padding-right: calc(10px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
   .card { padding: 14px; }
 }
 
@@ -829,6 +839,9 @@ textarea { min-height: 84px; resize: vertical; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 18px 16px 40px;
+  padding-left: calc(16px + env(safe-area-inset-left, 0px));
+  padding-right: calc(16px + env(safe-area-inset-right, 0px));
+  padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
   max-width: 980px;
   width: 100%;
   margin: 0 auto;
@@ -1191,7 +1204,7 @@ textarea { min-height: 84px; resize: vertical; }
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   z-index: 70;
   max-width: 480px;
   margin: 0 auto;
@@ -1204,6 +1217,8 @@ textarea { min-height: 84px; resize: vertical; }
   align-items: center;
   gap: 12px;
 }
+/* the bottom tab bar (60px + safe area) is on screen below 900px: sit above it instead of covering its first tabs */
+@media (max-width: 899px) { body:has(.bottom-nav) .install-banner { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); } }
 .install-banner-icon { font-size: 26px; line-height: 1; flex-shrink: 0; }
 .install-banner-text { flex: 1; font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
 .install-banner-text strong { display: block; font-size: 13.5px; color: var(--brand-dark); margin-bottom: 2px; }
