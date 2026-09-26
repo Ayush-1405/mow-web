@@ -1,60 +1,66 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
+import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
+import { advanceDelivery, loadDeliveriesBoard, getDispatchForOrder, listDeliveryItems, listDeliveryProofs, getInstallationForOrder, getPackingForOrder } from "../../lib/retailApi";
+import { subscribeTable } from "../../lib/realtime";
+import OrderTracker from "../../components/OrderTracker.jsx";
 
-// Delivery Coordination — same pattern as RetailStockTransfer.jsx: reuses
-// the existing staff_tasks/bridges engine (DELIVERY task type) rather than
-// a new table, targeting the Dispatch/Logistics department.
-export default function RetailDelivery({ lang, profile, lookups }) {
-  const [loading, setLoading] = useState(true);
+// retail_advance_delivery() only ever accepts these 5 generic stages (v2_93j narrowed it — see retail_record_dispatch/
+// retail_record_delivery_proof/_failure/retail_start_installation/retail_record_installation/retail_confirm_installation for
+// everything past VEHICLE_ASSIGNED, each writing retail_deliveries.stage itself).
+const GENERIC_STAGES = ["ORDER_READY", "PAYMENT_CLEARANCE", "SITE_READINESS", "DELIVERY_SCHEDULED", "VEHICLE_ASSIGNED"];
+// The real stage values the pipeline RPCs write from VEHICLE_ASSIGNED onward, in lifecycle order — used only for the progress bar.
+const PIPELINE_STAGES = ["OUT_FOR_DELIVERY", "DELIVERY_PROOF_UPLOADED", "DELIVERY_SUCCESSFUL", "INSTALLATION_IN_PROGRESS", "INSTALLATION_PROOF_UPLOADED", "COMPLETED"];
+const STAGES = [...GENERIC_STAGES, ...PIPELINE_STAGES];
+// Once dispatch is recorded, this screen's own generic "Advance Stage" control is retired — dispatch, delivery proof/failure and
+// installation are only ever recorded by Godown staff from their own real screen (GodownHandovers.jsx). Past this point Retail's
+// view becomes read-only: live data pulled from the real linked tables via <OrderTracker>, not a re-typed copy.
+
+// Delivery timeline for confirmed orders (retail_deliveries, one row per order — created automatically by retail_confirm_order). This
+// replaces the earlier version of this screen, which only listed generic DELIVERY-type staff_tasks with no link back to the order, its
+// customer, or its payment status — a salesperson could not actually see delivery progress without calling Dispatch.
+export default function RetailDelivery({ lang }) {
+  const [rows, setRows] = useState(null);
   const [error, setError] = useState(false);
-  const [tasks, setTasks] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ title: "", assigned_to: "", due_date: "" });
-
-  const dispatchDept = useMemo(() => lookups.departments.find((d) => d.code === "DISPATCH"), [lookups.departments]);
-  const taskType = useMemo(() => lookups.taskTypes.find((tt) => tt.code === "DELIVERY"), [lookups.taskTypes]);
+  const [expanded, setExpanded] = useState(null);
+  const [form, setForm] = useState({ scheduledDate: "", scheduledTime: "", notes: "" });
+  const [busy, setBusy] = useState(false);
+  const [pipelineDetail, setPipelineDetail] = useState({}); // order_id -> { packing, dispatch, items, proofs, installation }
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(false);
-    const [taskRes, usersRes] = await Promise.all([
-      supabase.from("staff_tasks").select("*").eq("is_active", true).eq("task_type_id", taskType?.id || "").limit(200),
-      supabase.rpc("staff_list_assignable_users_all"),
-    ]);
-    if (taskRes.error || usersRes.error) { setError(true); setLoading(false); return; }
-    setTasks((taskRes.data || []).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")));
-    setUsers((usersRes.data || []).filter((u) => u.department_id === dispatchDept?.id));
-    setLoading(false);
-  }, [taskType, dispatchDept]);
-
-  useEffect(() => { if (taskType) load(); else { setLoading(false); } }, [load, taskType]);
-
-  async function handleRequest(e) {
-    e.preventDefault();
-    if (!form.title || !form.assigned_to || !form.due_date || !dispatchDept || !taskType) return;
-    setSaving(true);
-    const { error: err } = await supabase.rpc("staff_create_task", {
-      p_title: form.title,
-      p_description: null,
-      p_task_type_code: taskType.code,
-      p_priority_code: "NORMAL",
-      p_proof_type_code: "none",
-      p_from_department_id: profile.department_id,
-      p_to_department_id: dispatchDept.id,
-      p_assigned_to: form.assigned_to,
-      p_due_date: form.due_date,
-    });
-    setSaving(false);
+    const { data, error: err } = await loadDeliveriesBoard();
     if (err) { setError(true); return; }
-    setForm({ title: "", assigned_to: "", due_date: "" });
-    setShowForm(false);
-    load();
+    setError(false);
+    setRows(data || []);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => subscribeTable("retail_deliveries_screen", "retail_deliveries", null, load), [load]);
+
+  async function advance(row, stage) {
+    setBusy(true);
+    const scheduledAt = form.scheduledDate ? `${form.scheduledDate}T${form.scheduledTime || "10:00"}:00` : null;
+    const { error: err } = await advanceDelivery(row.order_id, stage, form.notes || null, scheduledAt);
+    setBusy(false);
+    if (!err) { setForm({ scheduledDate: "", scheduledTime: "", notes: "" }); load(); }
   }
 
-  if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
+  const nextStage = (stage) => GENERIC_STAGES[Math.min(GENERIC_STAGES.indexOf(stage) + 1, GENERIC_STAGES.length - 1)];
+
+  async function toggleExpand(row) {
+    const opening = expanded !== row.delivery_id;
+    setExpanded(opening ? row.delivery_id : null);
+    // Fetched unconditionally (not gated on retail_deliveries.stage): the Amazon-style tracker is driven by
+    // retail_orders.pipeline_status, which advances through Godown packing/handover well before this screen's own
+    // generic stage machine reaches VEHICLE_ASSIGNED — gating on stage here would hide real, already-reached steps.
+    if (opening && !pipelineDetail[row.order_id]) {
+      const [{ data: packing }, { data: dispatch }, { data: items }, { data: proofs }, { data: installation }] = await Promise.all([
+        getPackingForOrder(row.order_id), getDispatchForOrder(row.order_id), listDeliveryItems(row.delivery_id), listDeliveryProofs(row.delivery_id), getInstallationForOrder(row.order_id),
+      ]);
+      setPipelineDetail((m) => ({ ...m, [row.order_id]: { packing, dispatch, items: items || [], proofs: proofs || [], installation } }));
+    }
+  }
+
   if (error) {
     return (
       <div className="dept-dashboard">
@@ -67,44 +73,80 @@ export default function RetailDelivery({ lang, profile, lookups }) {
   return (
     <div className="dept-dashboard">
       <div className="dept-header card">
-        <div className="dept-header-icon" aria-hidden="true">🚛</div>
+        <div className="dept-header-icon" aria-hidden="true">🚚</div>
         <div className="dept-header-text"><h1>{t("retailDeliveryTitle", lang)}</h1></div>
       </div>
 
       <div className="card">
-        <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)} disabled={!taskType}>
-          {showForm ? t("cancel", lang) : t("requestDelivery", lang)}
-        </button>
-        {showForm && (
-          <form onSubmit={handleRequest} className="form-grid" style={{ marginTop: 12 }}>
-            <div className="field full">
-              <label>{t("titleLabel", lang)} *</label>
-              <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required />
+        {rows === null && <div className="msg info">…</div>}
+        {rows !== null && rows.length === 0 && <div className="msg info">{t("noConfirmedOrdersMsg", lang)}</div>}
+        {rows?.map((r) => (
+          <div key={r.delivery_id} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
+            <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8, cursor: "pointer" }} onClick={() => toggleExpand(r)}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{r.order_number} — {r.customer_name}</div>
+                <div className="sub">{formatCurrency(r.total_amount)} · {r.phone || "—"}{r.scheduled_at ? ` · ${new Date(r.scheduled_at).toLocaleString()}` : ""}</div>
+              </div>
+              <span className={`badge ${statusBadgeClass(r.payment_status)}`}>{r.payment_status}</span>
+              <span className="fx-tag gold">{t(`delstage_${r.stage}`, lang)}</span>
+              {r.delay_reason && <span className="fx-tag" style={{ color: "var(--danger)" }}>⚠️ {t("delayedLabel", lang)}</span>}
             </div>
-            <div className="field">
-              <label>{t("assignedToLabel", lang)} *</label>
-              <select value={form.assigned_to} onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))} required>
-                <option value="" disabled>—</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>{t("dueDateLabel", lang)} *</label>
-              <input type="date" value={form.due_date} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))} required />
-            </div>
-            <div className="field full">
-              <button className="btn btn-primary" type="submit" disabled={saving}>{t("save", lang)}</button>
-            </div>
-          </form>
-        )}
-      </div>
+            {expanded === r.delivery_id && (
+              <div style={{ marginTop: 8, paddingLeft: 8 }}>
+                <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
+                  {STAGES.map((s, i) => (
+                    <span key={s} className={`fx-tag${STAGES.indexOf(r.stage) >= i ? " gold" : ""}`}>{t(`delstage_${s}`, lang)}</span>
+                  ))}
+                </div>
+                {r.stage !== "COMPLETED" && r.payment_status !== "PAID" && r.stage !== "PAYMENT_CLEARANCE" && (
+                  <div className="msg info" style={{ marginTop: 8 }}>{t("orderBlockedPaymentLabel", lang)}</div>
+                )}
+                {GENERIC_STAGES.includes(r.stage) && r.stage !== "VEHICLE_ASSIGNED" && (
+                  <div className="form-grid" style={{ marginTop: 8 }}>
+                    <div className="field"><label>{t("scheduledDateLabel", lang)}</label><input type="date" value={form.scheduledDate} onChange={(e) => setForm((f) => ({ ...f, scheduledDate: e.target.value }))} /></div>
+                    <div className="field"><label>{t("dueTime", lang)}</label><input type="time" value={form.scheduledTime} onChange={(e) => setForm((f) => ({ ...f, scheduledTime: e.target.value }))} /></div>
+                    <div className="field full"><label>{t("notesLabel", lang)}</label><input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+                    <div className="field full">
+                      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => advance(r, nextStage(r.stage))}>
+                        ➜ {t("advanceStageLabel", lang)}: {t(`delstage_${nextStage(r.stage)}`, lang)}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {r.stage === "VEHICLE_ASSIGNED" && (
+                  <div className="msg info" style={{ marginTop: 8 }}>{t("readyForDispatchTeamMsg", lang)}</div>
+                )}
 
-      <div className="card">
-        {tasks.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
-        {tasks.map((tsk) => (
-          <div key={tsk.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
-            <span>{tsk.task_number} — {tsk.title}</span>
-            <span className={`badge ${tsk.closed_at ? "CLOSED" : "ASSIGNED"}`}>{tsk.closed_at ? "CLOSED" : "OPEN"}</span>
+                <div style={{ marginTop: 10 }}>
+                  <h4 style={{ margin: "4px 0" }}>{t("orderTrackerTitle", lang)}</h4>
+                  {!pipelineDetail[r.order_id] && <div className="sub">…</div>}
+                  {pipelineDetail[r.order_id] && (
+                    <OrderTracker
+                      lang={lang}
+                      pipelineStatus={r.pipeline_status}
+                      installationRequired={r.installation_required}
+                      orderId={r.order_id}
+                      deliveryId={r.delivery_id}
+                      detail={pipelineDetail[r.order_id]}
+                    />
+                  )}
+                </div>
+
+                {pipelineDetail[r.order_id]?.items?.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <h4 style={{ margin: "4px 0" }}>{t("deliveryItemsLabel", lang)}</h4>
+                    {pipelineDetail[r.order_id].items.map((it) => (
+                      <div key={it.id} className="task-meta" style={{ justifyContent: "space-between", padding: "4px 0" }}>
+                        <span>{it.retail_order_items?.item_name || t("itemLabel", lang)}</span>
+                        <span className="sub">{t("deliveredQtyLabel", lang)}: {it.quantity_delivered} · {t("pendingQtyLabel", lang)}: {it.quantity_pending}{it.condition ? ` · ${t("conditionLabel", lang)}: ${it.condition}` : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {r.customer_confirmed && <div className="msg success" style={{ marginTop: 8 }}>✅ {t("customerConfirmedLabel", lang)}{r.feedback_score ? ` · ${"⭐".repeat(r.feedback_score)}` : ""}</div>}
+              </div>
+            )}
           </div>
         ))}
       </div>

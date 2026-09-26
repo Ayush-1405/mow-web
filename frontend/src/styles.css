@@ -367,6 +367,7 @@ textarea { min-height: 84px; resize: vertical; }
 .msg.error { background: var(--danger-bg); color: var(--danger); border-color: #f5c9c5; }
 .msg.success { background: var(--success-bg); color: var(--success); border-color: #bfe6d1; }
 .msg.info { background: var(--info-bg); color: var(--brand-dark); border-color: var(--accent-soft); }
+.msg.warning { background: #fdf1d6; color: #97731c; border-color: #f3ddaa; }
 
 /* ---------- Task / entity cards ---------- */
 
@@ -1770,3 +1771,56 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .voice-player .voice-download { width: auto; justify-self: start; margin: 0; min-height: 44px; }
 .voice-instruction .btn-row .btn { min-height: 44px; }
 .voice-fail .btn-row { margin-top: 8px; }
+
+/* ---------- Retail Stores: dashboard KPI grid, quick actions, important-work list, CRM rows, modals ---------- */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.kpi-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 76px;
+  padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2);
+  text-align: left; cursor: pointer; transition: transform var(--ease), box-shadow var(--ease);
+}
+.kpi-card:hover, .kpi-card:focus-visible { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.kpi-card:disabled { opacity: 0.6; cursor: default; }
+.kpi-icon { font-size: 18px; }
+.kpi-value { font-size: 22px; font-weight: 800; color: var(--brand-dark); line-height: 1.1; }
+.kpi-label { font-size: 11px; color: var(--ink-soft); line-height: 1.25; }
+.kpi-card.kpi-critical { border-color: var(--danger); }
+.kpi-card.kpi-alert { background: var(--danger-bg); }
+.kpi-card.kpi-alert .kpi-value { color: var(--danger); }
+
+/* ---------- Godown home: two big, icon-first tiles — no reading required to find the right action ---------- */
+.godown-big-tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: 140px; padding: 20px; border-radius: var(--radius-md, 16px);
+  border: 1.5px solid var(--border-strong, var(--border)); background: var(--surface-2); color: var(--brand-dark);
+  cursor: pointer; transition: transform var(--ease), box-shadow var(--ease);
+}
+.godown-big-tile:hover, .godown-big-tile:focus-visible { box-shadow: var(--shadow-sm); transform: translateY(-2px); }
+
+.retail-quick-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.retail-quick-action { width: auto; margin: 0; min-height: 44px; justify-content: flex-start; }
+
+.retail-work-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  min-height: 44px; padding: 8px 4px; border: none; border-bottom: 1px solid var(--border); background: none; text-align: left; cursor: pointer;
+}
+.retail-work-row:last-child { border-bottom: none; }
+.retail-work-title { font-weight: 700; }
+
+.retail-lead-row { padding: 10px 4px; border-bottom: 1px solid var(--border); }
+.retail-lead-row:last-child { border-bottom: none; }
+.retail-lead-row.overdue { background: var(--danger-bg); border-radius: var(--radius-sm); }
+
+.retail-modal-card { width: min(560px, 100%); max-height: 88vh; overflow-y: auto; padding-bottom: max(16px, var(--safe-bottom)); }
+
+.retail-fulfil-row { padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.retail-fulfil-row:last-child { border-bottom: none; }
+.retail-fulfil-row select { max-width: 220px; }
+
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .retail-quick-actions { grid-template-columns: 1fr 1fr; }
+}
+
+.retail-stock-row { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.retail-stock-row:last-child { border-bottom: none; }

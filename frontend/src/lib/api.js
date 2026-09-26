@@ -319,3 +319,22 @@ export async function getVoicePlaybackUrl(attachmentId, { force = false } = {}) 
 }
 // signed links belong to the person who requested them
 supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") voiceUrlCache.clear(); });
+
+// Same cached-signed-URL pattern as getVoicePlaybackUrl, for rendering a real proof/product <img> instead of a
+// checkmark badge. A separate cache (not reused with voice) since these are two independent attachment id spaces.
+const proofPhotoUrlCache = new Map();
+const proofPhotoUrlInflight = new Map();
+export async function getProofPhotoUrl(attachmentId, { force = false } = {}) {
+  const hit = proofPhotoUrlCache.get(attachmentId);
+  if (!force && hit && hit.expiresAt > Date.now()) return hit.url;
+  if (proofPhotoUrlInflight.has(attachmentId)) return proofPhotoUrlInflight.get(attachmentId);
+  const p = callFunction("staff-file-url", { action: "download", attachment_id: attachmentId, inline: true }, { auth: true })
+    .then((res) => {
+      proofPhotoUrlCache.set(attachmentId, { url: res.signed_url, expiresAt: Date.now() + Math.max(15, (res.expires_in_seconds || 120) - 30) * 1000 });
+      return res.signed_url;
+    })
+    .finally(() => proofPhotoUrlInflight.delete(attachmentId));
+  proofPhotoUrlInflight.set(attachmentId, p);
+  return p;
+}
+supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") proofPhotoUrlCache.clear(); });

@@ -59,9 +59,23 @@ const RetailStoreOps = lazy(() => import("./screens/retail/RetailStoreOps.jsx"))
 const RetailStock = lazy(() => import("./screens/retail/RetailStock.jsx"));
 const RetailStockTransfer = lazy(() => import("./screens/retail/RetailStockTransfer.jsx"));
 const RetailDelivery = lazy(() => import("./screens/retail/RetailDelivery.jsx"));
+const RetailPacking = lazy(() => import("./screens/retail/RetailPacking.jsx"));
+const RetailCustomerTimeline = lazy(() => import("./screens/retail/RetailCustomerTimeline.jsx"));
+const GodownHandovers = lazy(() => import("./screens/godown/GodownHandovers.jsx"));
+const GodownDashboard = lazy(() => import("./screens/godown/GodownDashboard.jsx"));
+const GodownStockIntake = lazy(() => import("./screens/godown/GodownStockIntake.jsx"));
+const GodownStock = lazy(() => import("./screens/godown/GodownStock.jsx"));
+const GodownMyWorkToday = lazy(() => import("./screens/godown/GodownMyWorkToday.jsx"));
+const GodownScanQR = lazy(() => import("./screens/godown/GodownScanQR.jsx"));
+const GodownProductDetail = lazy(() => import("./screens/godown/GodownProductDetail.jsx"));
+const GodownReports = lazy(() => import("./screens/godown/GodownReports.jsx"));
+const DispatchQueue = lazy(() => import("./screens/dispatch/DispatchQueue.jsx"));
 const RetailComplaints = lazy(() => import("./screens/retail/RetailComplaints.jsx"));
 const RetailTargets = lazy(() => import("./screens/retail/RetailTargets.jsx"));
 const RetailPerformance = lazy(() => import("./screens/retail/RetailPerformance.jsx"));
+const RetailDailyUpdate = lazy(() => import("./screens/retail/RetailDailyUpdate.jsx"));
+const RetailImportLeads = lazy(() => import("./screens/retail/RetailImportLeads.jsx"));
+const RetailReports = lazy(() => import("./screens/retail/RetailReports.jsx"));
 const InteriorHeadDashboard = lazy(() => import("./screens/interior/InteriorHeadDashboard.jsx"));
 const InteriorAttachments = lazy(() => import("./screens/interior/InteriorAttachments.jsx"));
 const InteriorSiteExecution = lazy(() => import("./screens/interior/InteriorSiteExecution.jsx"));
@@ -77,6 +91,7 @@ const FactoryTasks = lazy(() => import("./screens/factory/FactoryTasks.jsx"));
 const ChatPage = lazy(() => import("./screens/chat/ChatPage.jsx"));
 const FactoryWorkOverview = lazy(() => import("./screens/factory/FactoryWorkOverview.jsx"));
 const FactoryDashboard = lazy(() => import("./screens/factory/FactoryDashboard.jsx"));
+const RetailDashboard = lazy(() => import("./screens/retail/RetailDashboard.jsx"));
 const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
 const FactoryInProcessQC = lazy(() => import("./screens/factory/FactoryInProcessQC.jsx"));
@@ -546,7 +561,7 @@ export default function App() {
     // DepartmentDashboard shell's Department Functions grid — decided here,
     // at the route level, so DepartmentDashboard's own hooks are never
     // conditionally skipped for any department.
-    const Body = code === "FACTORY" ? FactoryDashboard : DepartmentDashboard;
+    const Body = code === "FACTORY" ? FactoryDashboard : code === "RETAIL" ? RetailDashboard : DepartmentDashboard;
     return (
       <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
         <ProtectedRoute allowed={allowed} lang={lang}>
@@ -669,9 +684,14 @@ export default function App() {
       <Route path="/retail/stock" element={deptModulePage("RETAIL", <RetailStock lang={lang} />)} />
       <Route path="/retail/stock-transfer" element={deptModulePage("RETAIL", <RetailStockTransfer lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/delivery" element={deptModulePage("RETAIL", <RetailDelivery lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/retail/packing" element={deptModulePage("RETAIL", <RetailPacking lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/retail/customer/:customerId" element={deptModulePage("RETAIL", <RetailCustomerTimeline lang={lang} profile={profile} />)} />
       <Route path="/retail/complaints" element={deptModulePage("RETAIL", <RetailComplaints lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/targets" element={deptModulePage("RETAIL", <RetailTargets lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/performance" element={deptModulePage("RETAIL", <RetailPerformance lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/retail/daily-update" element={deptModulePage("RETAIL", <RetailDailyUpdate lang={lang} />)} />
+      <Route path="/retail/import" element={deptModulePage("RETAIL", <RetailImportLeads lang={lang} />)} />
+      <Route path="/retail/reports" element={deptModulePage("RETAIL", <RetailReports lang={lang} />)} />
       <Route path="/franchise-dealer" element={deptPage("FRANCHISE")} />
       <Route path="/marketing" element={deptPage("MARKETING")} />
       <Route path="/ecommerce" element={deptPage("ECOMMERCE")} />
@@ -711,8 +731,22 @@ export default function App() {
       )} />
       <Route path="/b2b-b2g" element={deptPage("B2B_B2G")} />
       <Route path="/procurement" element={deptPage("PROCUREMENT")} />
-      <Route path="/inventory" element={deptPage("GODOWN_INV")} />
-      <Route path="/dispatch" element={deptPage("DISPATCH")} />
+      {/* Simplified home for Godown, Inventory & Dispatch (v2_93o) — two big, icon-first tiles instead of the full
+          Department Functions grid, since most Godown staff aren't office workers. The full grid + reports stay
+          one tap away at /inventory/setup, nothing removed. */}
+      <Route path="/inventory" element={deptModulePage("GODOWN_INV", <GodownDashboard lang={lang} profile={profile} />)} />
+      <Route path="/inventory/setup" element={deptModulePage("GODOWN_INV",
+        <DepartmentDashboard lang={lang} profile={profile} lookups={lookups} department={lookups.departments.find((d) => d.code === "GODOWN_INV")} onOpenLegacy={openLegacyView} />)} />
+      <Route path="/godown/stock-intake" element={deptModulePage("GODOWN_INV", <GodownStockIntake lang={lang} />)} />
+      <Route path="/godown/handovers" element={deptModulePage("GODOWN_INV", <GodownHandovers lang={lang} profile={profile} />)} />
+      <Route path="/godown/stock" element={deptModulePage("GODOWN_INV", <GodownStock lang={lang} />)} />
+      <Route path="/godown/my-work" element={deptModulePage("GODOWN_INV", <GodownMyWorkToday lang={lang} />)} />
+      <Route path="/godown/scan" element={deptModulePage("GODOWN_INV", <GodownScanQR lang={lang} />)} />
+      <Route path="/godown/product/:sku" element={deptModulePage("GODOWN_INV", <GodownProductDetail lang={lang} />)} />
+      <Route path="/godown/reports" element={deptModulePage("GODOWN_INV", <GodownReports lang={lang} />)} />
+      <Route path="/dispatch/queue" element={deptModulePage("GODOWN_INV", <DispatchQueue lang={lang} profile={profile} />)} />
+      {/* Merged department (v2_93n): Dispatch/Logistics folded into Godown, Inventory & Dispatch — old bookmarks redirect. */}
+      <Route path="/dispatch" element={<Navigate to="/inventory" replace />} />
       <Route path="/factory" element={deptPage("FACTORY")} />
       <Route path="/factory/inbox" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="inbox" />)} />
       <Route path="/factory/job-cards" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="jobcards" />)} />

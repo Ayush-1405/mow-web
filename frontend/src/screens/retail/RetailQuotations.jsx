@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
+import { createQuotation, convertQuotationToOrder, approveQuotation } from "../../lib/retailApi";
 
 const STATUSES = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"];
 const emptyItem = () => ({ item_name: "", quantity: 1, unit_price: 0 });
@@ -10,15 +12,19 @@ const emptyItem = () => ({ item_name: "", quantity: 1, unit_price: 0 });
 // retail_quotation_items). "Convert to Order" calls the
 // retail_convert_quotation_to_order RPC so the items are copied
 // server-side rather than duplicated by hand on the client.
-export default function RetailQuotations({ lang, lookups }) {
+export default function RetailQuotations({ lang, lookups, profile }) {
+  const [searchParams] = useSearchParams();
+  const leadId = searchParams.get("lead_id"); // set when arriving from RetailLeads "Create Quotation" / Won follow-up
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionMsg, setActionMsg] = useState(null); // { type, text } — a failed ACTION never blanks the loaded page
   const [rows, setRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  const [form, setForm] = useState({ customer_name: "", phone: "", valid_until: "" });
+  const [form, setForm] = useState({ customer_name: "", phone: "", valid_until: "", internal_approval_required: false });
   const [items, setItems] = useState([emptyItem()]);
+  const canApprove = !!(profile?.isManagement || profile?.isDeptHead);
 
   const retailDept = useMemo(() => lookups.departments.find((d) => d.code === "RETAIL"), [lookups.departments]);
   const total = useMemo(() => items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0), [items]);
@@ -34,6 +40,19 @@ export default function RetailQuotations({ lang, lookups }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Arriving from a lead (Create Quotation button, or the "Quotation Requested" follow-up outcome): prefill the
+  // customer's real details from the lead record itself — never re-typed by hand — and open the form already
+  // expanded so the salesperson only has to add line items.
+  useEffect(() => {
+    if (!leadId) return;
+    supabase.from("retail_leads").select("customer_name, phone").eq("id", leadId).maybeSingle().then(({ data }) => {
+      if (data) {
+        setForm((f) => ({ ...f, customer_name: data.customer_name || f.customer_name, phone: data.phone || f.phone }));
+        setShowForm(true);
+      }
+    });
+  }, [leadId]);
+
   function updateItem(idx, field, value) {
     setItems((its) => its.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
   }
@@ -44,26 +63,15 @@ export default function RetailQuotations({ lang, lookups }) {
     e.preventDefault();
     if (!form.customer_name || !retailDept || items.every((it) => !it.item_name)) return;
     setSaving(true);
-    const quotationNumber = "QUO-" + Date.now().toString(36).toUpperCase();
-    const { data: quotation, error: err } = await supabase.from("retail_quotations").insert({
-      department_id: retailDept.id,
-      quotation_number: quotationNumber,
-      customer_name: form.customer_name,
-      phone: form.phone || null,
-      valid_until: form.valid_until || null,
-      total_amount: total,
-    }).select().single();
-    if (err) { setSaving(false); setError(true); return; }
-    const rowsToInsert = items.filter((it) => it.item_name).map((it) => ({
-      quotation_id: quotation.id,
-      item_name: it.item_name,
-      quantity: Number(it.quantity) || 1,
-      unit_price: Number(it.unit_price) || 0,
-      line_total: (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
-    }));
-    if (rowsToInsert.length) await supabase.from("retail_quotation_items").insert(rowsToInsert);
+    setActionMsg(null);
+    const { error: err } = await createQuotation({
+      customerName: form.customer_name, phone: form.phone || null, validUntil: form.valid_until || null,
+      internalApprovalRequired: form.internal_approval_required, leadId: leadId || null,
+      items: items.filter((it) => it.item_name).map((it) => ({ item_name: it.item_name, quantity: Number(it.quantity) || 1, unit_price: Number(it.unit_price) || 0 })),
+    });
     setSaving(false);
-    setForm({ customer_name: "", phone: "", valid_until: "" });
+    if (err) { setActionMsg({ type: "error", text: err.message }); return; }
+    setForm({ customer_name: "", phone: "", valid_until: "", internal_approval_required: false });
     setItems([emptyItem()]);
     setShowForm(false);
     load();
@@ -71,14 +79,28 @@ export default function RetailQuotations({ lang, lookups }) {
 
   async function updateStatus(id, status) {
     const { error: err } = await supabase.from("retail_quotations").update({ status }).eq("id", id);
-    if (!err) load();
+    if (err) { setActionMsg({ type: "error", text: err.message }); return; }
+    load();
   }
 
+  // A failed conversion (e.g. "Only an ACCEPTED quotation can be converted") is shown inline, right where the
+  // action was taken — it must never blank the whole loaded list out from under the user (that was the actual bug:
+  // this handler used to reuse the page-load error flag, so any rejected action looked like the page failed to load).
   async function convertToOrder(id) {
     setBusyId(id);
-    const { error: err } = await supabase.rpc("retail_convert_quotation_to_order", { p_quotation_id: id });
+    setActionMsg(null);
+    const { error: err } = await convertQuotationToOrder(id);
     setBusyId(null);
-    if (err) { setError(true); return; }
+    if (err) { setActionMsg({ type: "error", text: err.message }); return; }
+    load();
+  }
+
+  async function decideApproval(id, approved) {
+    setBusyId(id);
+    setActionMsg(null);
+    const { error: err } = await approveQuotation(id, approved, null);
+    setBusyId(null);
+    if (err) { setActionMsg({ type: "error", text: err.message }); return; }
     load();
   }
 
@@ -100,6 +122,8 @@ export default function RetailQuotations({ lang, lookups }) {
         <div className="dept-header-icon" aria-hidden="true">📃</div>
         <div className="dept-header-text"><h1>{t("retailQuotationsTitle", lang)}</h1></div>
       </div>
+
+      {actionMsg && <div className="card"><div className={`msg ${actionMsg.type}`}>{actionMsg.text}</div></div>}
 
       <div className="card">
         <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
@@ -135,6 +159,12 @@ export default function RetailQuotations({ lang, lookups }) {
               <strong>{t("totalAmountLabel", lang)}: {formatCurrency(total)}</strong>
             </div>
             <div className="field full">
+              <label className="task-meta" style={{ gap: 6 }}>
+                <input type="checkbox" checked={form.internal_approval_required} onChange={(e) => setForm((f) => ({ ...f, internal_approval_required: e.target.checked }))} />
+                {t("requiresInternalApprovalLabel", lang)}
+              </label>
+            </div>
+            <div className="field full">
               <button className="btn btn-primary" type="submit" disabled={saving}>{t("save", lang)}</button>
             </div>
           </form>
@@ -143,23 +173,38 @@ export default function RetailQuotations({ lang, lookups }) {
 
       <div className="card">
         {rows.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
-        {rows.map((r) => (
-          <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "8px 0", flexWrap: "wrap", gap: 8 }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>{r.quotation_number} — {r.customer_name}</div>
-              <div className="sub">{formatCurrency(r.total_amount)}</div>
+        {rows.map((r) => {
+          const pendingApproval = r.internal_approval_required && !r.internal_approved_at;
+          return (
+            <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "8px 0", flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{r.quotation_number} — {r.customer_name}</div>
+                <div className="sub">{formatCurrency(r.total_amount)}</div>
+                {r.internal_approval_required && (
+                  <div className="sub">{r.internal_approved_at ? `✅ ${t("approvedLabel", lang)}` : `⏳ ${t("pendingApprovalLabel", lang)}`}</div>
+                )}
+              </div>
+              <select value={r.status} onChange={(e) => updateStatus(r.id, e.target.value)}>
+                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
+              {canApprove && pendingApproval && (
+                <div className="task-meta" style={{ gap: 6 }}>
+                  <button type="button" className="btn btn-primary" disabled={busyId === r.id} onClick={() => decideApproval(r.id, true)}>✅ {t("approveAction", lang)}</button>
+                  <button type="button" className="btn btn-outline" disabled={busyId === r.id} onClick={() => decideApproval(r.id, false)}>✕ {t("rejectAction", lang)}</button>
+                </div>
+              )}
+              {r.status === "ACCEPTED" && !pendingApproval && (
+                <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => convertToOrder(r.id)}>
+                  {t("convertToOrder", lang)}
+                </button>
+              )}
+              {r.status === "ACCEPTED" && pendingApproval && !canApprove && (
+                <span className="sub">{t("awaitingApprovalMsg", lang)}</span>
+              )}
             </div>
-            <select value={r.status} onChange={(e) => updateStatus(r.id, e.target.value)}>
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
-            {r.status === "ACCEPTED" && (
-              <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => convertToOrder(r.id)}>
-                {t("convertToOrder", lang)}
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -13,6 +13,17 @@ import {
 import { resolveDocument, voiceExtension } from "../_shared/fileTypes.ts";
 
 const BUCKET = "staff-attachments";
+
+// Retail fulfilment-pipeline entity types (v2_93i onward): each proof photo (packing, godown receiving, dispatch, delivery,
+// installation) is a real staff_attachments row, RLS-checked against its own real parent table -- never a raw storage path or a
+// client-side blob URL. Kept as an explicit whitelist (not a wildcard), same discipline as the original task/bridge pair.
+const RETAIL_PIPELINE_PARENT_TABLES: Record<string, string> = {
+  retail_packing: "retail_packing_records",
+  retail_godown_handover: "retail_godown_handovers",
+  retail_dispatch: "retail_dispatch_records",
+  retail_delivery: "retail_deliveries",
+  retail_installation: "retail_installations",
+};
 const MAX_VOICE_BYTES = 5 * 1024 * 1024; // 60 s of Opus/AAC is well under 1 MB; 5 MB is a generous hard cap
 const STALE_VOICE_MS = 24 * 60 * 60 * 1000;
 const VOICE_DOWNLOAD_TTL_SECONDS = 600; // long enough to seek around a 60 s clip; the browser is handed a fresh URL when it expires
@@ -94,7 +105,8 @@ async function handleUpload(
   // "staging" is a VOICE recording made while a task is being assigned: it is stored first (before the task exists, so a task is never
   // created without the recording it was meant to carry) and is linked to the task afterwards by staff_record_attachment.
   const staging = entity_type === "staging";
-  if (entity_type !== "task" && entity_type !== "bridge" && !staging) {
+  const retailParentTable = typeof entity_type === "string" ? RETAIL_PIPELINE_PARENT_TABLES[entity_type] : undefined;
+  if (entity_type !== "task" && entity_type !== "bridge" && !staging && !retailParentTable) {
     return errorResponse(400, MSG.missingFields, origin);
   }
   if ((!staging && !isUuid(entity_id)) || !isNonEmptyString(filename, 200) || !isNonEmptyString(mime_type, 200)) {
@@ -134,7 +146,7 @@ async function handleUpload(
 
   const userClient = userScopedClient(token);
   if (!staging) {
-    const parentTable = entity_type === "bridge" ? "bridges" : "staff_tasks";
+    const parentTable = retailParentTable ?? (entity_type === "bridge" ? "bridges" : "staff_tasks");
     const { data: parentRow, error: parentError } = await userClient
       .from(parentTable)
       .select("id")

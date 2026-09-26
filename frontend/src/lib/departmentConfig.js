@@ -27,7 +27,6 @@ export const DEPARTMENT_ROUTES = {
   B2B_B2G: "/b2b-b2g",
   PROCUREMENT: "/procurement",
   GODOWN_INV: "/inventory",
-  DISPATCH: "/dispatch",
   FACTORY: "/factory",
   RND: "/product-rnd",
   HR_ADMIN: "/hr-admin",
@@ -47,7 +46,6 @@ export const DEPARTMENT_ORDER = [
   "B2B_B2G",
   "PROCUREMENT",
   "GODOWN_INV",
-  "DISPATCH",
   "FACTORY",
   "RND",
   "HR_ADMIN",
@@ -65,7 +63,6 @@ export const DEPARTMENT_ICONS = {
   B2B_B2G: "🏛️",
   PROCUREMENT: "🧾",
   GODOWN_INV: "📦",
-  DISPATCH: "🚚",
   FACTORY: "🏭",
   RND: "🔬",
   HR_ADMIN: "🧑‍💼",
@@ -86,8 +83,7 @@ export const DEPARTMENT_LABEL_FALLBACK = {
   INTERIOR: { en: "Interior Projects", gu: "ઇન્ટિરિયર પ્રોજેક્ટ્સ" },
   B2B_B2G: { en: "B2B/B2G", gu: "બીટુબી અને બીટુજી" },
   PROCUREMENT: { en: "Procurement", gu: "ખરીદી વિભાગ" },
-  GODOWN_INV: { en: "Godown/Inventory", gu: "ગોડાઉન અને ઇન્વેન્ટરી" },
-  DISPATCH: { en: "Dispatch/Logistics", gu: "ડિસ્પેચ અને લોજિસ્ટિક્સ" },
+  GODOWN_INV: { en: "Godown, Inventory & Dispatch", gu: "ગોડાઉન, ઇન્વેન્ટરી અને ડિસ્પેચ" },
   FACTORY: { en: "Factory/Manufacturing", gu: "ફેક્ટરી અને મેન્યુફેક્ચરિંગ" },
   RND: { en: "Product Design/R&D", gu: "પ્રોડક્ટ ડિઝાઇન અને આર એન્ડ ડી" },
   HR_ADMIN: { en: "HR/Admin", gu: "એચઆર અને એડમિન" },
@@ -116,6 +112,7 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Stock Availability", "સ્ટોક ઉપલબ્ધતા"],
     ["Stock Transfer Requests", "સ્ટોક ટ્રાન્સફર વિનંતીઓ"],
     ["Delivery Coordination", "ડિલિવરી સંકલન"],
+    ["Packing & Godown Handover", "પેકિંગ અને ગોડાઉન હેન્ડઓવર"],
     ["Complaints & Service", "ફરિયાદો અને સેવા"],
     ["Sales Targets", "વેચાણ લક્ષ્યાંક"],
     ["Sales Performance", "વેચાણ કામગીરી"],
@@ -222,6 +219,9 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Payment Coordination", "ચુકવણી સંકલન"],
     ["Emergency Procurement", "કટોકટી ખરીદી"],
   ),
+  // Merged department (v2_93n): Godown/Inventory + Dispatch/Logistics, now one department with two internal
+  // functional units — Inventory & Godown (first block below) and Delivery & Dispatch (second block). "Goods
+  // Receipt" and "Delivery Planning" are the two cards with a real, wired screen (see moduleRegistry.js).
   GODOWN_INV: cards(
     ["Goods Receipt", "માલ પ્રાપ્તિ"],
     ["GRN", "GRN"],
@@ -246,8 +246,6 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Physical Audit", "ફિઝિકલ ઓડિટ"],
     ["Stock Ageing", "સ્ટોક એજિંગ"],
     ["Stock Variance", "સ્ટોક વેરિયન્સ"],
-  ),
-  DISPATCH: cards(
     ["Delivery Planning", "ડિલિવરી પ્લાનિંગ"],
     ["Stock Check", "સ્ટોક ચેક"],
     ["Payment Check", "ચુકવણી ચેક"],

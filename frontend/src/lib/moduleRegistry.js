@@ -15,10 +15,16 @@ export const MODULE_ROUTES = {
     "Stock Availability": "/retail/stock",
     "Stock Transfer Requests": "/retail/stock-transfer",
     "Delivery Coordination": "/retail/delivery",
+    "Packing & Godown Handover": "/retail/packing",
     "Complaints & Service": "/retail/complaints",
     "Sales Targets": "/retail/targets",
     "Sales Performance": "/retail/performance",
     "Send to Factory": "/factory-request",
+  },
+  // Merged department (v2_93n): both real screens stay reachable as two cards under the one department.
+  GODOWN_INV: {
+    "Goods Receipt": "/godown/handovers",
+    "Delivery Planning": "/dispatch/queue",
   },
   INTERIOR: {
     "Quotation": "/interior-projects/quotation",
