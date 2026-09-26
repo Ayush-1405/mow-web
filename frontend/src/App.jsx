@@ -54,6 +54,7 @@ const Analytics = lazy(() => import("./screens/Analytics.jsx"));
 const RetailLeads = lazy(() => import("./screens/retail/RetailLeads.jsx"));
 const RetailQuotations = lazy(() => import("./screens/retail/RetailQuotations.jsx"));
 const RetailOrders = lazy(() => import("./screens/retail/RetailOrders.jsx"));
+const RetailScanQR = lazy(() => import("./screens/retail/RetailScanQR.jsx"));
 const RetailDisplay = lazy(() => import("./screens/retail/RetailDisplay.jsx"));
 const RetailStoreOps = lazy(() => import("./screens/retail/RetailStoreOps.jsx"));
 const RetailStock = lazy(() => import("./screens/retail/RetailStock.jsx"));
@@ -679,6 +680,8 @@ export default function App() {
       <Route path="/retail/leads" element={deptModulePage("RETAIL", <RetailLeads lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/quotations" element={deptModulePage("RETAIL", <RetailQuotations lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/orders" element={deptModulePage("RETAIL", <RetailOrders lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/retail/scan" element={deptModulePage("RETAIL", <RetailScanQR lang={lang} />)} />
+      <Route path="/retail/product/:sku" element={deptModulePage("RETAIL", <GodownProductDetail lang={lang} profile={profile} />)} />
       <Route path="/retail/display" element={deptModulePage("RETAIL", <RetailDisplay lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/store-ops" element={deptModulePage("RETAIL", <RetailStoreOps lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/stock" element={deptModulePage("RETAIL", <RetailStock lang={lang} />)} />
@@ -742,7 +745,7 @@ export default function App() {
       <Route path="/godown/stock" element={deptModulePage("GODOWN_INV", <GodownStock lang={lang} />)} />
       <Route path="/godown/my-work" element={deptModulePage("GODOWN_INV", <GodownMyWorkToday lang={lang} />)} />
       <Route path="/godown/scan" element={deptModulePage("GODOWN_INV", <GodownScanQR lang={lang} />)} />
-      <Route path="/godown/product/:sku" element={deptModulePage("GODOWN_INV", <GodownProductDetail lang={lang} />)} />
+      <Route path="/godown/product/:sku" element={deptModulePage("GODOWN_INV", <GodownProductDetail lang={lang} profile={profile} />)} />
       <Route path="/godown/reports" element={deptModulePage("GODOWN_INV", <GodownReports lang={lang} />)} />
       <Route path="/dispatch/queue" element={deptModulePage("GODOWN_INV", <DispatchQueue lang={lang} profile={profile} />)} />
       {/* Merged department (v2_93n): Dispatch/Logistics folded into Godown, Inventory & Dispatch — old bookmarks redirect. */}

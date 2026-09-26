@@ -3,7 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
-import { createQuotation, convertQuotationToOrder, approveQuotation } from "../../lib/retailApi";
+import { createQuotation, convertQuotationToOrder, approveQuotation, addQuotationItemFromScan, scanProduct } from "../../lib/retailApi";
+import QRScanner from "../../components/QRScanner.jsx";
 
 const STATUSES = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"];
 const emptyItem = () => ({ item_name: "", quantity: 1, unit_price: 0 });
@@ -25,6 +26,10 @@ export default function RetailQuotations({ lang, lookups, profile }) {
   const [form, setForm] = useState({ customer_name: "", phone: "", valid_until: "", internal_approval_required: false });
   const [items, setItems] = useState([emptyItem()]);
   const canApprove = !!(profile?.isManagement || profile?.isDeptHead);
+  const [scanOpenFor, setScanOpenFor] = useState(null); // quotation id whose scanner is open
+  const [scanPreview, setScanPreview] = useState(null); // { code, product, quantity, discount } once a code is detected
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanMsg, setScanMsg] = useState(null);
 
   const retailDept = useMemo(() => lookups.departments.find((d) => d.code === "RETAIL"), [lookups.departments]);
   const total = useMemo(() => items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0), [items]);
@@ -104,6 +109,32 @@ export default function RetailQuotations({ lang, lookups, profile }) {
     load();
   }
 
+  function openScan(quotationId) {
+    setScanOpenFor((cur) => (cur === quotationId ? null : quotationId));
+    setScanPreview(null);
+    setScanMsg(null);
+  }
+
+  // Scan QR -> Fetch Product -> Show Product Preview -> Confirm Quantity -> Apply Authorized Discount -> Add.
+  async function onScanDetected(code) {
+    setScanMsg(null);
+    const { data, error: err } = await scanProduct(code);
+    if (err || !data) { setScanMsg({ type: "error", text: err?.message || t("productNotFoundMsg", lang) }); return; }
+    setScanPreview({ code, product: data.product, serial: data.serial, quantity: 1, discount: 0 });
+  }
+
+  async function confirmScanAdd(quotationId) {
+    if (!scanPreview) return;
+    setScanBusy(true);
+    setScanMsg(null);
+    const { error: err } = await addQuotationItemFromScan(quotationId, scanPreview.code, Number(scanPreview.quantity) || 1, Number(scanPreview.discount) || 0);
+    setScanBusy(false);
+    if (err) { setScanMsg({ type: "error", text: err.message }); return; }
+    setScanMsg({ type: "success", text: t("productAddedToQuotationMsg", lang) });
+    setScanPreview(null);
+    load();
+  }
+
   if (loading) {
     return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
   }
@@ -175,32 +206,73 @@ export default function RetailQuotations({ lang, lookups, profile }) {
         {rows.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
         {rows.map((r) => {
           const pendingApproval = r.internal_approval_required && !r.internal_approved_at;
+          const canScanAdd = ["DRAFT", "SENT"].includes(r.status);
           return (
-            <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "8px 0", flexWrap: "wrap", gap: 8 }}>
-              <div>
-                <div style={{ fontWeight: 700 }}>{r.quotation_number} — {r.customer_name}</div>
-                <div className="sub">{formatCurrency(r.total_amount)}</div>
-                {r.internal_approval_required && (
-                  <div className="sub">{r.internal_approved_at ? `✅ ${t("approvedLabel", lang)}` : `⏳ ${t("pendingApprovalLabel", lang)}`}</div>
+            <div key={r.id} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
+              <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{r.quotation_number} — {r.customer_name}</div>
+                  <div className="sub">{formatCurrency(r.total_amount)}</div>
+                  {r.internal_approval_required && (
+                    <div className="sub">{r.internal_approved_at ? `✅ ${t("approvedLabel", lang)}` : `⏳ ${t("pendingApprovalLabel", lang)}`}</div>
+                  )}
+                </div>
+                <select value={r.status} onChange={(e) => updateStatus(r.id, e.target.value)}>
+                  {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
+                {canScanAdd && (
+                  <button type="button" className="btn btn-outline" onClick={() => openScan(r.id)}>
+                    📷 {t("scanQrAddProductAction", lang)}
+                  </button>
+                )}
+                {canApprove && pendingApproval && (
+                  <div className="task-meta" style={{ gap: 6 }}>
+                    <button type="button" className="btn btn-primary" disabled={busyId === r.id} onClick={() => decideApproval(r.id, true)}>✅ {t("approveAction", lang)}</button>
+                    <button type="button" className="btn btn-outline" disabled={busyId === r.id} onClick={() => decideApproval(r.id, false)}>✕ {t("rejectAction", lang)}</button>
+                  </div>
+                )}
+                {r.status === "ACCEPTED" && !pendingApproval && (
+                  <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => convertToOrder(r.id)}>
+                    {t("convertToOrder", lang)}
+                  </button>
+                )}
+                {r.status === "ACCEPTED" && pendingApproval && !canApprove && (
+                  <span className="sub">{t("awaitingApprovalMsg", lang)}</span>
                 )}
               </div>
-              <select value={r.status} onChange={(e) => updateStatus(r.id, e.target.value)}>
-                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
-              {canApprove && pendingApproval && (
-                <div className="task-meta" style={{ gap: 6 }}>
-                  <button type="button" className="btn btn-primary" disabled={busyId === r.id} onClick={() => decideApproval(r.id, true)}>✅ {t("approveAction", lang)}</button>
-                  <button type="button" className="btn btn-outline" disabled={busyId === r.id} onClick={() => decideApproval(r.id, false)}>✕ {t("rejectAction", lang)}</button>
+
+              {scanOpenFor === r.id && (
+                <div className="card" style={{ marginTop: 10, background: "var(--surface-2, #faf8f4)" }}>
+                  {scanMsg && <div className={`msg ${scanMsg.type}`}>{scanMsg.text}</div>}
+                  {!scanPreview ? (
+                    <>
+                      <div className="sub" style={{ marginBottom: 8 }}>{t("scanToAddLabel", lang)}</div>
+                      <QRScanner lang={lang} onDetected={onScanDetected} />
+                    </>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div style={{ fontWeight: 700 }}>{scanPreview.product.name} <span className="sub">({scanPreview.code})</span></div>
+                      {scanPreview.product.selling_price != null && (
+                        <div className="sub">{t("sellingPriceLabel", lang)}: ₹{scanPreview.product.selling_price}</div>
+                      )}
+                      <div className="form-grid">
+                        <div className="field"><label>{t("quantityLabel", lang)}</label>
+                          <input type="number" min="1" value={scanPreview.quantity}
+                            onChange={(e) => setScanPreview((p) => ({ ...p, quantity: e.target.value }))} /></div>
+                        <div className="field"><label>{t("discountLabel", lang)}</label>
+                          <input type="number" min="0" value={scanPreview.discount}
+                            onChange={(e) => setScanPreview((p) => ({ ...p, discount: e.target.value }))} /></div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button type="button" className="btn btn-primary" disabled={scanBusy} onClick={() => confirmScanAdd(r.id)}>
+                          ✅ {t("addToQuotationAction", lang)}
+                        </button>
+                        <button type="button" className="btn btn-outline" onClick={() => setScanPreview(null)}>{t("cancel", lang)}</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-              {r.status === "ACCEPTED" && !pendingApproval && (
-                <button className="btn btn-outline" disabled={busyId === r.id} onClick={() => convertToOrder(r.id)}>
-                  {t("convertToOrder", lang)}
-                </button>
-              )}
-              {r.status === "ACCEPTED" && pendingApproval && !canApprove && (
-                <span className="sub">{t("awaitingApprovalMsg", lang)}</span>
               )}
             </div>
           );

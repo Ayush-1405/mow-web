@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
-import { listGodownQueue, godownAccept, godownReject, listPackingItems, verifyPacking, listGodownStaff, assignGodownHandover } from "../../lib/retailApi";
+import { listGodownQueue, godownAccept, godownReject, listPackingItems, verifyPacking, listGodownStaff, assignGodownHandover, listDeliveryChallanItems, godownScanPick } from "../../lib/retailApi";
 import { statusBadgeClass } from "../../lib/retailModules.js";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
+import QRScanner from "../../components/QRScanner.jsx";
 
 // Godown/Inventory's own real screen (v2_93i, extended v2_93m for Immediate Delivery): every order gets a PENDING handover row here
 // — either "standard" (Retail already packed it) or "Immediate Delivery" (Godown itself must verify & pack, derived from the linked
@@ -30,6 +31,11 @@ export default function GodownHandovers({ lang, profile }) {
   const [assignPickerOpen, setAssignPickerOpen] = useState(null); // handover id
   const [assignChoice, setAssignChoice] = useState({});
   const [assignBusyId, setAssignBusyId] = useState(null);
+  // Scan-verified picking for an ACCEPTED handover with a linked Delivery Challan (v2_93r).
+  const [pickOpenFor, setPickOpenFor] = useState(null); // handover id
+  const [dcItemsByHandover, setDcItemsByHandover] = useState({}); // handover id -> retail_delivery_challan_items rows
+  const [pickMsg, setPickMsg] = useState(null);
+  const [scanningPick, setScanningPick] = useState(false);
 
   // Fetched regardless of canAssign: everyone sees WHO a handover is currently assigned to, only the reassignment
   // control itself is gated by role.
@@ -88,6 +94,29 @@ export default function GodownHandovers({ lang, profile }) {
     if (err) { setError(true); return; }
     setPackOpen(null);
     load();
+  }
+
+  async function togglePick(handover) {
+    const opening = pickOpenFor !== handover.id;
+    setPickOpenFor(opening ? handover.id : null);
+    setPickMsg(null);
+    setScanningPick(false);
+    if (opening && handover.delivery_challan_id && !dcItemsByHandover[handover.id]) {
+      const { data } = await listDeliveryChallanItems(handover.delivery_challan_id);
+      setDcItemsByHandover((m) => ({ ...m, [handover.id]: data || [] }));
+    }
+  }
+
+  async function onPickScanned(handoverId, code) {
+    const { error: err } = await godownScanPick(handoverId, code);
+    setScanningPick(false);
+    if (err) { setPickMsg({ type: "error", text: err.message.includes("WRONG ITEM") ? `⚠️ ${t("wrongItemScannedMsg", lang)}` : err.message }); return; }
+    setPickMsg({ type: "success", text: t("itemPickedMsg", lang) });
+    const handover = rows.find((r) => r.id === handoverId);
+    if (handover?.delivery_challan_id) {
+      const { data } = await listDeliveryChallanItems(handover.delivery_challan_id);
+      setDcItemsByHandover((m) => ({ ...m, [handoverId]: data || [] }));
+    }
   }
 
   async function doReject(id) {
@@ -222,9 +251,31 @@ export default function GodownHandovers({ lang, profile }) {
         <h3>{t("recentDecisionsLabel", lang)}</h3>
         {decided.length === 0 && <div className="msg info">{t("noRecordsYet", lang)}</div>}
         {decided.map((r) => (
-          <div key={r.id} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
-            <div>{r.retail_orders?.order_number} — {r.retail_orders?.customer_name}</div>
-            <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
+          <div key={r.id} style={{ padding: "6px 0", borderBottom: "1px solid var(--border, #eee)" }}>
+            <div className="task-meta" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <div>{r.retail_orders?.order_number} — {r.retail_orders?.customer_name}</div>
+              <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
+              {r.status === "ACCEPTED" && r.delivery_challan_id && (
+                <button className="btn btn-outline" onClick={() => togglePick(r)}>
+                  🔍 {pickOpenFor === r.id ? t("cancel", lang) : t("scanToPickAction", lang)}
+                </button>
+              )}
+            </div>
+            {pickOpenFor === r.id && (
+              <div style={{ marginTop: 8, display: "grid", gap: 10 }}>
+                {pickMsg && <div className={`msg ${pickMsg.type}`}>{pickMsg.text}</div>}
+                {(dcItemsByHandover[r.id] || []).map((it) => (
+                  <div key={it.id} className="task-meta" style={{ justifyContent: "space-between", padding: "4px 0" }}>
+                    <span>{it.retail_order_items?.item_name || "—"} · {it.retail_inventory_items?.serial_number || "—"}</span>
+                    <span className={`badge ${statusBadgeClass(it.retail_inventory_items?.status)}`}>{it.retail_inventory_items?.status || "—"}</span>
+                  </div>
+                ))}
+                {!scanningPick && (
+                  <button className="btn btn-primary" onClick={() => setScanningPick(true)}>📷 {t("scanToPickAction", lang)}</button>
+                )}
+                {scanningPick && <QRScanner lang={lang} onDetected={(code) => onPickScanned(r.id, code)} />}
+              </div>
+            )}
           </div>
         ))}
       </div>

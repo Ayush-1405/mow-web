@@ -361,16 +361,25 @@ export function loadOwnershipReport() {
 export function startStockIntake(locationId) {
   return supabase.rpc("retail_start_stock_intake", { p_location_id: locationId });
 }
-// v2_93q: widened for Good/Damaged condition, rack location, an optional note, and item-level batch tracking
-// ("5 physically separate chairs" -> 5 unique codes sharing one GRN batch). Always returns an ARRAY of rows now
-// (one per item when itemLevel is true and quantity > 1; otherwise a single-row array) — retail_confirm_stock_intake
-// is a SETOF function since this migration, not a single-row one.
-export function confirmStockIntake(productId, category, name, unit, quantity, condition, rackLocation, note, itemLevel, categoryCorrected) {
+// v2_93r: corrected to the real two-tier shape (Product Master vs. physical Inventory Serial) -- returns ONE
+// product-master row always, regardless of quantity/item-level. When itemLevel is true and quantity > 1, N unique
+// serials are created in retail_inventory_items (fetch them separately with listInventoryItems(productId)) — they
+// are NOT separate product rows (that was v2_93q's now-superseded shortcut).
+export function confirmStockIntake(productId, category, name, unit, quantity, condition, rackLocation, note, itemLevel, categoryCorrected, productTypeCode) {
   return supabase.rpc("retail_confirm_stock_intake", {
     p_product_id: productId, p_category: category, p_name: name, p_unit: unit || "Nos", p_quantity: quantity ?? 1,
     p_condition: condition || "GOOD", p_rack_location: rackLocation || null, p_note: note || null,
-    p_item_level: !!itemLevel, p_category_corrected: !!categoryCorrected,
+    p_item_level: !!itemLevel, p_category_corrected: !!categoryCorrected, p_product_type_code: productTypeCode || null,
   });
+}
+export function listInventoryItems(productId) {
+  return supabase.from("retail_inventory_items").select("*").eq("product_id", productId).order("serial_number");
+}
+export function listProductTypes() {
+  return supabase.rpc("retail_list_product_types");
+}
+export function upsertProductType(code, nameEn, nameGu, prefix) {
+  return supabase.rpc("retail_upsert_product_type", { p_code: code, p_name_en: nameEn, p_name_gu: nameGu, p_prefix: prefix });
 }
 // Calls the retail-stock-ai-classify Edge Function — best-effort; a failure here is not fatal, the caller just gets
 // { ok: false, reason } and shows empty fields for the worker to type instead of a suggestion.
@@ -404,8 +413,54 @@ export function loadGodownReportsSummary() {
 export function listShowroomLocations() {
   return supabase.from("locations").select("id, name_en, name_gu").eq("type", "showroom").eq("is_active", true).order("name_en");
 }
-export function logLabelReprint(productId, reason) {
-  return supabase.rpc("retail_log_label_reprint", { p_product_id: productId, p_reason: reason });
+export function logLabelReprint(productId, reason, inventoryItemId) {
+  return supabase.rpc("retail_log_label_reprint", { p_product_id: productId, p_reason: reason, p_inventory_item_id: inventoryItemId || null });
+}
+
+// ---- Product lifecycle (v2_93r): pricing/detail versioning, QR-based quotation entry, Delivery Challan, Godown
+// scan-pick, damage reporting, returns. ---------------------------------------------------------------------------
+export function updateProductPricing(productId, mrp, sellingPrice, minApprovedPrice, reason) {
+  return supabase.rpc("retail_update_product_pricing", {
+    p_product_id: productId, p_mrp: mrp ?? null, p_selling_price: sellingPrice ?? null, p_min_approved_price: minApprovedPrice ?? null, p_reason: reason,
+  });
+}
+export function updateProductDetails(productId, fields, reason) {
+  return supabase.rpc("retail_update_product_details", {
+    p_product_id: productId, p_name: fields.name || null, p_material: fields.material || null, p_color_finish: fields.colorFinish || null,
+    p_dimensions: fields.dimensions || null, p_description: fields.description || null, p_warranty_text: fields.warrantyText || null,
+    p_gst_percent: fields.gstPercent ?? null, p_brand_vendor: fields.brandVendor || null, p_display_availability: fields.displayAvailability ?? null,
+    p_reason: reason,
+  });
+}
+export function listProductPriceHistory(productId) {
+  return supabase.from("retail_product_price_history").select("*").eq("product_id", productId).order("changed_at", { ascending: false });
+}
+export function addQuotationItemFromScan(quotationId, code, quantity, discount) {
+  return supabase.rpc("retail_add_quotation_item_from_scan", { p_quotation_id: quotationId, p_code: code, p_quantity: quantity ?? 1, p_discount: discount ?? 0 });
+}
+export function createDeliveryChallan(orderId, vehicleTransporter, deliveryDate, specialInstructions, notes) {
+  return supabase.rpc("retail_create_delivery_challan", {
+    p_order_id: orderId, p_vehicle_transporter: vehicleTransporter || null, p_delivery_date: deliveryDate || null,
+    p_special_instructions: specialInstructions || null, p_notes: notes || null,
+  });
+}
+export function getDeliveryChallanForOrder(orderId) {
+  return supabase.from("retail_delivery_challans").select("*").eq("order_id", orderId).eq("status", "ACTIVE").maybeSingle();
+}
+export function listDeliveryChallanItems(dcId) {
+  return supabase.from("retail_delivery_challan_items").select("*, retail_inventory_items(serial_number, status), retail_order_items(item_name)").eq("dc_id", dcId);
+}
+export function godownScanPick(handoverId, code) {
+  return supabase.rpc("retail_godown_scan_pick", { p_handover_id: handoverId, p_code: code });
+}
+export function reportItemDamage(inventoryItemId, reason) {
+  return supabase.rpc("retail_report_item_damage", { p_inventory_item_id: inventoryItemId, p_reason: reason });
+}
+export function scanReturnToGodown(code, notes) {
+  return supabase.rpc("retail_scan_return_to_godown", { p_code: code, p_notes: notes || null });
+}
+export function restockReturnedItem(inventoryItemId, reason) {
+  return supabase.rpc("retail_restock_returned_item", { p_inventory_item_id: inventoryItemId, p_reason: reason });
 }
 
 // "Important Work": urgent, overdue, blocked. One screen worth of real records, not just counts.

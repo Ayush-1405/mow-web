@@ -2,45 +2,45 @@ import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
-import { startStockIntake, classifyStockPhoto, confirmStockIntake } from "../../lib/retailApi";
+import { startStockIntake, classifyStockPhoto, confirmStockIntake, listProductTypes, listInventoryItems } from "../../lib/retailApi";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
 
-// The category buttons a worker taps when the AI suggestion is wrong or missing — fixed, matches the pilot's own
-// category-prefix map in retail_generate_stock_code() 1:1, so nothing typed here can produce an "OTH" surprise.
-const CATEGORIES = ["Chair", "Sofa", "Bed", "Table", "Dining", "Wardrobe", "Cabinet/Storage", "Office Furniture", "Décor", "Other"];
-
-// New stock in, photo-first, tap-only wherever possible (v2_93q rebuild):
-// photo -> AI suggests a category (a suggestion the worker taps to confirm or change, never silently trusted) ->
-// quantity + Good/Damaged + rack + optional note -> confirm -> a real, permanent, category-prefixed code (and, for
-// quantity > 1 tracked item-by-item, one unique code per physical unit, all sharing one GRN batch number) -> QR
-// codes ready to print. Every generated field (code/QR/batch) comes from the server (retail_confirm_stock_intake),
-// never computed here.
+// New stock in, photo-first, tap-only wherever possible (v2_93r: corrected to the real two-tier Product Master vs.
+// physical Inventory Serial shape):
+// photo -> Product Type (a real, Head-managed dropdown — AI may suggest one, but the worker always confirms it
+// from this list, never free text) -> quantity + Good/Damaged + rack + optional note -> confirm -> ONE permanent
+// Product Model Code, and — when tracking each physical unit — N unique permanent Serial Numbers/QR codes sharing
+// one GRN batch. Every generated field (code/serial/batch) comes from the server, never computed here.
 export default function GodownStockIntake({ lang }) {
   const [locations, setLocations] = useState([]);
   const [locationId, setLocationId] = useState("");
+  const [productTypes, setProductTypes] = useState([]);
   const [product, setProduct] = useState(null); // the placeholder row once intake has started
   const [photoCount, setPhotoCount] = useState(0);
   const [classifying, setClassifying] = useState(false);
   const [aiResult, setAiResult] = useState(null); // { category, product_name, unit, confidence } | null (AI failed/low-confidence)
   const [categoryStep, setCategoryStep] = useState("waiting"); // waiting | suggested | choosing | done
-  const [form, setForm] = useState({ category: "", name: "", unit: "Nos", quantity: 1, condition: "GOOD", rackLocation: "", note: "", itemLevel: null });
+  const [form, setForm] = useState({ typeCode: "", typeName: "", name: "", unit: "Nos", quantity: 1, condition: "GOOD", rackLocation: "", note: "", itemLevel: null });
   const [categoryCorrected, setCategoryCorrected] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [confirmedBatch, setConfirmedBatch] = useState(null); // array of confirmed rows, once saved
-  const [qrUrls, setQrUrls] = useState({}); // sku -> data URL
+  const [confirmedProduct, setConfirmedProduct] = useState(null); // the single Product Master row, once saved
+  const [confirmedSerials, setConfirmedSerials] = useState(null); // [] of retail_inventory_items rows, if serialized
+  const [qrUrls, setQrUrls] = useState({}); // code -> data URL
   const [error, setError] = useState(null);
 
   useEffect(() => {
     supabase.from("locations").select("id, name_en").eq("is_active", true).eq("type", "godown").order("name_en").then(({ data }) => setLocations(data || []));
+    listProductTypes().then(({ data }) => setProductTypes(data || []));
   }, []);
 
   useEffect(() => {
-    if (!confirmedBatch) { setQrUrls({}); return; }
+    if (!confirmedProduct) { setQrUrls({}); return; }
+    const codes = confirmedSerials?.length ? confirmedSerials.map((s) => s.serial_number) : [confirmedProduct.sku];
     let cancelled = false;
-    Promise.all(confirmedBatch.map((row) => QRCode.toDataURL(`${window.location.origin}/godown/product/${row.sku}`, { width: 200, margin: 1 }).then((url) => [row.sku, url]).catch(() => [row.sku, null])))
+    Promise.all(codes.map((code) => QRCode.toDataURL(`${window.location.origin}/godown/product/${code}`, { width: 200, margin: 1 }).then((url) => [code, url]).catch(() => [code, null])))
       .then((pairs) => { if (!cancelled) setQrUrls(Object.fromEntries(pairs)); });
     return () => { cancelled = true; };
-  }, [confirmedBatch]);
+  }, [confirmedProduct, confirmedSerials]);
 
   async function begin() {
     if (!locationId) return;
@@ -58,47 +58,56 @@ export default function GodownStockIntake({ lang }) {
     setClassifying(false);
     if (res?.ok && res.category) {
       setAiResult(res);
-      setForm((f) => ({ ...f, category: res.category, name: res.product_name || res.category, unit: res.unit || "Nos" }));
+      // Match the AI's free-text guess to a real Product Type by name — never invents a type outside the list.
+      const matched = productTypes.find((pt) => pt.name_en.toLowerCase() === String(res.category).toLowerCase());
+      setForm((f) => ({ ...f, typeCode: matched?.code || "", typeName: matched?.name_en || res.category, name: res.product_name || res.category, unit: res.unit || "Nos" }));
       setCategoryStep("suggested");
     } else {
       setAiResult(null);
-      setCategoryStep("choosing"); // AI failed — go straight to the plain category buttons, never block intake.
+      setCategoryStep("choosing"); // AI failed — go straight to the plain Product Type buttons, never block intake.
     }
   }
 
   function confirmAiCategory() {
     setCategoryCorrected(false);
-    setCategoryStep("done");
+    setCategoryStep(form.typeCode ? "done" : "choosing"); // AI's guess didn't match a real type — still must pick one.
   }
   function openCategoryChoice() {
     setCategoryStep("choosing");
   }
-  function pickCategory(cat) {
-    setCategoryCorrected(aiResult ? cat !== aiResult.category : false);
-    setForm((f) => ({ ...f, category: cat, name: f.name || cat }));
+  function pickType(pt) {
+    setCategoryCorrected(aiResult ? pt.name_en !== aiResult.category : false);
+    setForm((f) => ({ ...f, typeCode: pt.code, typeName: pt.name_en, name: f.name || pt.name_en }));
     setCategoryStep("done");
   }
 
   async function confirm() {
-    if (!form.category.trim() || form.itemLevel === null && form.quantity > 1) return;
+    if (!form.typeCode || (form.itemLevel === null && form.quantity > 1)) return;
     setConfirming(true);
     setError(null);
     const { data, error: err } = await confirmStockIntake(
-      product.id, form.category, form.name || form.category, form.unit, form.quantity,
-      form.condition, form.rackLocation || null, form.note || null, form.quantity > 1 ? !!form.itemLevel : false, categoryCorrected);
+      product.id, form.typeName, form.name || form.typeName, form.unit, form.quantity,
+      form.condition, form.rackLocation || null, form.note || null, form.quantity > 1 ? !!form.itemLevel : false, categoryCorrected, form.typeCode);
+    if (err) { setConfirming(false); setError(err.message); return; }
+    setConfirmedProduct(data);
+    if (form.quantity > 1 && form.itemLevel) {
+      const { data: serials } = await listInventoryItems(data.id);
+      setConfirmedSerials(serials || []);
+    } else {
+      setConfirmedSerials(null);
+    }
     setConfirming(false);
-    if (err) { setError(err.message); return; }
-    setConfirmedBatch(data || []);
   }
 
   function addAnother() {
     setProduct(null); setPhotoCount(0); setAiResult(null); setCategoryStep("waiting"); setCategoryCorrected(false);
-    setForm({ category: "", name: "", unit: "Nos", quantity: 1, condition: "GOOD", rackLocation: "", note: "", itemLevel: null });
-    setConfirmedBatch(null); setQrUrls({});
+    setForm({ typeCode: "", typeName: "", name: "", unit: "Nos", quantity: 1, condition: "GOOD", rackLocation: "", note: "", itemLevel: null });
+    setConfirmedProduct(null); setConfirmedSerials(null); setQrUrls({});
   }
 
   const needsItemLevelChoice = form.quantity > 1 && form.itemLevel === null;
-  const readyToConfirm = categoryStep === "done" && form.category.trim() && !needsItemLevelChoice;
+  const readyToConfirm = categoryStep === "done" && form.typeCode && !needsItemLevelChoice;
+  const labels = confirmedProduct ? (confirmedSerials?.length ? confirmedSerials.map((s) => ({ code: s.serial_number, name: confirmedProduct.name })) : [{ code: confirmedProduct.sku, name: confirmedProduct.name }]) : [];
 
   return (
     <div className="dept-dashboard">
@@ -109,7 +118,7 @@ export default function GodownStockIntake({ lang }) {
 
       {error && <div className="card"><div className="msg error">{error}</div></div>}
 
-      {!product && !confirmedBatch && (
+      {!product && !confirmedProduct && (
         <div className="card" style={{ display: "grid", gap: 12 }}>
           <div className="field">
             <label style={{ fontSize: 16 }}>{t("whereIsThisLabel", lang)}</label>
@@ -124,7 +133,7 @@ export default function GodownStockIntake({ lang }) {
         </div>
       )}
 
-      {product && !confirmedBatch && (
+      {product && !confirmedProduct && (
         <div className="card" style={{ display: "grid", gap: 14 }}>
           <ProofPhotoUpload lang={lang} entityType="retail_product" entityId={product.id} existingCount={photoCount} onUploaded={onPhotoUploaded} />
           {classifying && <div className="msg info">{t("identifyingItemLabel", lang)}…</div>}
@@ -132,11 +141,11 @@ export default function GodownStockIntake({ lang }) {
           {photoCount > 0 && categoryStep === "suggested" && aiResult && (
             <div className="card" style={{ background: "var(--surface-2, #faf8f4)", display: "grid", gap: 10 }}>
               <div style={{ fontSize: 18 }}>
-                {t("weIdentifiedLabel", lang)}: <b>{aiResult.category}</b>
+                {t("weIdentifiedLabel", lang)}: <b>{form.typeName}</b>
                 {typeof aiResult.confidence === "number" && <span className="sub"> ({Math.round(aiResult.confidence * 100)}%)</span>}
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button type="button" className="btn btn-primary" style={{ minHeight: 52, fontSize: 17, flex: 1 }} onClick={confirmAiCategory}>✓ {t("correctAction", lang)}</button>
+                <button type="button" className="btn btn-primary" style={{ minHeight: 52, fontSize: 17, flex: 1 }} disabled={!form.typeCode} onClick={confirmAiCategory}>✓ {t("correctAction", lang)}</button>
                 <button type="button" className="btn btn-outline" style={{ minHeight: 52, fontSize: 17, flex: 1 }} onClick={openCategoryChoice}>{t("changeAction", lang)}</button>
               </div>
             </div>
@@ -146,8 +155,10 @@ export default function GodownStockIntake({ lang }) {
             <div className="card" style={{ display: "grid", gap: 10 }}>
               {!aiResult && <div className="msg info">{t("couldNotIdentifyMsg", lang)}</div>}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {CATEGORIES.map((cat) => (
-                  <button key={cat} type="button" className="btn btn-outline" style={{ minHeight: 52, fontSize: 15 }} onClick={() => pickCategory(cat)}>{cat}</button>
+                {productTypes.map((pt) => (
+                  <button key={pt.code} type="button" className="btn btn-outline" style={{ minHeight: 52, fontSize: 15 }} onClick={() => pickType(pt)}>
+                    {lang === "gu" ? pt.name_gu : pt.name_en}
+                  </button>
                 ))}
               </div>
             </div>
@@ -155,7 +166,7 @@ export default function GodownStockIntake({ lang }) {
 
           {photoCount > 0 && categoryStep === "done" && (
             <>
-              <div className="msg success">{t("categoryLabel", lang)}: <b>{form.category}</b>{categoryCorrected && <span className="sub"> ({t("changedFromAiLabel", lang)})</span>}</div>
+              <div className="msg success">{t("categoryLabel", lang)}: <b>{form.typeName}</b>{categoryCorrected && <span className="sub"> ({t("changedFromAiLabel", lang)})</span>}</div>
 
               <div className="form-grid">
                 <div className="field full"><label>{t("itemNameLabel", lang)}</label>
@@ -212,16 +223,16 @@ export default function GodownStockIntake({ lang }) {
         </div>
       )}
 
-      {confirmedBatch && confirmedBatch.length > 0 && (
+      {confirmedProduct && (
         <div className="card" style={{ textAlign: "center", display: "grid", gap: 12 }}>
-          <div className="msg success">✅ {t("itemAddedLabel", lang)} — {confirmedBatch.length > 1 ? `${confirmedBatch.length} ${t("itemsLabel", lang)}` : "1"}</div>
-          <div className="sub">{t("batchNumberLabel", lang)}: {confirmedBatch[0].batch_number}</div>
-          <div id="godown-print-labels" style={{ display: "grid", gridTemplateColumns: confirmedBatch.length > 1 ? "1fr 1fr" : "1fr", gap: 14 }}>
-            {confirmedBatch.map((row) => (
-              <div key={row.id} style={{ border: "1px solid var(--border, #ddd)", borderRadius: 8, padding: 10 }}>
-                <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1 }}>{row.sku}</div>
-                <div className="sub">{row.name}</div>
-                {qrUrls[row.sku] && <img src={qrUrls[row.sku]} alt={row.sku} style={{ width: 160, height: 160, margin: "8px auto" }} />}
+          <div className="msg success">✅ {t("itemAddedLabel", lang)} — {labels.length > 1 ? `${labels.length} ${t("itemsLabel", lang)}` : "1"}</div>
+          <div className="sub">{t("modelCodeLabel", lang)}: {confirmedProduct.sku}{confirmedProduct.batch_number ? ` · ${t("batchNumberLabel", lang)}: ${confirmedProduct.batch_number}` : ""}</div>
+          <div id="godown-print-labels" style={{ display: "grid", gridTemplateColumns: labels.length > 1 ? "1fr 1fr" : "1fr", gap: 14 }}>
+            {labels.map((l) => (
+              <div key={l.code} style={{ border: "1px solid var(--border, #ddd)", borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1 }}>{l.code}</div>
+                <div className="sub">{l.name}</div>
+                {qrUrls[l.code] && <img src={qrUrls[l.code]} alt={l.code} style={{ width: 160, height: 160, margin: "8px auto" }} />}
               </div>
             ))}
           </div>

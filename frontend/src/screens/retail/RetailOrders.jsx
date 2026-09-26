@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
-import { confirmOrder, listFulfilmentItems, recordSalesPhotoMeta, getDelivery, getPackingForOrder, getDispatchForOrder, listDeliveryItems, listDeliveryProofs, getInstallationForOrder } from "../../lib/retailApi";
+import { confirmOrder, listFulfilmentItems, recordSalesPhotoMeta, getDelivery, getPackingForOrder, getDispatchForOrder, listDeliveryItems, listDeliveryProofs, getInstallationForOrder, getDeliveryChallanForOrder, createDeliveryChallan } from "../../lib/retailApi";
 import { subscribeTable } from "../../lib/realtime";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
 import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
@@ -35,6 +35,9 @@ export default function RetailOrders({ lang }) {
   const [photoForm, setPhotoForm] = useState({});
   const [savingPhotoMeta, setSavingPhotoMeta] = useState(null);
   const [trackerDetail, setTrackerDetail] = useState({}); // order_id -> { delivery, packing, dispatch, items, proofs, installation }
+  const [dcByOrder, setDcByOrder] = useState({}); // order_id -> retail_delivery_challans row | null (checked)
+  const [dcBusy, setDcBusy] = useState(null);
+  const [dcMsg, setDcMsg] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +83,20 @@ export default function RetailOrders({ lang }) {
       ]);
       setTrackerDetail((m) => ({ ...m, [order.id]: { delivery, packing, dispatch, items: dItems || [], proofs: proofs || [], installation } }));
     }
+    if (order.fulfilment_locked && dcByOrder[order.id] === undefined) {
+      const { data: dc } = await getDeliveryChallanForOrder(order.id);
+      setDcByOrder((m) => ({ ...m, [order.id]: dc || null }));
+    }
+  }
+
+  async function createDC(order) {
+    setDcBusy(order.id);
+    setDcMsg(null);
+    const { data, error: err } = await createDeliveryChallan(order.id, null, order.required_delivery_date || null, null, null);
+    setDcBusy(null);
+    if (err) { setDcMsg({ type: "error", text: err.message }); return; }
+    setDcByOrder((m) => ({ ...m, [order.id]: data }));
+    setDcMsg({ type: "success", text: t("dcNumberLabel", lang) + ": " + data.dc_number });
   }
 
   async function refreshExpanded(orderId) {
@@ -249,6 +266,22 @@ export default function RetailOrders({ lang }) {
                           deliveryId={trackerDetail[r.id].delivery?.id}
                           detail={trackerDetail[r.id]}
                         />
+                      )}
+                    </div>
+                  )}
+
+                  {r.fulfilment_locked && (
+                    <div style={{ marginTop: 10 }}>
+                      {dcMsg && <div className={`msg ${dcMsg.type}`} style={{ marginBottom: 6 }}>{dcMsg.text}</div>}
+                      {dcByOrder[r.id] === null && (
+                        <button type="button" className="btn btn-outline" disabled={dcBusy === r.id} onClick={() => createDC(r)}>
+                          🧾 {t("createDeliveryChallanAction", lang)}
+                        </button>
+                      )}
+                      {dcByOrder[r.id] && (
+                        <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
+                          <span className="fx-tag gold">{t("dcNumberLabel", lang)}: {dcByOrder[r.id].dc_number}</span>
+                        </div>
                       )}
                     </div>
                   )}

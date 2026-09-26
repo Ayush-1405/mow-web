@@ -197,23 +197,23 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', v_godown_head, 'role', 'authenticated')::text, true); set local role authenticated;
   v_dispatch := retail_start_dispatch(v_order.id);
   reset role;
-  insert into storage.objects (bucket_id, name, metadata) values ('staff-attachments', v_sales::text || '/zlc-dispatch.jpg', jsonb_build_object('size', 300, 'mimetype', 'image/jpeg'));
+  insert into storage.objects (bucket_id, name, metadata) values ('staff-attachments', v_godown_head::text || '/zlc-dispatch.jpg', jsonb_build_object('size', 300, 'mimetype', 'image/jpeg'));
   set local role authenticated;
-  perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
-  perform staff_record_attachment('retail_dispatch', v_dispatch.id, 'image', v_sales::text || '/zlc-dispatch.jpg', 'zlc-dispatch.jpg', 'image/jpeg', 300, null, 'proof');
+  perform set_config('request.jwt.claims', json_build_object('sub', v_godown_head, 'role', 'authenticated')::text, true); set local role authenticated;
+  perform staff_record_attachment('retail_dispatch', v_dispatch.id, 'image', v_godown_head::text || '/zlc-dispatch.jpg', 'zlc-dispatch.jpg', 'image/jpeg', 300, null, 'proof');
   perform retail_record_dispatch(v_dispatch.id, 'GJ-01-AB-1234', 'Local Transporter', 2, v_dc.dc_number, null, null);
   reset role;
   select count(*) into n from retail_inventory_items where product_id = v_product.id and status = 'DISPATCHED';
   v_log := public.zz_chk_lc(v_log, 'both serials moved PACKED -> DISPATCHED on dispatch', n = 2);
 
   -- ===== 10. Partial delivery: only the named serial becomes Sold, the other stays Dispatched =====
-  perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_godown_head, 'role', 'authenticated')::text, true); set local role authenticated;
   reset role;
-  insert into storage.objects (bucket_id, name, metadata) values ('staff-attachments', v_sales::text || '/zlc-deliver.jpg', jsonb_build_object('size', 300, 'mimetype', 'image/jpeg'));
+  insert into storage.objects (bucket_id, name, metadata) values ('staff-attachments', v_godown_head::text || '/zlc-deliver.jpg', jsonb_build_object('size', 300, 'mimetype', 'image/jpeg'));
   set local role authenticated;
-  perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_godown_head, 'role', 'authenticated')::text, true); set local role authenticated;
   select id into v_delivery_id from retail_deliveries where order_id = v_order.id;
-  perform staff_record_attachment('retail_delivery', v_delivery_id, 'image', v_sales::text || '/zlc-deliver.jpg', 'zlc-deliver.jpg', 'image/jpeg', 300, null, 'proof');
+  perform staff_record_attachment('retail_delivery', v_delivery_id, 'image', v_godown_head::text || '/zlc-deliver.jpg', 'zlc-deliver.jpg', 'image/jpeg', 300, null, 'proof');
   perform retail_record_delivery_proof(v_order.id, 'Site Rep', 'PHOTO_CONFIRM', null, '[]'::jsonb, null, array[v_serials[1]]);
   reset role;
 
@@ -226,7 +226,7 @@ begin
 
   -- double-sell guard: the same serial cannot be delivered/sold again
   v_errmsg := null;
-  perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_godown_head, 'role', 'authenticated')::text, true); set local role authenticated;
   perform retail_record_delivery_proof(v_order.id, 'Site Rep', 'PHOTO_CONFIRM', null, '[]'::jsonb, null, array[v_serials[1]]);
   reset role;
   select status into v_status from retail_inventory_items where serial_number = v_serials[1];

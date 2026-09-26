@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { t } from "../../lib/i18n";
-import { scanProduct, logLabelReprint } from "../../lib/retailApi";
+import { scanProduct, logLabelReprint, updateProductPricing } from "../../lib/retailApi";
+import { statusBadgeClass } from "../../lib/retailModules.js";
 import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
 
 // The QR/scan target — one page per product code, whether reached by camera scan, manual code entry, or a direct
 // link. Shows exactly what a scan is supposed to show: the real photo, code, category, current quantity/status per
 // location, condition, batch, any linked reserved order, and (for authorized staff) its movement history.
-export default function GodownProductDetail({ lang }) {
+export default function GodownProductDetail({ lang, profile }) {
   const { sku } = useParams();
   const [detail, setDetail] = useState(null); // { product, stock, reserved_for, movements } | null | "error"
   const [qrUrl, setQrUrl] = useState(null);
@@ -16,6 +17,11 @@ export default function GodownProductDetail({ lang }) {
   const [reprintReason, setReprintReason] = useState("");
   const [reprintBusy, setReprintBusy] = useState(false);
   const [reprintMsg, setReprintMsg] = useState(null);
+  const canEditPricing = !!(profile?.permissions?.hasGlobalOversight || profile?.permissions?.isDepartmentHead);
+  const [priceOpen, setPriceOpen] = useState(false);
+  const [priceForm, setPriceForm] = useState({ mrp: "", sellingPrice: "", minApprovedPrice: "", reason: "" });
+  const [priceBusy, setPriceBusy] = useState(false);
+  const [priceMsg, setPriceMsg] = useState(null);
 
   const load = useCallback(async () => {
     const { data, error } = await scanProduct(sku);
@@ -30,10 +36,33 @@ export default function GodownProductDetail({ lang }) {
     QRCode.toDataURL(`${window.location.origin}/godown/product/${detail.product.sku}`, { width: 240, margin: 1 }).then(setQrUrl).catch(() => setQrUrl(null));
   }, [detail]);
 
+  function openPriceEditor() {
+    setPriceOpen((o) => !o);
+    setPriceMsg(null);
+    setPriceForm({
+      mrp: detail?.product?.mrp ?? "", sellingPrice: detail?.product?.selling_price ?? "",
+      minApprovedPrice: detail?.product?.min_approved_price ?? "", reason: "",
+    });
+  }
+
+  async function submitPricing() {
+    if (!priceForm.reason.trim()) return;
+    setPriceBusy(true);
+    setPriceMsg(null);
+    const { error } = await updateProductPricing(detail.product.id,
+      priceForm.mrp === "" ? null : Number(priceForm.mrp), priceForm.sellingPrice === "" ? null : Number(priceForm.sellingPrice),
+      priceForm.minApprovedPrice === "" ? null : Number(priceForm.minApprovedPrice), priceForm.reason.trim());
+    setPriceBusy(false);
+    if (error) { setPriceMsg({ type: "error", text: error.message }); return; }
+    setPriceMsg({ type: "success", text: t("priceUpdatedMsg", lang) });
+    setPriceOpen(false);
+    load();
+  }
+
   async function submitReprint() {
     if (!reprintReason.trim()) return;
     setReprintBusy(true);
-    const { error } = await logLabelReprint(detail.product.id, reprintReason.trim());
+    const { error } = await logLabelReprint(detail.product.id, reprintReason.trim(), detail.serial?.id || null);
     setReprintBusy(false);
     if (error) { setReprintMsg({ type: "error", text: error.message }); return; }
     setReprintMsg({ type: "success", text: t("reprintLoggedMsg", lang) });
@@ -52,7 +81,7 @@ export default function GodownProductDetail({ lang }) {
     );
   }
 
-  const { product, stock, reserved_for: reservedFor, movements } = detail;
+  const { product, serial, stock, reserved_for: reservedFor, movements } = detail;
   const totalOnHand = (stock || []).reduce((s, r) => s + Number(r.on_hand_qty || 0), 0);
 
   return (
@@ -71,11 +100,45 @@ export default function GodownProductDetail({ lang }) {
 
       <div className="card">
         <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
-          <span className={`badge ${product.condition === "DAMAGED" ? "RETURNED" : "VERIFIED"}`}>{product.condition === "DAMAGED" ? t("conditionDamagedLabel", lang) : t("conditionGoodLabel", lang)}</span>
+          {serial ? (
+            <span className={`badge ${statusBadgeClass(serial.status)}`}>{serial.status}</span>
+          ) : (
+            <span className={`badge ${product.condition === "DAMAGED" ? "RETURNED" : "VERIFIED"}`}>{product.condition === "DAMAGED" ? t("conditionDamagedLabel", lang) : t("conditionGoodLabel", lang)}</span>
+          )}
           <span className="badge">{t("onHandLabel", lang)}: {totalOnHand}</span>
           {product.confirmed_at && <span className="fx-tag">{t("receivedDateLabel", lang)}: {new Date(product.confirmed_at).toLocaleDateString()}</span>}
+          {product.selling_price != null && <span className="fx-tag gold">{t("sellingPriceLabel", lang)}: ₹{product.selling_price}</span>}
         </div>
+        {serial && <div className="sub" style={{ marginTop: 6 }}>{t("serialNumberLabel", lang)}: <b>{serial.serial_number}</b>{serial.rack_location ? ` · ${serial.rack_location}` : ""}</div>}
         {product.intake_note && <div className="sub" style={{ marginTop: 6 }}>{t("optionalNoteLabel", lang)}: {product.intake_note}</div>}
+        {(product.material || product.color_finish || product.dimensions) && (
+          <div className="sub" style={{ marginTop: 6 }}>
+            {[product.material, product.color_finish, product.dimensions].filter(Boolean).join(" · ")}
+          </div>
+        )}
+        {canEditPricing && (
+          <div style={{ marginTop: 8 }}>
+            <button type="button" className="btn btn-outline" onClick={openPriceEditor}>✏️ {t("editPricingAction", lang)}</button>
+          </div>
+        )}
+        {priceOpen && (
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            {priceMsg && <div className={`msg ${priceMsg.type}`} style={{ gridColumn: "1 / -1" }}>{priceMsg.text}</div>}
+            <div className="field"><label>{t("mrpLabel", lang)}</label>
+              <input type="number" value={priceForm.mrp} onChange={(e) => setPriceForm((f) => ({ ...f, mrp: e.target.value }))} /></div>
+            <div className="field"><label>{t("sellingPriceLabel", lang)}</label>
+              <input type="number" value={priceForm.sellingPrice} onChange={(e) => setPriceForm((f) => ({ ...f, sellingPrice: e.target.value }))} /></div>
+            <div className="field"><label>{t("minApprovedPriceLabel", lang)}</label>
+              <input type="number" value={priceForm.minApprovedPrice} onChange={(e) => setPriceForm((f) => ({ ...f, minApprovedPrice: e.target.value }))} /></div>
+            <div className="field full"><label>{t("reasonForChangeLabel", lang)} *</label>
+              <input value={priceForm.reason} onChange={(e) => setPriceForm((f) => ({ ...f, reason: e.target.value }))} /></div>
+            <div className="field full">
+              <button type="button" className="btn btn-primary" disabled={priceBusy || !priceForm.reason.trim()} onClick={submitPricing}>
+                {t("save", lang)}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -106,8 +169,17 @@ export default function GodownProductDetail({ lang }) {
           <h3>{t("movementHistoryLabel", lang)}</h3>
           {movements.map((m, i) => (
             <div key={i} className="task-meta" style={{ justifyContent: "space-between", padding: "6px 0" }}>
-              <span>{m.from_location || "—"} → {m.to_location}</span>
-              <span className="sub">{t("quantityLabel", lang)}: {m.quantity} · {new Date(m.moved_at).toLocaleString()}</span>
+              {"new_status" in m ? (
+                <>
+                  <span>{m.previous_status || "—"} → {m.new_status}{m.notes ? ` · ${m.notes}` : ""}</span>
+                  <span className="sub">{new Date(m.changed_at).toLocaleString()}</span>
+                </>
+              ) : (
+                <>
+                  <span>{m.from_location || "—"} → {m.to_location}</span>
+                  <span className="sub">{t("quantityLabel", lang)}: {m.quantity} · {new Date(m.moved_at).toLocaleString()}</span>
+                </>
+              )}
             </div>
           ))}
         </div>
