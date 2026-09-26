@@ -23,6 +23,18 @@ const RETAIL_PIPELINE_PARENT_TABLES: Record<string, string> = {
   retail_dispatch: "retail_dispatch_records",
   retail_delivery: "retail_deliveries",
   retail_installation: "retail_installations",
+  // Product lifecycle entity types (v2_93o/93r): staff_attachments' own CHECK constraint and
+  // staff_record_attachment()'s access-check branches were widened for these back when they were added, but this
+  // function's OWN separate whitelist was never updated to match — every upload for a Godown stock-intake photo
+  // (entity_type='retail_product'), a damage-report photo (entity_type='retail_inventory_item'), a manual
+  // quotation attachment, or a Delivery Challan attachment was refused with 400 MSG.missingFields before the
+  // signed-URL was ever created. This is the exact root cause of the reported "Take Photo" failure on
+  // /godown/stock-intake. Fixed by keeping this list in step with the other two.
+  retail_order_item: "retail_order_items",
+  retail_product: "retail_products",
+  retail_inventory_item: "retail_inventory_items",
+  retail_quotation: "retail_quotations",
+  retail_delivery_challan: "retail_delivery_challans",
 };
 const MAX_VOICE_BYTES = 5 * 1024 * 1024; // 60 s of Opus/AAC is well under 1 MB; 5 MB is a generous hard cap
 const STALE_VOICE_MS = 24 * 60 * 60 * 1000;

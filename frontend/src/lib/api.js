@@ -128,7 +128,11 @@ function mapFunctionError(err) {
   if (err?.code === "NETWORK") return new UploadError("NETWORK");
   if (err?.code === "SESSION" || err?.status === 401) return new UploadError("SESSION");
   if (err?.status === 403) return new UploadError("DENIED");
-  if (err?.status === 400) return new UploadError("UNSUPPORTED", err.message);
+  // A 400 from staff-file-url is a structured, already-bilingual validation message (callFunction() builds it as
+  // "<en> / <gu>" from the Edge Function's {error:{en,gu}} body) — shown to the user as-is, instead of forcing it
+  // through the generic "unsupported file type" text (which used to hide the real reason, e.g. a misconfigured
+  // entity_type, behind a misleading message).
+  if (err?.status === 400) return new UploadError("SERVER_MESSAGE", err.message);
   return new UploadError("STORAGE_DOWN");
 }
 
