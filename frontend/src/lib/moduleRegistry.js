@@ -21,6 +21,8 @@ export const MODULE_ROUTES = {
     "Sales Performance": "/retail/performance",
     "Send to Factory": "/factory-request",
     "Scan Product QR": "/retail/scan",
+    "Add New Product": "/retail/add-product",
+    "Product Approvals": "/retail/product-approvals",
   },
   // Merged department (v2_93n): both real screens stay reachable as two cards under the one department.
   GODOWN_INV: {

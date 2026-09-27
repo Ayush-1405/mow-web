@@ -55,6 +55,8 @@ const RetailLeads = lazy(() => import("./screens/retail/RetailLeads.jsx"));
 const RetailQuotations = lazy(() => import("./screens/retail/RetailQuotations.jsx"));
 const RetailOrders = lazy(() => import("./screens/retail/RetailOrders.jsx"));
 const RetailScanQR = lazy(() => import("./screens/retail/RetailScanQR.jsx"));
+const RetailAddProduct = lazy(() => import("./screens/retail/RetailAddProduct.jsx"));
+const RetailProductApprovals = lazy(() => import("./screens/retail/RetailProductApprovals.jsx"));
 const RetailDisplay = lazy(() => import("./screens/retail/RetailDisplay.jsx"));
 const RetailStoreOps = lazy(() => import("./screens/retail/RetailStoreOps.jsx"));
 const RetailStock = lazy(() => import("./screens/retail/RetailStock.jsx"));
@@ -681,6 +683,8 @@ export default function App() {
       <Route path="/retail/quotations" element={deptModulePage("RETAIL", <RetailQuotations lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/orders" element={deptModulePage("RETAIL", <RetailOrders lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/scan" element={deptModulePage("RETAIL", <RetailScanQR lang={lang} />)} />
+      <Route path="/retail/add-product" element={deptModulePage("RETAIL", <RetailAddProduct lang={lang} />)} />
+      <Route path="/retail/product-approvals" element={deptModulePage("RETAIL", <RetailProductApprovals lang={lang} />)} />
       <Route path="/retail/product/:sku" element={deptModulePage("RETAIL", <GodownProductDetail lang={lang} profile={profile} />)} />
       <Route path="/retail/display" element={deptModulePage("RETAIL", <RetailDisplay lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/retail/store-ops" element={deptModulePage("RETAIL", <RetailStoreOps lang={lang} profile={profile} lookups={lookups} />)} />

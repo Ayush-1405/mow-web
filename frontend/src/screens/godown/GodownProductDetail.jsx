@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import { t } from "../../lib/i18n";
 import { scanProduct, logLabelReprint, updateProductPricing } from "../../lib/retailApi";
@@ -11,6 +11,7 @@ import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
 // location, condition, batch, any linked reserved order, and (for authorized staff) its movement history.
 export default function GodownProductDetail({ lang, profile }) {
   const { sku } = useParams();
+  const navigate = useNavigate();
   const [detail, setDetail] = useState(null); // { product, stock, reserved_for, movements } | null | "error"
   const [qrUrl, setQrUrl] = useState(null);
   const [reprintOpen, setReprintOpen] = useState(false);
@@ -33,7 +34,12 @@ export default function GodownProductDetail({ lang, profile }) {
 
   useEffect(() => {
     if (!detail || detail === "error") { setQrUrl(null); return; }
-    QRCode.toDataURL(`${window.location.origin}/godown/product/${detail.product.sku}`, { width: 240, margin: 1 }).then(setQrUrl).catch(() => setQrUrl(null));
+    // A serialized unit's own label must encode ITS serial, not the shared model SKU — retail_godown_scan_pick (and
+    // every other "scan the exact physical unit" action) matches ONLY on serial_number. Printing the bare model SKU
+    // here for a serialized item produced a label that could never be scanned successfully anywhere (confirmed
+    // live: every scan attempt against such a label fails with "Unknown product code").
+    const code = detail.serial?.serial_number || detail.product.sku;
+    QRCode.toDataURL(`${window.location.origin}/godown/product/${code}`, { width: 240, margin: 1 }).then(setQrUrl).catch(() => setQrUrl(null));
   }, [detail]);
 
   function openPriceEditor() {
@@ -91,11 +97,15 @@ export default function GodownProductDetail({ lang, profile }) {
         <div className="dept-header-text"><h1>{product.name}</h1></div>
       </div>
 
+      {product.approval_status === "PENDING_APPROVAL" && (
+        <div className="card"><div className="msg info">⏳ {t("pendingApprovalBannerMsg", lang)}</div></div>
+      )}
+
       <div className="card" style={{ textAlign: "center" }} id="godown-print-labels">
         <ProofPhotoViewer lang={lang} entityType="retail_product" entityId={product.id} />
-        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 1, marginTop: 8 }}>{product.sku}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 1, marginTop: 8 }}>{serial?.serial_number || product.sku}</div>
         <div className="sub">{product.category}{product.batch_number ? ` · ${product.batch_number}` : ""}</div>
-        {qrUrl && <img src={qrUrl} alt={product.sku} style={{ width: 200, height: 200, margin: "10px auto" }} />}
+        {qrUrl && <img src={qrUrl} alt={serial?.serial_number || product.sku} style={{ width: 200, height: 200, margin: "10px auto" }} />}
       </div>
 
       <div className="card">
@@ -108,9 +118,16 @@ export default function GodownProductDetail({ lang, profile }) {
           <span className="badge">{t("onHandLabel", lang)}: {totalOnHand}</span>
           {product.confirmed_at && <span className="fx-tag">{t("receivedDateLabel", lang)}: {new Date(product.confirmed_at).toLocaleDateString()}</span>}
           {product.selling_price != null && <span className="fx-tag gold">{t("sellingPriceLabel", lang)}: ₹{product.selling_price}</span>}
+          {product.origin_department && <span className="fx-tag">{t("originDepartmentLabel", lang)}: {product.origin_department}</span>}
+          {serial?.area && <span className="fx-tag">{t("areaLabel", lang)}: {t(serial.area === "DISPLAY" ? "areaDisplayLabel" : serial.area === "SALE_FLOOR" ? "areaSaleFloorLabel" : "areaBackStoreLabel", lang)}</span>}
         </div>
         {serial && <div className="sub" style={{ marginTop: 6 }}>{t("serialNumberLabel", lang)}: <b>{serial.serial_number}</b>{serial.rack_location ? ` · ${serial.rack_location}` : ""}</div>}
         {product.intake_note && <div className="sub" style={{ marginTop: 6 }}>{t("optionalNoteLabel", lang)}: {product.intake_note}</div>}
+        {product.approval_status === "ACTIVE" && (!serial || serial.status === "AVAILABLE") && (
+          <div style={{ marginTop: 8 }}>
+            <button type="button" className="btn btn-primary" onClick={() => navigate("/retail/quotations")}>📋 {t("addToQuotationAction", lang)}</button>
+          </div>
+        )}
         {(product.material || product.color_finish || product.dimensions) && (
           <div className="sub" style={{ marginTop: 6 }}>
             {[product.material, product.color_finish, product.dimensions].filter(Boolean).join(" · ")}
@@ -189,7 +206,7 @@ export default function GodownProductDetail({ lang, profile }) {
         {reprintMsg && <div className={`msg ${reprintMsg.type}`}>{reprintMsg.text}</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button type="button" className="btn btn-outline" onClick={() => window.print()}>🖨️ {t("printLabelsAction", lang)}</button>
-          <a className="btn btn-outline" href={qrUrl || "#"} download={`${product.sku}.png`}>⬇️ {t("downloadLabelAction", lang)}</a>
+          <a className="btn btn-outline" href={qrUrl || "#"} download={`${serial?.serial_number || product.sku}.png`}>⬇️ {t("downloadLabelAction", lang)}</a>
           <button type="button" className="btn btn-outline" onClick={() => setReprintOpen((o) => !o)}>🔁 {t("reprintAction", lang)}</button>
         </div>
         {reprintOpen && (

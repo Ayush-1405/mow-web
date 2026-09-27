@@ -14,7 +14,7 @@ declare
   v_lead record; v_quote public.retail_quotations; v_order public.retail_orders; v_qi public.retail_quotation_items;
   v_dc public.retail_delivery_challans; v_handover public.retail_godown_handovers; v_packing public.retail_packing_records;
   v_dispatch record; v_item record; v_scan jsonb; v_old_price numeric; v_new_price numeric; v_delivery_id uuid;
-  v_status text; v_on_hold boolean; v_item_id uuid;
+  v_status text; v_on_hold boolean; v_item_id uuid; v_approval_status text;
 begin
   create function public.zz_chk_lc(p_log text, p_name text, p_ok boolean) returns text language sql immutable as $f$
     select p_log || case when coalesce(p_ok, false) then 'PASS  ' else 'FAIL  ' end || p_name || E'\n' $f$;
@@ -76,12 +76,25 @@ begin
   begin perform retail_add_quotation_item_from_scan(v_quote.id, v_serials[1], 1, 0); exception when others then v_errmsg := sqlerrm; end;
   v_log := public.zz_chk_lc(v_log, 'scanning the SAME serial twice into one quotation is refused', v_errmsg is not null);
 
-  v_errmsg := null;
-  begin perform retail_add_quotation_item_from_scan(v_quote.id, v_serials[2], 1, 8000); exception when others then v_errmsg := sqlerrm; end;
-  v_log := public.zz_chk_lc(v_log, 'a discount below the approved minimum price is refused', v_errmsg is not null);
+  -- v2_93t: a discount below the approved minimum price is no longer a hard exception -- the item is added (Draft)
+  -- and the WHOLE quotation flips to a discount-approval-pending state that blocks it from being sent until a
+  -- Head/oversight decides it (deliberate behavior change from the old hard floor-exception, disclosed in 93t).
+  perform retail_add_quotation_item_from_scan(v_quote.id, v_serials[2], 1, 8000);
+  select discount_approval_status into v_approval_status from retail_quotations where id = v_quote.id;
+  v_log := public.zz_chk_lc(v_log, 'a discount below the approved minimum price still adds the item but flips the quotation to discount-approval-pending', v_approval_status = 'PENDING');
 
-  perform retail_add_quotation_item_from_scan(v_quote.id, v_serials[2], 1, 0);
+  v_errmsg := null;
+  begin perform retail_record_quotation_sent(v_quote.id, 'WHATSAPP_MANUAL', '+919887766551'); exception when others then v_errmsg := sqlerrm; end;
+  v_log := public.zz_chk_lc(v_log, 'a quotation with a pending discount approval cannot be sent', v_errmsg is not null);
   reset role;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_head, 'role', 'authenticated')::text, true); set local role authenticated;
+  perform retail_decide_quotation_discount_approval(v_quote.id, true, 'approved as a one-off exception');
+  reset role;
+  select discount_approval_status into v_approval_status from retail_quotations where id = v_quote.id;
+  v_log := public.zz_chk_lc(v_log, 'Retail Head approves the pending discount', v_approval_status = 'APPROVED');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
 
   -- Retail Head now changes the price -- the ALREADY-ADDED quotation item must keep its own snapshot unchanged.
   select unit_price into v_old_price from retail_quotation_items where id = v_qi.id;

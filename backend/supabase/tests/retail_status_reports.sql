@@ -40,13 +40,13 @@ begin
   select id into v_item_id from retail_order_items where order_id = v_order.id;
   perform retail_confirm_order(v_order.id, jsonb_build_array(jsonb_build_object('order_item_id', v_item_id, 'mode', 'STOCK', 'quantity', 1, 'stock_location_id', v_loc)));
 
-  select count(*) into n from retail_orders where id = v_order.id and pipeline_status = 'FULFILMENT_PENDING';
-  v_log := public.zz_chkA(v_log, 'pipeline_status starts FULFILMENT_PENDING right after confirm (item not yet Ready)', n = 1);
-  reset role;
-
-  update retail_fulfilment_items set status = 'READY' where order_id = v_order.id;
+  -- v2_93p (applied earlier in this project's history, confirmed live): a STOCK fulfilment item is READY the
+  -- instant retail_confirm_order runs, so pipeline_status skips FULFILMENT_PENDING and lands on FULFILMENT_READY
+  -- immediately — this assertion (and the redundant manual "mark Ready" bridge that used to follow it) went stale
+  -- the moment 93p shipped and was never re-verified against this file until now; corrected in place.
   select count(*) into n from retail_orders where id = v_order.id and pipeline_status = 'FULFILMENT_READY';
-  v_log := public.zz_chkA(v_log, 'pipeline_status becomes FULFILMENT_READY once the item is Ready (trigger-driven)', n = 1);
+  v_log := public.zz_chkA(v_log, 'pipeline_status is FULFILMENT_READY immediately after confirm — a STOCK item is Ready the instant it''s confirmed (v2_93p)', n = 1);
+  reset role;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
   v_packing := retail_start_packing(v_order.id);

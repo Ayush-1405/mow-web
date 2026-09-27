@@ -1800,6 +1800,16 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .retail-quick-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .retail-quick-action { width: auto; margin: 0; min-height: 44px; justify-content: flex-start; }
 
+/* Prominent Retail dashboard actions (Add New Product / Scan QR / Create Quotation / Delivery Status) — always
+   exactly 2 columns so they never overflow horizontally on a phone, each a real >=56px touch target. */
+.retail-prominent-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.retail-prominent-action {
+  width: auto; margin: 0; min-height: 56px; font-size: 15px; font-weight: 700; gap: 6px;
+  flex-direction: column; justify-content: center; text-align: center;
+}
+.retail-prominent-action .retail-prominent-icon { font-size: 22px; }
+@media (min-width: 640px) { .retail-prominent-actions { grid-template-columns: repeat(4, 1fr); } }
+
 .retail-work-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
   min-height: 44px; padding: 8px 4px; border: none; border-bottom: 1px solid var(--border); background: none; text-align: left; cursor: pointer;

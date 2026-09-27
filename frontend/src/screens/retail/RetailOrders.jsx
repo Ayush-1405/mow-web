@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
-import { confirmOrder, listFulfilmentItems, recordSalesPhotoMeta, getDelivery, getPackingForOrder, getDispatchForOrder, listDeliveryItems, listDeliveryProofs, getInstallationForOrder, getDeliveryChallanForOrder, createDeliveryChallan } from "../../lib/retailApi";
+import { confirmOrder, listFulfilmentItems, recordSalesPhotoMeta, getDelivery, getPackingForOrder, getDispatchForOrder, listDeliveryItems, listDeliveryProofs, getInstallationForOrder, getDeliveryChallanForOrder, confirmOrderForDelivery } from "../../lib/retailApi";
 import { subscribeTable } from "../../lib/realtime";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
 import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
@@ -38,6 +38,8 @@ export default function RetailOrders({ lang }) {
   const [dcByOrder, setDcByOrder] = useState({}); // order_id -> retail_delivery_challans row | null (checked)
   const [dcBusy, setDcBusy] = useState(null);
   const [dcMsg, setDcMsg] = useState(null);
+  const [confirmForm, setConfirmForm] = useState({}); // order_id -> { contact_name, contact_mobile, installation_required, special_instructions, required_delivery_date, payment_clearance_confirmed }
+  const [confirmOpenFor, setConfirmOpenFor] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,14 +91,35 @@ export default function RetailOrders({ lang }) {
     }
   }
 
-  async function createDC(order) {
+  function openConfirmForDelivery(order) {
+    setConfirmOpenFor((cur) => (cur === order.id ? null : order.id));
+    setConfirmForm((m) => ({
+      ...m,
+      [order.id]: m[order.id] || {
+        contact_name: order.customer_name || "", contact_mobile: order.phone || "",
+        installation_required: !!order.installation_required, special_instructions: order.special_instructions || "",
+        required_delivery_date: order.required_delivery_date || "", payment_clearance_confirmed: false,
+      },
+    }));
+    setDcMsg(null);
+  }
+
+  // THE single guarded "Confirm Order & Send for Delivery" action — collects exactly the fields the order/delivery
+  // don't already have (delivery contact + mobile, installation Yes/No, special instructions) and delegates the
+  // actual Delivery Challan / Godown-request creation to the server, which is idempotent (safe to click again).
+  async function confirmForDelivery(order) {
+    const f = confirmForm[order.id] || {};
     setDcBusy(order.id);
     setDcMsg(null);
-    const { data, error: err } = await createDeliveryChallan(order.id, null, order.required_delivery_date || null, null, null);
+    const { data, error: err } = await confirmOrderForDelivery(
+      order.id, f.contact_name, f.contact_mobile, f.installation_required, f.special_instructions || null,
+      f.required_delivery_date || null, f.payment_clearance_confirmed, null, null);
     setDcBusy(null);
     if (err) { setDcMsg({ type: "error", text: err.message }); return; }
     setDcByOrder((m) => ({ ...m, [order.id]: data }));
+    setConfirmOpenFor(null);
     setDcMsg({ type: "success", text: t("dcNumberLabel", lang) + ": " + data.dc_number });
+    load();
   }
 
   async function refreshExpanded(orderId) {
@@ -273,10 +296,43 @@ export default function RetailOrders({ lang }) {
                   {r.fulfilment_locked && (
                     <div style={{ marginTop: 10 }}>
                       {dcMsg && <div className={`msg ${dcMsg.type}`} style={{ marginBottom: 6 }}>{dcMsg.text}</div>}
-                      {dcByOrder[r.id] === null && (
-                        <button type="button" className="btn btn-outline" disabled={dcBusy === r.id} onClick={() => createDC(r)}>
-                          🧾 {t("createDeliveryChallanAction", lang)}
+                      {dcByOrder[r.id] === null && confirmOpenFor !== r.id && (
+                        <button type="button" className="btn btn-primary" disabled={dcBusy === r.id} onClick={() => openConfirmForDelivery(r)}>
+                          ✅ {t("confirmForDeliveryAction", lang)}
                         </button>
+                      )}
+                      {dcByOrder[r.id] === null && confirmOpenFor === r.id && (
+                        <div className="form-grid" style={{ marginTop: 8 }}>
+                          <div className="field"><label>{t("deliveryContactNameLabel", lang)} *</label>
+                            <input value={confirmForm[r.id]?.contact_name || ""}
+                              onChange={(e) => setConfirmForm((m) => ({ ...m, [r.id]: { ...m[r.id], contact_name: e.target.value } }))} /></div>
+                          <div className="field"><label>{t("deliveryContactMobileLabel", lang)} *</label>
+                            <input value={confirmForm[r.id]?.contact_mobile || ""}
+                              onChange={(e) => setConfirmForm((m) => ({ ...m, [r.id]: { ...m[r.id], contact_mobile: e.target.value } }))} /></div>
+                          <div className="field"><label>{t("requiredDeliveryDateLabel", lang)} *</label>
+                            <input type="date" value={confirmForm[r.id]?.required_delivery_date || ""}
+                              onChange={(e) => setConfirmForm((m) => ({ ...m, [r.id]: { ...m[r.id], required_delivery_date: e.target.value } }))} /></div>
+                          <div className="field full"><label className="task-meta" style={{ gap: 6 }}>
+                            <input type="checkbox" checked={!!confirmForm[r.id]?.installation_required}
+                              onChange={(e) => setConfirmForm((m) => ({ ...m, [r.id]: { ...m[r.id], installation_required: e.target.checked } }))} />
+                            {t("requiresInstallationLabel", lang)}</label></div>
+                          <div className="field full"><label>{t("specialInstructionsLabel", lang)}</label>
+                            <textarea rows={2} value={confirmForm[r.id]?.special_instructions || ""}
+                              onChange={(e) => setConfirmForm((m) => ({ ...m, [r.id]: { ...m[r.id], special_instructions: e.target.value } }))} /></div>
+                          {r.payment_status === "PENDING" && r.total_amount > 0 && (
+                            <div className="field full"><label className="task-meta" style={{ gap: 6 }}>
+                              <input type="checkbox" checked={!!confirmForm[r.id]?.payment_clearance_confirmed}
+                                onChange={(e) => setConfirmForm((m) => ({ ...m, [r.id]: { ...m[r.id], payment_clearance_confirmed: e.target.checked } }))} />
+                              {t("paymentClearanceConfirmLabel", lang)}</label></div>
+                          )}
+                          <div className="field full" style={{ display: "flex", gap: 8 }}>
+                            <button type="button" className="btn btn-primary" disabled={dcBusy === r.id || !confirmForm[r.id]?.contact_name || !confirmForm[r.id]?.contact_mobile}
+                              onClick={() => confirmForDelivery(r)}>
+                              📦 {t("confirmForDeliveryAction", lang)}
+                            </button>
+                            <button type="button" className="btn btn-outline" onClick={() => setConfirmOpenFor(null)}>{t("cancel", lang)}</button>
+                          </div>
+                        </div>
                       )}
                       {dcByOrder[r.id] && (
                         <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>

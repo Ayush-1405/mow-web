@@ -5,6 +5,15 @@ import { loadDashboardCounts, loadImportantWork } from "../../lib/retailApi";
 import { subscribeTable } from "../../lib/realtime";
 import WalkinModal from "./WalkinModal.jsx";
 
+// The four prominent, always-visible actions (Part 1 of the product-registration/QR spec): large touch-friendly
+// buttons near the top of the dashboard, never buried behind a menu — a plain salesperson's most common actions.
+const PROMINENT_ACTIONS = [
+  ["📷", "addNewProductTileLabel", "/retail/add-product"],
+  ["🔳", "scanQrTileLabel", "/retail/scan"],
+  ["📋", "createQuotationAction", "/retail/quotations"],
+  ["🚚", "deliveryStatusAction", "/retail/delivery"],
+];
+
 // KPI id -> where it opens when tapped, and which real table/query backs the count (see lib/retailApi.loadDashboardCounts). Every card is
 // a live number and a click-through, never a static demo figure.
 const KPI_DEFS = [
@@ -20,6 +29,7 @@ const KPI_DEFS = [
   ["deliveriesDueToday", "🚚", "kpiDeliveriesToday", "/retail/delivery"],
   ["delayedDeliveries", "⚠️", "kpiDelayedDeliveries", "/retail/delivery", "critical"],
   ["complaintsOpen", "☎️", "kpiOpenComplaints", "/retail/complaints"],
+  ["pendingProductApprovals", "🧾", "productApprovalsTileLabel", "/retail/product-approvals", "critical"],
 ];
 
 const QUICK_ACTIONS = [
@@ -80,6 +90,19 @@ export default function RetailDashboard({ lang, profile, lookups, department }) 
           <div className="sub">{teamCountLabel}</div>
         </div>
         <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 0 }} onClick={load}>{t("refresh", lang)}</button>
+      </div>
+
+      {/* Prominent, always-visible actions — never buried behind a menu. Large touch targets (56px), a fixed
+          2-column grid on a phone (never a horizontal scroll), English + Gujarati labels. */}
+      <div className="card">
+        <div className="retail-prominent-actions">
+          {PROMINENT_ACTIONS.map(([icon, labelKey, route]) => (
+            <button key={labelKey} type="button" className="btn btn-primary retail-prominent-action" onClick={() => navigate(route)}>
+              <span className="retail-prominent-icon" aria-hidden="true">{icon}</span>
+              <span>{t(labelKey, lang)}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="card">

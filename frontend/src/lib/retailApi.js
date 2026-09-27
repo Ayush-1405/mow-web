@@ -11,10 +11,29 @@ export async function retailDeptId() {
 }
 
 // ---- customers -----------------------------------------------------------------------------------------------------------------------
-export function searchCustomers(q, limit = 10) {
-  let query = supabase.from("retail_customers").select("id, full_name, phone, whatsapp, email, city, area, customer_type").eq("is_active", true).order("full_name").limit(limit);
-  if (q && q.trim()) query = query.or(`full_name.ilike.%${q.trim()}%,phone.ilike.%${q.trim()}%`);
-  return query;
+// v2_93v — widened for the quotation form's mandatory customer-select (spec section 1): now also searches
+// whatsapp/email, returns full contact/address fields (so a pick can prefill everything with no re-typing), and
+// additionally resolves a match by a lead's own walkin number. RLS on retail_customers is already per-row
+// (retail_can_access_customer) — a plain salesperson only ever gets their own customers back, Head/Management get
+// every permitted one — so this stays a safe, RLS-scoped client read, no new RPC needed.
+export async function searchCustomers(q, limit = 20) {
+  const query = (q || "").trim();
+  if (query.length < 2) return { data: [], error: null };
+  const digits = query.replace(/[^0-9]/g, "");
+  const orParts = [`full_name.ilike.%${query}%`, `phone.ilike.%${query}%`, `whatsapp.ilike.%${query}%`, `email.ilike.%${query}%`];
+  if (digits.length >= 4) orParts.push(`normalized_phone.ilike.%${digits}%`);
+  const byField = await supabase.from("retail_customers").select("*").eq("is_active", true).or(orParts.join(",")).order("full_name").limit(limit);
+  if (byField.error) return byField;
+  const byId = new Map((byField.data || []).map((c) => [c.id, c]));
+  if (digits.length >= 4 || /^[a-z]+-?\d+$/i.test(query)) {
+    const { data: leadMatch } = await supabase.from("retail_leads").select("customer_id").eq("walkin_number", query).not("customer_id", "is", null).limit(5);
+    const missingIds = (leadMatch || []).map((l) => l.customer_id).filter((id) => id && !byId.has(id));
+    if (missingIds.length > 0) {
+      const { data: extra } = await supabase.from("retail_customers").select("*").eq("is_active", true).in("id", missingIds);
+      (extra || []).forEach((c) => byId.set(c.id, c));
+    }
+  }
+  return { data: Array.from(byId.values()), error: null };
 }
 
 // ---- walk-in / leads -----------------------------------------------------------------------------------------------------------------
@@ -50,17 +69,50 @@ export function listFollowUps(leadId) {
 }
 
 // ---- quotations -----------------------------------------------------------------------------------------------------------------------
+// v2_93t: +email/billingAddress/deliveryAddress/storeLocationId — snapshotted once from the lead/customer at
+// creation, never re-typed by the salesperson and never live-joined (so a later customer-record edit can't change
+// an already-created quotation).
+// v2_93v: +customerId — when the salesperson picked an existing customer from search, this is passed directly and
+// the backend snapshots every detail from that customer's OWN record; nothing here re-types or re-guesses it.
 export function createQuotation(payload) {
   return supabase.rpc("retail_create_quotation", {
     p_lead_id: payload.leadId || null, p_customer_name: payload.customerName, p_phone: payload.phone || null, p_location_id: payload.locationId || null,
     p_valid_until: payload.validUntil || null, p_expected_delivery: payload.expectedDelivery || null, p_delivery_charge: payload.deliveryCharge || 0,
     p_installation_charge: payload.installationCharge || 0, p_terms: payload.terms || null, p_internal_approval_required: !!payload.internalApprovalRequired,
-    p_items: payload.items || [], p_supersedes_id: payload.supersedesId || null,
+    p_items: payload.items || [], p_supersedes_id: payload.supersedesId || null, p_email: payload.email || null,
+    p_billing_address: payload.billingAddress || null, p_delivery_address: payload.deliveryAddress || null, p_store_location_id: payload.storeLocationId || null,
+    p_customer_id: payload.customerId || null,
   });
 }
 
+
 export function convertQuotationToOrder(quotationId) {
   return supabase.rpc("retail_convert_quotation_to_order", { p_quotation_id: quotationId });
+}
+
+// v2_93t: "Create Revision" — copies the quotation's own current snapshot into a brand-new QT-.../Revision N+1 row
+// and marks the old one non-current. The old (possibly already-sent/approved) revision is never touched/overwritten.
+export function createQuotationRevision(quotationId, reason) {
+  return supabase.rpc("retail_create_quotation_revision", { p_quotation_id: quotationId, p_reason: reason });
+}
+// The ONLY path that may mark a quotation Sent — never merely because a WhatsApp share button was clicked.
+export function recordQuotationSent(quotationId, method, phone, providerMessageId, providerStatus, failureReason) {
+  return supabase.rpc("retail_record_quotation_sent", {
+    p_quotation_id: quotationId, p_method: method, p_phone: phone, p_provider_message_id: providerMessageId || null,
+    p_provider_status: providerStatus || null, p_failure_reason: failureReason || null,
+  });
+}
+// The ONLY path that may mark a quotation customer-Accepted — requires real evidence and that it was actually Sent.
+export function recordQuotationCustomerApproval(quotationId, method, notes, approvedAmount, attachmentId) {
+  return supabase.rpc("retail_record_quotation_customer_approval", {
+    p_quotation_id: quotationId, p_method: method, p_notes: notes || null, p_approved_amount: approvedAmount ?? null, p_attachment_id: attachmentId || null,
+  });
+}
+export function rejectQuotation(quotationId, reason) {
+  return supabase.rpc("retail_reject_quotation", { p_quotation_id: quotationId, p_reason: reason });
+}
+export function decideQuotationDiscountApproval(quotationId, approve, reason) {
+  return supabase.rpc("retail_decide_quotation_discount_approval", { p_quotation_id: quotationId, p_approve: approve, p_reason: reason || null });
 }
 
 // Internal approval — restricted to Retail dept-head/management/global-oversight at the DB layer (retail_approve_quotation, see
@@ -134,6 +186,7 @@ export async function loadDashboardCounts() {
   const [
     walkinsToday, followupsDueToday, followupsOverdue, openQuotations, pendingApproval, confirmedOrders,
     pendingStockChecks, activeJobCards, pendingProcurement, deliveriesDueToday, delayedDeliveries, complaintsOpen,
+    pendingProductApprovals,
   ] = await Promise.all([
     countOf(supabase.from("retail_leads").select("id", { count: "exact", head: true }).match(active).gte("created_at", today)),
     countOf(supabase.from("retail_leads").select("id", { count: "exact", head: true }).match(active).eq("next_follow_up_date", today).not("status", "in", "(CONVERTED,LOST)")),
@@ -147,10 +200,14 @@ export async function loadDashboardCounts() {
     countOf(supabase.from("retail_deliveries").select("id", { count: "exact", head: true }).match(active).gte("scheduled_at", today).lt("scheduled_at", today + "T23:59:59")),
     countOf(supabase.from("retail_deliveries").select("id", { count: "exact", head: true }).match(active).not("delay_reason", "is", null).not("stage", "in", "(DELIVERED,COMPLETED)")),
     countOf(supabase.from("retail_complaints").select("id", { count: "exact", head: true }).match(active).neq("status", "RESOLVED")),
+    // v2_93s: a real RPC (not a plain table count) — it silently scopes itself to 0 for anyone who isn't Retail
+    // Head/oversight, same as the approval RPCs themselves, so it's safe to always fetch.
+    countPendingProductApprovals().then(({ data }) => data || 0).catch(() => 0),
   ]);
   return {
     walkinsToday, followupsDueToday, followupsOverdue, openQuotations, pendingApproval, confirmedOrders,
     pendingStockChecks, activeJobCards, pendingProcurement, deliveriesDueToday, delayedDeliveries, complaintsOpen,
+    pendingProductApprovals,
   };
 }
 
@@ -278,10 +335,11 @@ export function startDispatch(orderId) {
 export function preDispatchChecklist(orderId, checklist, exceptionReason) {
   return supabase.rpc("retail_pre_dispatch_checklist", { p_order_id: orderId, p_checklist: checklist || {}, p_exception_reason: exceptionReason || null });
 }
-export function recordDispatch(dispatchId, vehicleNumber, vehicleTransporter, packageCount, challanRef, gpsLocation, notes) {
+export function recordDispatch(dispatchId, vehicleNumber, vehicleTransporter, packageCount, challanRef, gpsLocation, notes, driverName, driverPhone) {
   return supabase.rpc("retail_record_dispatch", {
     p_dispatch_id: dispatchId, p_vehicle_number: vehicleNumber, p_vehicle_transporter: vehicleTransporter || null,
     p_package_count: packageCount ?? null, p_delivery_challan_ref: challanRef || null, p_gps_location: gpsLocation || null, p_notes: notes || null,
+    p_driver_name: driverName || null, p_driver_phone: driverPhone || null,
   });
 }
 export function listDispatchQueue() {
@@ -304,10 +362,14 @@ export const PRE_DISPATCH_CHECKLIST_KEYS = [
 ];
 
 // ---- pipeline: Delivery proof / partial / failure / installation (v2_93j) ---------------------------------------------------------
-export function recordDeliveryProof(orderId, siteRepName, podMethod, podReference, items, conditionNotes) {
+// v2_93u: +p_delivered_serials (mark only the named serials Sold — the rest stay open, per the partial-delivery
+// rule) and +optional, non-blocking GPS (p_delivery_latitude/longitude, or p_locationUnverifiableReason when the
+// device could not capture a location — this never blocks a legitimate delivery).
+export function recordDeliveryProof(orderId, siteRepName, podMethod, podReference, items, conditionNotes, deliveredSerials, latitude, longitude, locationUnverifiableReason) {
   return supabase.rpc("retail_record_delivery_proof", {
     p_order_id: orderId, p_site_representative_name: siteRepName, p_pod_method: podMethod, p_pod_reference: podReference || null,
-    p_items: items || [], p_condition_notes: conditionNotes || null,
+    p_items: items || [], p_condition_notes: conditionNotes || null, p_delivered_serials: deliveredSerials || null,
+    p_delivery_latitude: latitude ?? null, p_delivery_longitude: longitude ?? null, p_location_unverifiable_reason: locationUnverifiableReason || null,
   });
 }
 export function recordDeliveryFailure(orderId, reason, nextDeliveryDate) {
@@ -365,12 +427,41 @@ export function startStockIntake(locationId) {
 // product-master row always, regardless of quantity/item-level. When itemLevel is true and quantity > 1, N unique
 // serials are created in retail_inventory_items (fetch them separately with listInventoryItems(productId)) — they
 // are NOT separate product rows (that was v2_93q's now-superseded shortcut).
-export function confirmStockIntake(productId, category, name, unit, quantity, condition, rackLocation, note, itemLevel, categoryCorrected, productTypeCode) {
+// v2_93s: +area (Display/Sale Floor/Back Store) and +existingProductId — passing existingProductId (the duplicate-
+// check dialog's "Use Existing Product" choice) mints no new model at all: it just adds serial(s) under that
+// existing, already-approved product and discards this attempt's placeholder row.
+export function confirmStockIntake(productId, category, name, unit, quantity, condition, rackLocation, note, itemLevel, categoryCorrected, productTypeCode, area, existingProductId) {
   return supabase.rpc("retail_confirm_stock_intake", {
     p_product_id: productId, p_category: category, p_name: name, p_unit: unit || "Nos", p_quantity: quantity ?? 1,
     p_condition: condition || "GOOD", p_rack_location: rackLocation || null, p_note: note || null,
     p_item_level: !!itemLevel, p_category_corrected: !!categoryCorrected, p_product_type_code: productTypeCode || null,
+    p_area: area || null, p_existing_product_id: existingProductId || null,
   });
+}
+// v2_93s: the Retail-facing duplicate-product search — before minting a new Product Master, check whether one
+// already exists for this type+name. Returns up to 5 candidates ordered by fuzzy-name similarity.
+export function findSimilarProducts(productTypeCode, name) {
+  return supabase.rpc("retail_find_similar_products", { p_product_type_code: productTypeCode || null, p_name: name });
+}
+// v2_93s: Retail Head/oversight approves a PENDING_APPROVAL product in one step — corrects category/details and sets
+// pricing/GST/warranty, then flips it to ACTIVE. Only then can it be scanned into a quotation (server-enforced).
+export function approveProduct(productId, productTypeCode, name, material, colorFinish, dimensions, description, warrantyText, gstPercent, mrp, sellingPrice, minApprovedPrice, reason) {
+  return supabase.rpc("retail_approve_product", {
+    p_product_id: productId, p_product_type_code: productTypeCode || null, p_name: name, p_material: material || null,
+    p_color_finish: colorFinish || null, p_dimensions: dimensions || null, p_description: description || null,
+    p_warranty_text: warrantyText || null, p_gst_percent: gstPercent ?? null, p_mrp: mrp ?? null,
+    p_selling_price: sellingPrice ?? null, p_min_approved_price: minApprovedPrice ?? null, p_reason: reason,
+  });
+}
+// v2_93s: Retail Head/oversight cleanup for two Product Masters later discovered to be the same model.
+export function mergeDuplicateProducts(fromProductId, intoProductId, reason) {
+  return supabase.rpc("retail_merge_duplicate_products", { p_from_product_id: fromProductId, p_into_product_id: intoProductId, p_reason: reason });
+}
+export function listPendingProductApprovals() {
+  return supabase.rpc("retail_pending_product_approvals");
+}
+export function countPendingProductApprovals() {
+  return supabase.rpc("retail_count_pending_product_approvals");
 }
 export function listInventoryItems(productId) {
   return supabase.from("retail_inventory_items").select("*").eq("product_id", productId).order("serial_number");
@@ -435,14 +526,59 @@ export function updateProductDetails(productId, fields, reason) {
 export function listProductPriceHistory(productId) {
   return supabase.from("retail_product_price_history").select("*").eq("product_id", productId).order("changed_at", { ascending: false });
 }
-export function addQuotationItemFromScan(quotationId, code, quantity, discount) {
-  return supabase.rpc("retail_add_quotation_item_from_scan", { p_quotation_id: quotationId, p_code: code, p_quantity: quantity ?? 1, p_discount: discount ?? 0 });
+// v2_93t: +discountType ('FIXED'|'PERCENT') and an optional price adjustment (+type 'INCREASE'|'DECREASE', +value,
+// +reason — mandatory whenever an adjustment is used). Every total is computed server-side (retail_compute_quotation_line);
+// this never trusts a browser-calculated number. A decrease, or a discount below the product's floor, is still
+// ADDED (Draft) but flips the whole quotation to a discount-approval-pending state — see decideQuotationDiscountApproval.
+export function addQuotationItemFromScan(quotationId, code, quantity, discount, discountType, adjustmentType, adjustmentValue, adjustmentReason) {
+  return supabase.rpc("retail_add_quotation_item_from_scan", {
+    p_quotation_id: quotationId, p_code: code, p_quantity: quantity ?? 1, p_discount: discount ?? 0,
+    p_discount_type: discountType || "FIXED", p_adjustment_type: adjustmentType || "NONE", p_adjustment_value: adjustmentValue ?? 0,
+    p_adjustment_reason: adjustmentReason || null,
+  });
+}
+// Joins the linked serial so the item card can show it directly (spec section 5) — a row with inventory_item_id
+// null is a Manual Item (never a fake/duplicate inventory serial).
+export function listQuotationItems(quotationId) {
+  return supabase.from("retail_quotation_items").select("*, retail_inventory_items(serial_number, status)").eq("quotation_id", quotationId).order("created_at");
+}
+// "+ Add Manual Item (Optional)" — never touches Product Master/Inventory; product_id/inventory_item_id stay null.
+export function addManualQuotationItem(quotationId, fields) {
+  return supabase.rpc("retail_add_manual_quotation_item", {
+    p_quotation_id: quotationId, p_item_name: fields.itemName, p_description: fields.description || null, p_product_code: fields.productCode || null,
+    p_quantity: fields.quantity ?? 1, p_unit_price: fields.unitPrice ?? 0, p_discount_type: fields.discountType || "FIXED",
+    p_discount: fields.discount ?? 0, p_gst_rate: fields.gstRate ?? 0, p_notes: fields.notes || null,
+  });
+}
+// A raw client-side delete would leave retail_quotations.total_amount stale (it's maintained incrementally, not
+// recomputed) — this RPC removes the item AND corrects the running total atomically.
+export function removeQuotationItem(itemId) {
+  return supabase.rpc("retail_remove_quotation_item", { p_item_id: itemId });
 }
 export function createDeliveryChallan(orderId, vehicleTransporter, deliveryDate, specialInstructions, notes) {
   return supabase.rpc("retail_create_delivery_challan", {
     p_order_id: orderId, p_vehicle_transporter: vehicleTransporter || null, p_delivery_date: deliveryDate || null,
     p_special_instructions: specialInstructions || null, p_notes: notes || null,
   });
+}
+// v2_93u — the single guarded "Confirm Order & Send for Delivery" action (spec's Quotation Confirmation Form):
+// collects delivery contact/mobile, installation Yes/No, special instructions, required delivery date and an
+// explicit payment-clearance confirmation, then delegates to the SAME already-idempotent createDeliveryChallan
+// above (repeated clicks return the same Delivery Challan, never a duplicate dispatch request).
+export function confirmOrderForDelivery(orderId, deliveryContactName, deliveryContactMobile, installationRequired, specialInstructions, requiredDeliveryDate, paymentClearanceConfirmed, vehicleTransporter, notes) {
+  return supabase.rpc("retail_confirm_order_for_delivery", {
+    p_order_id: orderId, p_delivery_contact_name: deliveryContactName, p_delivery_contact_mobile: deliveryContactMobile,
+    p_installation_required: !!installationRequired, p_special_instructions: specialInstructions || null,
+    p_required_delivery_date: requiredDeliveryDate || null, p_payment_clearance_confirmed: !!paymentClearanceConfirmed,
+    p_vehicle_transporter: vehicleTransporter || null, p_notes: notes || null,
+  });
+}
+// Dispatch/Godown's own "awaiting delivery proof" queue — orders already dispatched but not yet DELIVERY_SUCCESSFUL.
+// Reuses the SAME retail_deliveries_board() every other screen already uses (no new RPC), just filtered client-side
+// exactly like DispatchQueue.jsx already filters listGodownQueue() to status === 'ACCEPTED'.
+export const AWAITING_DELIVERY_PROOF_STAGES = ["OUT_FOR_DELIVERY", "DELIVERY_PROOF_UPLOADED", "DELIVERY_FAILED"];
+export function listOrderItemsForDelivery(orderId) {
+  return supabase.from("retail_order_items").select("id, item_name, sku, quantity").eq("order_id", orderId);
 }
 export function getDeliveryChallanForOrder(orderId) {
   return supabase.from("retail_delivery_challans").select("*").eq("order_id", orderId).eq("status", "ACTIVE").maybeSingle();

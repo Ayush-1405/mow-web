@@ -1,37 +1,31 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { startStockIntake, classifyStockPhoto, confirmStockIntake, listProductTypes, listInventoryItems } from "../../lib/retailApi";
 import { uploadTaskProof } from "../../lib/api";
-import { validateUploadFile, humanSize, ACCEPT_ATTR } from "../../lib/fileTypes";
+import { humanSize, ACCEPT_ATTR } from "../../lib/fileTypes";
+import { usePhotoCapture } from "../../lib/usePhotoCapture";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
 
 // New stock in, photo-first, tap-only wherever possible (v2_93r: two-tier Product Master vs. physical Inventory
-// Serial; v2_93s: the actual capture flow — photo is taken/chosen FIRST and held only as a local preview, a
-// location is required only right before Save, and the first real write (a placeholder retail_products row) is
-// created exactly once, at Save, never re-created on a retry):
+// Serial; v2_93s: the actual capture flow — photo is taken/chosen FIRST and held only as a local preview (shared
+// with Retail's own Add Product screen via usePhotoCapture), a location is required only right before Save, and
+// the first real write (a placeholder retail_products row) is created exactly once, at Save, never re-created on a
+// retry):
 // photo (local preview) -> location -> Save (creates the placeholder + uploads the already-selected photo) ->
 // Product Type (a real, Head-managed dropdown — AI may suggest one, but the worker always confirms it from this
 // list, never free text) -> quantity + Good/Damaged + rack + optional note -> confirm -> ONE permanent Product
 // Model Code, and — when tracking each physical unit — N unique permanent Serial Numbers/QR codes sharing one
 // GRN batch. Every generated field (code/serial/batch) comes from the server, never computed here.
 export default function GodownStockIntake({ lang }) {
-  const fileInputRef = useRef(null);
-  const galleryInputRef = useRef(null);
-  const photoPreviewUrlRef = useRef(null);
+  const photo = usePhotoCapture();
 
   const [locations, setLocations] = useState([]);
   const [locationsLoading, setLocationsLoading] = useState(true);
   const [locationsError, setLocationsError] = useState(null);
   const [locationId, setLocationId] = useState("");
   const [productTypes, setProductTypes] = useState([]);
-
-  // The photo is captured/chosen before anything is written to the database. photoPreviewUrl is a LOCAL
-  // (URL.createObjectURL) preview only — it is never sent anywhere and is revoked on retake/remove/unmount.
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState(null);
-  const [photoError, setPhotoError] = useState(null);
 
   const [product, setProduct] = useState(null); // the placeholder row, created exactly once at Save (kept across a retry)
   const [starting, setStarting] = useState(false); // true across create-placeholder + upload-photo + classify
@@ -65,9 +59,6 @@ export default function GodownStockIntake({ lang }) {
     listProductTypes().then(({ data }) => setProductTypes(data || []));
   }, []);
 
-  useEffect(() => { photoPreviewUrlRef.current = photoPreviewUrl; }, [photoPreviewUrl]);
-  useEffect(() => () => { if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current); }, []);
-
   useEffect(() => {
     if (!confirmedProduct) { setQrUrls({}); return; }
     const codes = confirmedSerials?.length ? confirmedSerials.map((s) => s.serial_number) : [confirmedProduct.sku];
@@ -77,36 +68,12 @@ export default function GodownStockIntake({ lang }) {
     return () => { cancelled = true; };
   }, [confirmedProduct, confirmedSerials]);
 
-  async function handlePhotoSelected(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setPhotoError(null);
-    try {
-      // Real content validation (extension + browser MIME, HEIC/HEIF included) — never trusts the extension alone,
-      // and gives a specific message instead of letting an unsupported file fail later as a generic 400.
-      await validateUploadFile(file, "image");
-      if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
-      setPhotoFile(file);
-      setPhotoPreviewUrl(URL.createObjectURL(file));
-    } catch (err) {
-      setPhotoError(err.message || String(err));
-    }
-  }
-
-  function removePhoto() {
-    if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
-    setPhotoFile(null);
-    setPhotoPreviewUrl(null);
-    setPhotoError(null);
-  }
-
   // Runs once, at Save: create the placeholder row (only if one doesn't already exist from a previous failed
   // attempt — never re-created on retry, so a retry can never leave behind a duplicate stock record), upload the
   // already-selected photo, then ask the AI classifier for a suggested category. The form's own values (photo,
   // location) are left exactly as they were if any step fails, so Retry never loses what the worker already did.
   async function startIntake() {
-    if (!photoFile || !locationId || starting) return;
+    if (!photo.file || !locationId || starting) return;
     setStarting(true);
     setStartError(null);
     try {
@@ -117,7 +84,7 @@ export default function GodownStockIntake({ lang }) {
         placeholder = data;
         setProduct(data);
       }
-      await uploadTaskProof({ entityType: "retail_product", entityId: placeholder.id, file: photoFile, fileType: "image", purpose: "proof" });
+      await uploadTaskProof({ entityType: "retail_product", entityId: placeholder.id, file: photo.file, fileType: "image", purpose: "proof" });
       setPhotoCount(1);
       setClassifying(true);
       setCategoryStep("waiting");
@@ -176,7 +143,7 @@ export default function GodownStockIntake({ lang }) {
   }
 
   function addAnother() {
-    removePhoto();
+    photo.remove();
     setLocationId("");
     setProduct(null); setStarting(false); setStartError(null);
     setPhotoCount(0); setAiResult(null); setCategoryStep("waiting"); setCategoryCorrected(false);
@@ -204,35 +171,33 @@ export default function GodownStockIntake({ lang }) {
 
             {/* Exact pattern: a hidden real <input type="file"> triggered by a plain type="button" — never inside
                 a disabled fieldset, no invisible overlay over it, and it stays keyboard-reachable via the button. */}
-            <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR("image")} capture="environment" onChange={handlePhotoSelected} hidden />
-            <input ref={galleryInputRef} type="file" accept={ACCEPT_ATTR("image")} onChange={handlePhotoSelected} hidden />
+            <input ref={photo.fileInputRef} type="file" accept={ACCEPT_ATTR("image")} capture="environment" onChange={photo.handleSelected} hidden />
+            <input ref={photo.galleryInputRef} type="file" accept={ACCEPT_ATTR("image")} onChange={photo.handleSelected} hidden />
 
-            {!photoPreviewUrl ? (
+            {!photo.previewUrl ? (
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button type="button" className="btn btn-primary" style={{ minHeight: 56, fontSize: 18, flex: 1 }}
-                  onClick={() => fileInputRef.current?.click()}>
+                <button type="button" className="btn btn-primary" style={{ minHeight: 56, fontSize: 18, flex: 1 }} onClick={photo.openCamera}>
                   📷 {t("takePhotoAction", lang)}
                 </button>
-                <button type="button" className="btn btn-outline" style={{ minHeight: 56, fontSize: 16, flex: 1 }}
-                  onClick={() => galleryInputRef.current?.click()}>
+                <button type="button" className="btn btn-outline" style={{ minHeight: 56, fontSize: 16, flex: 1 }} onClick={photo.openGallery}>
                   🖼️ {t("chooseFromGalleryAction", lang)}
                 </button>
               </div>
             ) : (
               <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
-                <img src={photoPreviewUrl} alt="" style={{ width: "100%", maxWidth: 320, borderRadius: 8, margin: "0 auto", display: "block" }} />
-                <div className="sub" style={{ textAlign: "center" }}>{photoFile ? humanSize(photoFile.size) : ""}</div>
+                <img src={photo.previewUrl} alt="" style={{ width: "100%", maxWidth: 320, borderRadius: 8, margin: "0 auto", display: "block" }} />
+                <div className="sub" style={{ textAlign: "center" }}>{photo.file ? humanSize(photo.file.size) : ""}</div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button type="button" className="btn btn-outline" style={{ flex: 1, minHeight: 48 }} onClick={() => fileInputRef.current?.click()}>
+                  <button type="button" className="btn btn-outline" style={{ flex: 1, minHeight: 48 }} onClick={photo.openCamera}>
                     🔁 {t("retakePhotoAction", lang)}
                   </button>
-                  <button type="button" className="btn btn-outline" style={{ flex: 1, minHeight: 48 }} onClick={removePhoto}>
+                  <button type="button" className="btn btn-outline" style={{ flex: 1, minHeight: 48 }} onClick={photo.remove}>
                     ✕ {t("removePhotoAction", lang)}
                   </button>
                 </div>
               </div>
             )}
-            {photoError && <div className="msg error" style={{ marginTop: 6 }}>{photoError}</div>}
+            {photo.error && <div className="msg error" style={{ marginTop: 6 }}>{photo.error}</div>}
           </div>
 
           <div className="field">
@@ -262,15 +227,15 @@ export default function GodownStockIntake({ lang }) {
             </div>
           )}
 
-          {photoFile && !locationId && !locationsLoading && !locationsError && (
+          {photo.file && !locationId && !locationsLoading && !locationsError && (
             <div className="sub">{t("selectLocationFirstMsg", lang)}</div>
           )}
-          {!photoFile && (
+          {!photo.file && (
             <div className="sub">{t("takeOrChoosePhotoFirstMsg", lang)}</div>
           )}
 
           <button type="button" className="btn btn-primary" style={{ minHeight: 56, fontSize: 18 }}
-            disabled={starting || !photoFile || !locationId} onClick={startIntake}>
+            disabled={starting || !photo.file || !locationId} onClick={startIntake}>
             {starting ? `${t("uploadingPhotoMsg", lang)}…` : `✅ ${t("save", lang)}`}
           </button>
         </div>

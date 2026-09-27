@@ -38,18 +38,15 @@ begin
   select id into v_item_id from retail_order_items where order_id = v_order.id;
   perform retail_confirm_order(v_order.id, jsonb_build_array(jsonb_build_object('order_item_id', v_item_id, 'mode', 'STOCK', 'quantity', 1, 'stock_location_id', v_loc)));
 
-  -- packing cannot start yet: the fulfilment item is only RESERVED, not READY, and no partial_reason was given
-  v_errmsg := null;
-  begin
-    perform retail_start_packing(v_order.id);
-  exception when others then v_errmsg := sqlerrm; end;
-  v_log := public.zz_chk8(v_log, 'packing refuses to start while an item is not Ready, with no partial_reason', v_errmsg is not null);
+  -- v2_93p (applied earlier in this project's history, confirmed live): a STOCK fulfilment item is now READY the
+  -- instant retail_confirm_order runs (the stock already physically exists — there's no real-world wait, unlike
+  -- FACTORY/OUTSOURCE). This assertion used to expect a "not Ready" refusal here; that expectation went stale the
+  -- moment 93p shipped and was never re-verified against this file until now — corrected in place rather than left
+  -- silently wrong. The "start refuses without Ready" gate itself is still real and still enforced (proven by
+  -- FACTORY/OUTSOURCE fulfilment items elsewhere, which stay PENDING/IN_PROGRESS until their own real completion).
+  select count(*) into n from retail_fulfilment_items where order_id = v_order.id and mode = 'STOCK' and status = 'READY';
+  v_log := public.zz_chk8(v_log, 'a STOCK fulfilment item is READY immediately at confirm (v2_93p) — packing can start right away, no manual bridge needed', n = 1);
   reset role;
-
-  -- (test-only setup: mark the item Ready, standing in for Factory-completion/GRN — no such RPC exists in this migration)
-  perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
-  reset role;
-  update retail_fulfilment_items set status = 'READY' where order_id = v_order.id;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true); set local role authenticated;
   v_packing := retail_start_packing(v_order.id);

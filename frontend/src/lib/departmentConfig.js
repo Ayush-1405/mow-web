@@ -118,6 +118,8 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Sales Performance", "વેચાણ કામગીરી"],
     ["Send to Factory", "ફેક્ટરીને મોકલો"],
     ["Scan Product QR", "ઉત્પાદન QR સ્કેન કરો"],
+    ["Add New Product", "નવું ઉત્પાદન ઉમેરો"],
+    ["Product Approvals", "ઉત્પાદન મંજૂરીઓ"],
   ),
   FRANCHISE: cards(
     ["Franchise Leads", "ફ્રેન્ચાઇઝી લીડ્સ"],
