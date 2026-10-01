@@ -114,6 +114,9 @@ const FactoryProductCosting = lazy(() => import("./screens/factory/FactoryProduc
 const FactoryRawMaterialAvailability = lazy(() => import("./screens/factory/FactoryRawMaterialAvailability.jsx"));
 const FactoryMaterialIssue = lazy(() => import("./screens/factory/FactoryMaterialIssue.jsx"));
 const FactoryMaterialToOrder = lazy(() => import("./screens/factory/FactoryMaterialToOrder.jsx"));
+const FactoryMaterialOrderDetail = lazy(() => import("./screens/factory/FactoryMaterialOrderDetail.jsx"));
+const FactorySegmentBoard = lazy(() => import("./screens/factory/FactorySegmentBoard.jsx"));
+const FactorySegmentNewJob = lazy(() => import("./screens/factory/FactorySegmentNewJob.jsx"));
 const FactoryMachineTracking = lazy(() => import("./screens/factory/FactoryMachineTracking.jsx"));
 const FactoryTransfer = lazy(() => import("./screens/factory/FactoryTransfer.jsx"));
 const FactoryDrawings = lazy(() => import("./screens/factory/FactoryDrawings.jsx"));
@@ -782,6 +785,16 @@ export default function App() {
       <Route path="/factory/raw-material-availability" element={deptModulePage("FACTORY", <FactoryRawMaterialAvailability lang={lang} profile={profile} />)} />
       <Route path="/factory/material-issue" element={deptModulePage("FACTORY", <FactoryMaterialIssue lang={lang} profile={profile} />)} />
       <Route path="/factory/material-to-order" element={deptModulePage("FACTORY", <FactoryMaterialToOrder lang={lang} profile={profile} lookups={lookups} />)} />
+      {/* Dedicated per-segment pages (handwritten workflow spec): real routes behind each Dashboard "Open"
+          button, not a shared Inbox filter. Sofa/Modular/Metal Fabrication reuse one parameterized board/
+          new-job/detail component (their record shape, status model and stage engine are identical); Material
+          to Order already has its own distinct screen, so these are route aliases + one new detail page. */}
+      <Route path="/factory/material-orders" element={deptModulePage("FACTORY", <FactoryMaterialToOrder lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/factory/material-orders/new" element={deptModulePage("FACTORY", <FactoryMaterialToOrder lang={lang} profile={profile} lookups={lookups} autoOpenForm />)} />
+      <Route path="/factory/material-orders/:materialOrderId" element={deptModulePage("FACTORY", <FactoryMaterialOrderDetail lang={lang} />)} />
+      <Route path="/factory/:segment/new" element={deptModulePage("FACTORY", <FactorySegmentNewJob lang={lang} profile={profile} />)} />
+      <Route path="/factory/:segment/:id" element={deptModulePage("FACTORY", <FactoryJobCardPage lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/factory/:segment" element={deptModulePage("FACTORY", <FactorySegmentBoard lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/factory/machine-tracking" element={deptModulePage("FACTORY", <FactoryMachineTracking lang={lang} profile={profile} />)} />
       <Route path="/factory/transfer" element={deptModulePage("FACTORY", <FactoryTransfer lang={lang} profile={profile} />)} />
       <Route path="/factory/drawings" element={deptModulePage("FACTORY", <FactoryDrawings lang={lang} profile={profile} />)} />

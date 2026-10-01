@@ -350,3 +350,48 @@ export function subscribeMaterialRequests(name, onChange) {
   const unsub = subscribeTable(name, "factory_material_requests", null, fire);
   return () => { window.clearTimeout(timer); unsub(); };
 }
+
+export async function getMaterialRequest(id) {
+  if (!id) return { data: null, error: null };
+  return supabase.from("factory_material_requests").select(
+    "*, requesting_department:departments(name_en,name_gu), job_card:inhouse_production_requests(job_order_number,product_item)"
+  ).eq("id", id).maybeSingle();
+}
+
+// ---------------------------------------------------------------------------
+// Dedicated per-segment pages (mvp_pilot_factory_segment_pages_v2_84.sql) --
+// a real "New Sofa/Modular/Metal Fabrication Job" creation flow (reuses the
+// same job-creation path every other department's submission already goes
+// through) plus field-level photo proof tied to a specific form section
+// rather than one generic upload box.
+// ---------------------------------------------------------------------------
+
+export async function createSegmentJob(fields) {
+  const { data, error } = await supabase.rpc("factory_create_segment_job", {
+    p_division_code: fields.divisionCode, p_customer_name: fields.customerName || null, p_product_item: fields.productItem,
+    p_quantity: fields.quantity, p_unit: fields.unit || "Nos", p_required_date: fields.requiredDate || null,
+    p_priority: fields.priority || "Normal", p_notes: fields.notes || null, p_po_received: fields.poReceived ?? null,
+    p_po_number: fields.poNumber || null, p_po_date: fields.poDate || null, p_segment_specs: fields.segmentSpecs || {},
+    p_idempotency_key: fields.idempotencyKey || null,
+  });
+  return { data: Array.isArray(data) ? data[0] : data, error };
+}
+
+export async function updateSegmentSpecs(jobId, specs) {
+  return supabase.rpc("factory_update_segment_specs", { p_job_id: jobId, p_specs: specs || {} });
+}
+
+// Field-level photo proof: list the real, active photos already recorded against a job's given section (e.g.
+// "po_photo", "product_photo", "drawing_photo") -- not just a count, the actual rows, so a thumbnail + who/when
+// can be shown right beside the field it proves.
+export async function listFieldPhotos(jobId, sectionKey) {
+  if (!jobId) return { data: [], error: null };
+  let q = supabase.from("staff_attachments").select("id, created_at, uploaded_by, original_filename, uploader:user_profiles!uploaded_by(full_name)")
+    .eq("entity_type", "factory_job_card_field").eq("entity_id", jobId).eq("purpose", "proof").eq("is_active", true);
+  if (sectionKey) q = q.eq("section_key", sectionKey);
+  return q.order("created_at", { ascending: false });
+}
+
+export async function tagAttachmentSection(attachmentId, sectionKey) {
+  return supabase.rpc("staff_set_attachment_section", { p_attachment_id: attachmentId, p_section_key: sectionKey });
+}

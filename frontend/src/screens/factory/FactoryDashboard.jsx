@@ -9,11 +9,13 @@ import { ACTION_LABEL, STATUS, label, fmtDate, roleInfo } from "./factoryConstan
 
 // Four large Factory segments -- Sofa / Modular / Metal Fabrication / Material to Order -- are the primary,
 // worker-readable landing experience (handwritten workflow spec). Everything below them is still real,
-// clickable, DB-backed data; nothing here is decorative or hard-coded.
+// clickable, DB-backed data; nothing here is decorative or hard-coded. "Open" now goes to each segment's own
+// dedicated page (/factory/sofa, /factory/modular, /factory/metal-fabrication) -- a real board, not a filtered
+// Inbox -- per the spec's explicit "must not merely apply a filter or open a generic shared placeholder".
 const SEGMENT_META = {
-  SOFA: { icon: "🛋️", en: "Sofa", gu: "સોફા" },
-  MODULAR: { icon: "🗄️", en: "Modular", gu: "મોડ્યુલર" },
-  METAL_FAB: { icon: "🔩", en: "Metal Fabrication", gu: "મેટલ ફેબ્રિકેશન" },
+  SOFA: { icon: "🛋️", en: "Sofa", gu: "સોફા", route: "/factory/sofa" },
+  MODULAR: { icon: "🗄️", en: "Modular", gu: "મોડ્યુલર", route: "/factory/modular" },
+  METAL_FAB: { icon: "🔩", en: "Metal Fabrication", gu: "મેટલ ફેબ્રિકેશન", route: "/factory/metal-fabrication" },
 };
 
 export default function FactoryDashboard({ lang, profile, lookups }) {
@@ -94,7 +96,7 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
         const meta = SEGMENT_META[d.division_code] || { icon: "🏭", en: d.division_name_en, gu: d.division_name_gu };
         return (
           <button key={d.division_id} type="button" className={`fx-seg ${d.total_active > 0 ? "has-work" : ""}`}
-            onClick={() => navigate(`/factory/inbox?division=${d.division_id}${q}`)}>
+            onClick={() => navigate(meta.route || `/factory/inbox?division=${d.division_id}${q}`)}>
             <span className="icon">{meta.icon}</span>
             <span className="names"><span className="en">{meta.en}</span><span className="gu">{meta.gu}</span></span>
             <span className="stats">
@@ -107,7 +109,7 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
         );
       })}
       <button type="button" className={`fx-seg ${materialStats.new_ + materialStats.progress > 0 ? "has-work" : ""}`}
-        onClick={() => navigate("/factory/material-to-order")}>
+        onClick={() => navigate("/factory/material-orders")}>
         <span className="icon">📦</span>
         <span className="names"><span className="en">Material to Order</span><span className="gu">મટિરિયલ ઓર્ડર</span></span>
         <span className="stats">

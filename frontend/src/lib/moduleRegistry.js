@@ -46,6 +46,9 @@ export const MODULE_ROUTES = {
   FACTORY: {
     "AI Factory Inbox": "/factory-inbox",
     "Send to Factory": "/factory-request",
+    "Sofa": "/factory/sofa",
+    "Modular": "/factory/modular",
+    "Metal Fabrication": "/factory/metal-fabrication",
     "Production Planning": "/factory/production-planning",
     "Job Orders": "/factory/job-orders",
     "BOM": "/factory/bom",

@@ -27,6 +27,53 @@ export const ACTION_LABEL = {
 
 export const PRIORITIES = ["Normal", "High", "Urgent", "Emergency"];
 
+// Per-segment metadata for the dedicated Sofa/Modular/Metal Fabrication pages: icon, EN/GU names, and a
+// representative set of the handwritten spec's extended fields (stored in segment_specs jsonb -- see
+// mvp_pilot_factory_segment_pages_v2_84.sql for why that's a jsonb column rather than 80+ narrow typed ones).
+// This is a genuine, disclosed subset of each segment's full field list, not the exhaustive one -- chosen for
+// the fields most used in planning/costing/handover, with the rest left for a later pass.
+export const DIVISION_META = {
+  SOFA: {
+    icon: "🛋️", en: "Sofa", gu: "સોફા", route: "sofa",
+    specFields: [
+      ["sofaType", { en: "Sofa Type", gu: "સોફા પ્રકાર" }],
+      ["model", { en: "Model / Design", gu: "મોડેલ / ડિઝાઇન" }],
+      ["dimensions", { en: "Dimensions (L x W x H)", gu: "માપ (લં x પહો x ઊં)" }],
+      ["frameType", { en: "Frame Type", gu: "ફ્રેમ પ્રકાર" }],
+      ["foamType", { en: "Foam Type", gu: "ફોમ પ્રકાર" }],
+      ["foamDensity", { en: "Foam Density", gu: "ફોમ ઘનતા" }],
+      ["fabricCode", { en: "Fabric / Leather Code", gu: "ફેબ્રિક/લેધર કોડ" }],
+      ["colour", { en: "Colour", gu: "રંગ" }],
+    ],
+  },
+  MODULAR: {
+    icon: "🗄️", en: "Modular", gu: "મોડ્યુલર", route: "modular",
+    specFields: [
+      ["drawingNumber", { en: "Drawing Number", gu: "ડ્રોઈંગ નંબર" }],
+      ["boardType", { en: "Board Type", gu: "બોર્ડ પ્રકાર" }],
+      ["boardThickness", { en: "Board Thickness", gu: "બોર્ડ જાડાઈ" }],
+      ["laminateVeneer", { en: "Laminate / Veneer", gu: "લેમિનેટ / વિનિયર" }],
+      ["colourFinish", { en: "Colour / Finish", gu: "રંગ / ફિનિશ" }],
+      ["edgeBand", { en: "Edge Band", gu: "એજ બેન્ડ" }],
+      ["hardwareBrand", { en: "Hardware Brand", gu: "હાર્ડવેર બ્રાન્ડ" }],
+      ["handleType", { en: "Handle Type", gu: "હેન્ડલ પ્રકાર" }],
+    ],
+  },
+  METAL_FAB: {
+    icon: "🔩", en: "Metal Fabrication", gu: "મેટલ ફેબ્રિકેશન", route: "metal-fabrication",
+    specFields: [
+      ["metalType", { en: "Metal Type", gu: "મેટલ પ્રકાર" }],
+      ["grade", { en: "Grade", gu: "ગ્રેડ" }],
+      ["sectionProfile", { en: "Section / Profile", gu: "સેક્શન / પ્રોફાઇલ" }],
+      ["thickness", { en: "Thickness", gu: "જાડાઈ" }],
+      ["weldingType", { en: "Welding Type", gu: "વેલ્ડિંગ પ્રકાર" }],
+      ["paintType", { en: "Paint Type", gu: "પેઇન્ટ પ્રકાર" }],
+      ["paintColour", { en: "Paint Colour", gu: "પેઇન્ટ રંગ" }],
+      ["powderCoatingCode", { en: "Powder-Coating Code", gu: "પાઉડર-કોટિંગ કોડ" }],
+    ],
+  },
+};
+
 // Inbox tabs: [key, label, database filter]. "New" and "Needs Verification"
 // split the same pending_verification status by whether a reviewer has opened
 // the card yet, so the two dashboard cards never overlap.

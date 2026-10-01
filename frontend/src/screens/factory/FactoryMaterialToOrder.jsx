@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import {
   listMaterialRequests, createMaterialRequest, updateMaterialRequestStatus, subscribeMaterialRequests,
@@ -17,11 +18,11 @@ const emptyForm = { material: "", requestingDepartmentId: "", orderPoReference: 
 // "Material to Order" (handwritten workflow, column 1) -- a real, dedicated request, never a second free-text note
 // buried inside a Job Card. Minimal typing: job-card search auto-fills nothing the worker doesn't already know,
 // and the requesting department defaults to Factory itself.
-export default function FactoryMaterialToOrder({ lang, lookups }) {
+export default function FactoryMaterialToOrder({ lang, lookups, autoOpenForm = false }) {
   const [tab, setTab] = useState("open");
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(autoOpenForm);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
@@ -90,8 +91,9 @@ export default function FactoryMaterialToOrder({ lang, lookups }) {
 
   return (
     <div className="dept-dashboard">
+      <Link to="/factory" className="fx-tag gold" style={{ width: "auto" }}>← {lang === "gu" ? "ફેક્ટરી ડેશબોર્ડ" : "Factory Dashboard"}</Link>
       <div className="dept-header card">
-        <div className="dept-header-icon" aria-hidden="true">🧱</div>
+        <div className="dept-header-icon" aria-hidden="true">📦</div>
         <div className="dept-header-text"><h1>{t("materialToOrderTitle", lang)}</h1></div>
       </div>
 
@@ -209,6 +211,9 @@ export default function FactoryMaterialToOrder({ lang, lookups }) {
               <div className="task-meta" style={{ gap: 6 }}>
                 {["Urgent", "Emergency", "High"].includes(r.priority) && <span className="fx-tag gold">{r.priority}</span>}
                 <span className={`badge ${STATUS_BADGE[r.status]}`}>{t(`materialStatus_${r.status}`, lang)}</span>
+                <Link to={`/factory/material-orders/${r.id}`} className="btn btn-outline" style={{ minHeight: 36, width: "auto", padding: "4px 10px" }}>
+                  {lang === "gu" ? "ખોલો" : "Open"}
+                </Link>
               </div>
             </div>
             <ProofPhotoViewer lang={lang} entityType="factory_material_request" entityId={r.id} />
