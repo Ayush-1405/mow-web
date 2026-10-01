@@ -8,7 +8,7 @@ import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
 import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
 import FieldPhotoProof from "../../components/FieldPhotoProof.jsx";
 import {
-  ActivityTab, AssignmentTab, FilePreview, FilesTab, ItemsTab, KeyDrawings, ProductionUpdate, VerificationTab,
+  ActivityTab, AssignmentTab, FilePreview, FilesTab, ItemsTab, KeyDrawings, VerificationTab,
 } from "./FactoryJobParts.jsx";
 import {
   getJobCard, jobTransition, listFactoryLocations, listFactoryPeople, listJobEvents, listJobFiles, listJobItems, markViewed,
@@ -422,6 +422,16 @@ export function StagesTab({ job, lang, canAct, onDone }) {
     if (error) { setMsg(friendlyRpcError(error)); return; }
     load(); onDone?.();
   }
+  // "Mark Ready" (previously a QuickActions button, independent of the stage workflow) now lives here instead --
+  // once every stage is actually complete -- so production can only be marked ready through the real stage
+  // workflow, not as a separate shortcut that could be clicked before work was done.
+  async function doMarkReady() {
+    setBusy(true); setMsg(null);
+    const { error } = await jobTransition(job.id, "mark_ready", null);
+    setBusy(false);
+    if (error) { setMsg(friendlyRpcError(error)); return; }
+    load(); onDone?.();
+  }
 
   function Row({ s, big }) {
     const badgeClass = s.status === "completed" ? "ok" : s.status === "in_progress" ? "info" : "";
@@ -498,7 +508,16 @@ export function StagesTab({ job, lang, canAct, onDone }) {
         </div>
       )}
       <div className="sub">{job.completion_percentage ?? 0}% {lang === "gu" ? "પૂર્ણ" : "complete"}</div>
-      {current ? <Row s={current} big /> : <div className="fx-empty">{lang === "gu" ? "બધા સ્ટેજ પૂર્ણ" : "All stages completed"}</div>}
+      {current ? <Row s={current} big /> : (
+        <div className="fx-empty">
+          {lang === "gu" ? "બધા સ્ટેજ પૂર્ણ" : "All stages completed"}
+          {job.factory_status === "in_production" && canAct && (
+            <button type="button" className="btn btn-gold" style={{ marginTop: 8, minHeight: 48, display: "block" }} disabled={busy} onClick={doMarkReady}>
+              ✅ {lang === "gu" ? "સમીક્ષા માટે તૈયાર કરો" : "Mark Ready for Review"}
+            </button>
+          )}
+        </div>
+      )}
       {msg && <div className="msg error" style={{ marginTop: 8 }}>{msg}</div>}
       <button type="button" className="btn btn-outline" style={{ marginTop: 10, width: "auto" }} onClick={() => setShowAll((v) => !v)}>
         {showAll ? (lang === "gu" ? "ઓછું બતાવો" : "Hide other stages") : (lang === "gu" ? "બધા સ્ટેજ બતાવો" : `Show all stages (${stages.length})`)}
@@ -509,13 +528,20 @@ export function StagesTab({ job, lang, canAct, onDone }) {
 }
 
 // Only the actions that are valid for this status AND this person are shown;
-// the database re-checks every one of them regardless.
-function QuickActions({ job, role, mine, isSource, goTab, onDone, onOpenUpdate }) {
+// the database re-checks every one of them regardless. The old "in_production" block (Update Progress / Mark
+// Blocked / Upload Photo / Mark Ready) was removed along with the generic "Update Production" form it opened --
+// those four are now handled inside the real per-division stage workflow (StagesTab / the dedicated WIP page):
+// photo uploads happen on the active stage itself, blocking happens via "Report Problem" on the active stage,
+// and "Mark Ready" now lives on StagesTab once every stage is complete (see the "All stages completed" branch
+// below). Cancel Job Card moved out of the always-visible button row into a small Head/Management/Director-only
+// "More Actions" menu with the same mandatory-reason confirmation it already had.
+function QuickActions({ job, role, mine, isSource, goTab, onDone }) {
   const navigate = useNavigate();
   const [ask, setAsk] = useState(null); // { action, title, required }
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const s = job.factory_status;
   const mgr = role.isManager;
   const head = role.isHead;
@@ -526,7 +552,7 @@ function QuickActions({ job, role, mine, isSource, goTab, onDone, onOpenUpdate }
     const { error } = await jobTransition(job.id, action, note || null);
     setBusy(false);
     if (error) { setMsg({ type: "error", text: friendlyRpcError(error) }); return; }
-    setAsk(null); setText(""); onDone?.();
+    setAsk(null); setText(""); setMoreOpen(false); onDone?.();
   };
   const withNote = (action, title, required = true) => () => { setAsk({ action, title, required }); setText(""); setMsg(null); };
 
@@ -546,12 +572,6 @@ function QuickActions({ job, role, mine, isSource, goTab, onDone, onOpenUpdate }
     buttons.push(["Put On Hold", "btn-outline", withNote("block", "Why is it on hold?")]);
     if (mgr) buttons.push(["Reassign", "btn-outline", () => goTab("assign")]);
   }
-  if (s === "in_production" && (mgr || mine)) {
-    buttons.push(["Update Progress", "btn-primary", onOpenUpdate]);
-    buttons.push(["Mark Blocked", "btn-outline", withNote("block", "What is blocking the work?")]);
-    buttons.push(["Upload Photo", "btn-outline", () => goTab("files")]);
-    buttons.push(["Mark Ready", "btn-gold", go("mark_ready")]);
-  }
   if (s === "blocked" && (mgr || mine)) buttons.push(["Unblock — resume work", "btn-primary", go("unblock")]);
   if (s === "ready_for_review" && head) buttons.push(["Approve completion", "btn-primary", go("complete")]);
   if (s === "needs_clarification") {
@@ -563,21 +583,36 @@ function QuickActions({ job, role, mine, isSource, goTab, onDone, onOpenUpdate }
     if (head) buttons.push(["Reopen", "btn-outline", withNote("reopen", "Reason for reopening")]);
   }
   if (s === "cancelled" && head) buttons.push(["Reopen", "btn-outline", withNote("reopen", "Reason for reopening")]);
-  if (head && !["completed", "cancelled"].includes(s)) buttons.push(["Cancel Job Card", "btn-outline", withNote("cancel", "Reason for cancelling")]);
 
-  if (buttons.length === 0) return null;
+  const canCancel = head && !["completed", "cancelled"].includes(s);
+
+  if (buttons.length === 0 && !canCancel) return null;
   return (
     <section className="fx-section" aria-label="Actions">
-      <div className="fx-bigbtns">
-        {buttons.map(([lbl, cls, fn]) => <button key={lbl} type="button" className={`btn ${cls}`} disabled={busy} onClick={fn}>{lbl}</button>)}
-      </div>
+      {buttons.length > 0 && (
+        <div className="fx-bigbtns">
+          {buttons.map(([lbl, cls, fn]) => <button key={lbl} type="button" className={`btn ${cls}`} disabled={busy} onClick={fn}>{lbl}</button>)}
+        </div>
+      )}
+      {canCancel && (
+        <div style={{ marginTop: buttons.length > 0 ? 8 : 0 }}>
+          <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setMoreOpen((v) => !v)}>⋯ More Actions</button>
+          {moreOpen && (
+            <div style={{ marginTop: 6 }}>
+              <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={withNote("cancel", "Reason for cancelling")}>
+                🗑️ Cancel Job Card
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {ask && (
         <div className="field" style={{ marginTop: 10 }}>
           <label>{ask.title}{ask.required ? " *" : ""}</label>
           <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} autoFocus />
           <div className="btn-row">
             <button type="button" className="btn btn-primary" style={{ width: "auto" }} disabled={busy || (ask.required && !text.trim())} onClick={go(ask.action, text)}>{busy ? "Saving…" : "Confirm"}</button>
-            <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => setAsk(null)}>Cancel</button>
+            <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => { setAsk(null); setMoreOpen(false); }}>Cancel</button>
           </div>
         </div>
       )}
@@ -601,7 +636,6 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
   const [error, setError] = useState(false);
   const [preview, setPreview] = useState(null);
   const viewed = useRef(false);
-  const updateRef = useRef(null);
 
   useEffect(() => { supabase.rpc("factory_my_profile_id").then(({ data }) => setMyProfile(data || null)); }, []);
   useEffect(() => { listFactoryLocations().then(({ data }) => setLocations(data || [])); }, []);
@@ -657,7 +691,6 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
   const canUpload = role.isManager || sourceCanEdit || mine;
   const showNav = role.inFactory || role.admin;
   const locName = locations.find((l) => l.id === job.factory_location_id)?.name;
-  const open = ["assigned", "in_production", "blocked"].includes(job.factory_status);
   const tabs = [
     ["summary", "Summary"], ["items", `Items (${items.length})`], ["files", `Drawings & Files (${files.length})`],
     ["verify", `Verification${job.missing_count > 0 && ["pending_verification", "needs_clarification"].includes(job.factory_status) ? ` (${job.missing_count})` : ""}`],
@@ -690,10 +723,7 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
       <div><ChatButton jobId={job.id} label="💬 Job Card chat" /></div>
 
       <KeyDrawings files={files} onOpen={setPreview} />
-      <QuickActions job={job} role={role} mine={mine} isSource={isSource} goTab={setTab} onDone={load} onOpenUpdate={() => updateRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} />
-      {open && (role.isManager || mine) && (
-        <div ref={updateRef}><ProductionUpdate job={job} isManager={role.isManager} onDone={load} /></div>
-      )}
+      <QuickActions job={job} role={role} mine={mine} isSource={isSource} goTab={setTab} onDone={load} />
 
       <div className="fx-tabs2" role="tablist">
         {tabs.map(([k, lbl]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>{lbl}</button>)}

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  FACTORY_FILE_MAX_MB, FACTORY_FILE_TYPES, addComment, getFileUrl, jobTransition, updateItems, updateStage, uploadJobFile,
+  FACTORY_FILE_MAX_MB, FACTORY_FILE_TYPES, addComment, getFileUrl, jobTransition, updateItems, uploadJobFile,
 } from "../../lib/factoryApi";
-import { DRAWING_CATEGORIES, FILE_CATEGORIES, STAGES, fmtDate, fmtDateTime, friendlyRpcError } from "./factoryConstants";
+import { DRAWING_CATEGORIES, FILE_CATEGORIES, fmtDate, fmtDateTime, friendlyRpcError } from "./factoryConstants";
 
 const IMG = ["jpg", "jpeg", "png", "webp"];
 const extOf = (n) => (/\.([a-z0-9]+)$/i.exec(n || "")?.[1] || "").toLowerCase();
@@ -366,73 +366,6 @@ export function ActivityTab({ jobId, events, canComment, onChanged }) {
         ))}
       </div>
     </div>
-  );
-}
-
-// ---------- one-tap production update ----------
-export function ProductionUpdate({ job, isManager, onDone }) {
-  const [stage, setStage] = useState(STAGES.includes(job.current_stage) ? job.current_stage : STAGES[0]);
-  const [qty, setQty] = useState("");
-  const [note, setNote] = useState("");
-  const [photo, setPhoto] = useState(null);
-  const [blocker, setBlocker] = useState(false);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-  const fileRef = useRef(null);
-  const blocked = job.factory_status === "blocked";
-
-  async function submit(status) {
-    if (busy) return;
-    if (status === "completed" && !photo && !isManager) { setMsg({ type: "error", text: "Please add a proof photo to mark this stage complete." }); return; }
-    setBusy(true); setMsg(null);
-    if (photo) {
-      const r = await uploadJobFile(job.id, photo, "Reference Photo", `Proof: ${stage}`, note || null);
-      if (r.error) { setBusy(false); setMsg({ type: "error", text: r.step === "upload" ? "The photo could not be uploaded. Please try again." : friendlyRpcError(r.error, "The photo could not be saved.") }); return; }
-    }
-    const { error } = await updateStage(job.id, stage, status, { quantity: qty === "" ? null : Number(qty), notes: note });
-    setBusy(false);
-    if (error) { setMsg({ type: "error", text: friendlyRpcError(error) }); return; }
-    setQty(""); setNote(""); setPhoto(null); if (fileRef.current) fileRef.current.value = "";
-    setMsg({ type: "success", text: status === "completed" ? "Stage marked complete." : "Progress saved." });
-    onDone?.();
-  }
-  async function block() {
-    if (!reason.trim()) { setMsg({ type: "error", text: "Please give the reason it is blocked." }); return; }
-    setBusy(true); setMsg(null);
-    const { error } = await jobTransition(job.id, "block", reason);
-    setBusy(false);
-    if (error) { setMsg({ type: "error", text: friendlyRpcError(error) }); return; }
-    setBlocker(false); setReason(""); onDone?.();
-  }
-
-  return (
-    <section className="fx-section" aria-label="Production update">
-      <h2>Update production</h2>
-      {blocked && <div className="msg error">Blocked: {job.blocked_reason || "—"}</div>}
-      <div className="form-grid">
-        <div className="field"><label>Current stage</label>
-          <select value={stage} onChange={(e) => setStage(e.target.value)} disabled={busy}>{STAGES.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-        <div className="field"><label>Produced quantity</label>
-          <input type="number" min="0" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} disabled={busy} placeholder={job.total_qty ? `of ${job.total_qty}` : ""} /></div>
-        <div className="field full"><label>Note (optional)</label><input value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} /></div>
-        <div className="field full"><label>Proof photo{isManager ? " (optional)" : " (needed to complete a stage)"}</label>
-          <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp" capture="environment" onChange={(e) => setPhoto(e.target.files?.[0] || null)} disabled={busy} /></div>
-      </div>
-      <div className="fx-bigbtns">
-        <button type="button" className="btn btn-primary" disabled={busy || blocked} onClick={() => submit("in_progress")}>{busy ? "Saving…" : "Save progress"}</button>
-        <button type="button" className="btn btn-gold" disabled={busy || blocked} onClick={() => submit("completed")}>Stage complete</button>
-        {!blocked && <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setBlocker((v) => !v)}>Report blocker</button>}
-      </div>
-      {blocker && (
-        <div className="field" style={{ marginTop: 8 }}>
-          <label>What is blocking the work? *</label>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
-          <button type="button" className="btn btn-primary" style={{ width: "auto" }} disabled={busy || !reason.trim()} onClick={block}>Mark blocked</button>
-        </div>
-      )}
-      {msg && <div className={`msg ${msg.type}`} style={{ marginTop: 8 }}>{msg.text}</div>}
-    </section>
   );
 }
 

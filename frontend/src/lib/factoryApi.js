@@ -114,14 +114,6 @@ export async function updateItems(id, items) {
 export async function updateDetails(id, patch) {
   return supabase.rpc("factory_job_update_details", { p_job_id: id, p_patch: patch });
 }
-export async function updateStage(id, stage, status, { quantity, notes, delayReason } = {}) {
-  return supabase.rpc("factory_update_stage", {
-    p_job_id: id, p_stage: stage, p_status: status, p_assigned_to: null, p_quantity_completed: quantity ?? null,
-    p_quantity_pending: null, p_notes: notes || null, p_delay_reason: delayReason || null,
-    p_planned_start: null, p_planned_end: null, p_stage_data: null,
-  });
-}
-
 export async function submitJobCard({ idempotencyKey, sourceModule, sourceReference, sourceRecordId, projectId, customerName, siteLocation, title, requiredDate, priority, notes, items, purchaseRequestId }) {
   const { data, error } = await supabase.rpc("factory_submit_job_card", {
     p_idempotency_key: idempotencyKey || null, p_source_module: sourceModule, p_source_reference: sourceReference || null,

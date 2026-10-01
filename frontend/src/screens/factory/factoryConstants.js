@@ -52,11 +52,6 @@ export const INBOX_TABS = [
   ["completed", { en: "Completed", gu: "પૂર્ણ" }],
 ];
 
-export const STAGES = [
-  "Cutting", "Edge Banding", "CNC", "Carpentry/Assembly", "Polishing/Painting",
-  "Hardware Fitting", "Final Assembly", "Packing",
-];
-
 export const FILE_CATEGORIES = ["Working Drawing", "Production Drawing", "3D Drawing", "Reference Photo", "Material Specification", "Job Card", "Others"];
 export const DRAWING_CATEGORIES = [
   "Working Drawing", "Production Drawing", "3D Drawing", "Normal Drawing", "Reference Drawing",
