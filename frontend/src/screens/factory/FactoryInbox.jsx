@@ -75,7 +75,9 @@ export default function FactoryInbox({ lang, profile, lookups, mode = "inbox" })
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [f, setF] = useState({ dept: "", status: "", assignee: "", dueFrom: "", dueTo: "", priority: "", delayed: "" });
+  // status can arrive via the URL (e.g. the Dashboard's "Blocked" / "Ready for Dispatch" cards link straight
+  // into a pre-filtered list) in addition to the in-page filter panel below.
+  const [f, setF] = useState({ dept: "", status: params.get("status") || "", assignee: "", dueFrom: "", dueTo: "", priority: "", delayed: "" });
   const [rows, setRows] = useState(null);
   const [total, setTotal] = useState(0);
   const [limitTo, setLimitTo] = useState(PAGE);

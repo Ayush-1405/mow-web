@@ -30,6 +30,25 @@
 .fx-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow-sm); }
 .fx-section h2 { margin: 0 0 8px; font-size: 16px; color: var(--brand-dark); }
 
+/* Factory segment hero -- the four big landing segments (Sofa/Modular/Metal Fabrication/Material to Order).
+   The primary, worker-readable entry point into Factory: an icon, both languages, three live counts and one
+   large Open button per segment -- deliberately bigger and simpler than the dense fx-card KPI grid below it. */
+.fx-hero { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (min-width: 760px) { .fx-hero { grid-template-columns: repeat(4, 1fr); } }
+.fx-seg { display: flex; flex-direction: column; gap: 10px; text-align: left; padding: 18px 16px; border-radius: var(--radius); border: 2px solid var(--border-strong); background: var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; font-family: inherit; min-height: 190px; }
+.fx-seg:hover { border-color: var(--accent); }
+.fx-seg.has-work { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft), var(--surface) 55%); }
+.fx-seg .icon { font-size: 38px; line-height: 1; }
+.fx-seg .names { display: flex; flex-direction: column; gap: 1px; }
+.fx-seg .names .en { font-size: 16.5px; font-weight: 800; color: var(--brand-dark); font-family: var(--font-display); }
+.fx-seg .names .gu { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.fx-seg .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-top: auto; }
+.fx-seg .stat { display: flex; flex-direction: column; }
+.fx-seg .stat b { font-size: 20px; font-weight: 800; color: var(--brand-dark); line-height: 1.1; font-family: var(--font-display); }
+.fx-seg .stat.bad b { color: var(--danger); }
+.fx-seg .stat span { font-size: 10.5px; color: var(--ink-soft); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.fx-seg .open-btn { margin-top: 2px; min-height: 44px; border-radius: var(--radius-sm); border: none; background: var(--brand-dark); color: #fff; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
 .fx-action { display: flex; flex-direction: column; gap: 2px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; text-decoration: none; color: inherit; background: var(--surface-2); min-height: 56px; }
 .fx-action:hover { border-color: var(--accent); }
 .fx-action .t { font-weight: 700; color: var(--brand-dark); }

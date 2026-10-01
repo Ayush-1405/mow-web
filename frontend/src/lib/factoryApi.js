@@ -68,7 +68,7 @@ export async function listJobCards({ tab = "all", search, sourceDept, status, lo
   if (assignee) q = q.or(`assigned_factory_coordinator.eq.${assignee},second_assignee_coordinator.eq.${assignee}`);
   if (dueFrom) q = q.gte("required_date", dueFrom);
   if (dueTo) q = q.lte("required_date", dueTo);
-  if (priority) q = q.eq("priority", priority);
+  if (priority) q = Array.isArray(priority) ? q.in("priority", priority) : q.eq("priority", priority);
   if (delayed === true) q = q.eq("is_delayed", true);
   if (delayed === false) q = q.eq("is_delayed", false);
   const s = safeSearch(search);
@@ -274,6 +274,13 @@ export async function listDivisions() {
 export async function getDivisionDashboardCounts(locationId) {
   const { data, error } = await supabase.rpc("factory_division_dashboard_counts", { p_location: locationId || null });
   return { data: data || [], error };
+}
+
+// Material Pending / Blocked / Ready for Dispatch -- a separate, additive RPC from factory_dashboard_counts()
+// (see mvp_pilot_factory_dashboard_extra_counts_v2_82d.sql for why it isn't just widened in place).
+export async function getDashboardExtraCounts(locationId) {
+  const { data, error } = await supabase.rpc("factory_dashboard_extra_counts", { p_location: locationId || null });
+  return { data: Array.isArray(data) ? data[0] : data, error };
 }
 
 export async function setJobDivision(jobId, divisionId) {
