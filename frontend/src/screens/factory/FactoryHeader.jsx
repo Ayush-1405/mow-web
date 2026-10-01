@@ -2,17 +2,22 @@ import React, { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
-// Phase 1 Factory navigation: six items only. "Completed" is hidden on the
-// smallest phones (it is one tap away as the Completed filter in Job Cards),
-// so the mobile bar never exceeds five.
+// Phase 1 simplification: nine large, icon-led primary destinations -- Home / New Orders / Job Cards / My Work /
+// Material Required / QC / Ready for Dispatch / Completed / Reports -- replacing the previous Dashboard/Inbox/
+// Job Cards/Tasks/Overview/Completed/Reports set. "Overview" (a Head/Management-only deep-dive screen) now only
+// shows for a leader, same as before; everything else is a real, already-working destination, several reusing
+// the status/stage filters built for the Dashboard's own cards rather than new screens.
 const NAV = [
-  ["/factory", { en: "Dashboard", gu: "ડેશબોર્ડ" }, true, ""],
-  ["/factory/inbox", { en: "Factory Inbox", gu: "ફેક્ટરી ઇનબોક્સ" }, false, ""],
-  ["/factory/job-cards", { en: "Job Cards", gu: "જોબ કાર્ડ" }, false, ""],
-  ["/factory/tasks", { en: "Tasks", gu: "કાર્યો" }, false, ""],
+  ["/factory", { en: "🏠 Home", gu: "🏠 હોમ" }, true, ""],
+  ["/factory/inbox?tab=new", { en: "📥 New Orders", gu: "📥 નવા ઓર્ડર" }, false, ""],
+  ["/factory/job-cards", { en: "📋 Job Cards", gu: "📋 જોબ કાર્ડ" }, false, ""],
+  ["/factory/my-work", { en: "👷 My Work", gu: "👷 મારું કામ" }, false, ""],
+  ["/factory/material-orders", { en: "📦 Material Required", gu: "📦 મટિરિયલ" }, false, ""],
+  ["/factory/job-cards?status=in_production&stage=QC", { en: "✅ QC", gu: "✅ QC" }, false, ""],
+  ["/factory/job-cards?status=ready_for_review", { en: "🚚 Ready for Dispatch", gu: "🚚 ડિસ્પેચ" }, false, "fx-hide-sm"],
+  ["/factory/completed", { en: "🏁 Completed", gu: "🏁 પૂર્ણ" }, false, "fx-hide-sm"],
+  ["/factory/master-report", { en: "📊 Reports", gu: "📊 રિપોર્ટ" }, false, ""],
   ["/factory/overview", { en: "Overview", gu: "ઓવરવ્યુ" }, false, "fx-hide-sm", "leader"],
-  ["/factory/completed", { en: "Completed", gu: "પૂર્ણ" }, false, "fx-hide-sm"],
-  ["/factory/master-report", { en: "Reports", gu: "રિપોર્ટ" }, false, ""],
 ];
 
 export function FactoryNav({ lang, leader = false }) {

@@ -1,168 +1,157 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import FactoryHeader from "./FactoryHeader.jsx";
-import FieldPhotoProof from "../../components/FieldPhotoProof.jsx";
-import { createSegmentJob, updateSegmentSpecs } from "../../lib/factoryApi";
-import { PRIORITIES, DIVISION_META, friendlyRpcError } from "./factoryConstants";
+import { factoryAiSubmit, FACTORY_AI_ALLOWED_EXTS, FACTORY_AI_MAX_FILE_MB } from "../../lib/interiorApi";
+import { listDivisions } from "../../lib/factoryApi";
+import { PRIORITIES, DIVISION_META } from "./factoryConstants";
 
 const DIVISION_BY_ROUTE = { sofa: "SOFA", modular: "MODULAR", "metal-fabrication": "METAL_FAB" };
 
-// New [Segment] Job -- a real, three-step, worker-friendly creation flow (handwritten spec: "Step 1 of 3",
-// Previous/Next, large buttons, camera over typing). Step 1 creates the real Job Card (so Steps 2-3 can attach
-// specs/photos to a real id -- staff_record_attachment requires its parent to already exist); Steps 2-3 are
-// then genuine edits against that row, and "Finish" is just navigation to the now-real, now-complete Job Card.
+// Phase 1 simplification: "New [Segment] Job" is now photo-first, not a typed form. Take/upload the PO or Order
+// Form -> the segment is already known (the page the employee is on) -> submit. The job is created immediately
+// and routed to this segment; the existing, already-built AI extraction pipeline (factory-ai-extract edge
+// function) reads the file in the background and fills the Job Card, and the existing VerificationTab on the
+// Job Card page (not rebuilt here -- it already does exactly "show only what's missing") is where anything it
+// couldn't read gets corrected. This replaces the earlier, heavier typed 3-step form with the real reuse the
+// spec asks for: "do not re-enter information already available in an uploaded photo/document".
 export default function FactorySegmentNewJob({ lang, profile }) {
   const { segment } = useParams();
   const navigate = useNavigate();
   const divisionCode = DIVISION_BY_ROUTE[segment];
   const meta = DIVISION_META[divisionCode];
-  const idemKey = useRef(`seg-${divisionCode}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const idemKey = useRef(crypto.randomUUID());
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
-  const [step, setStep] = useState(1);
-  const [job, setJob] = useState(null); // {job_id, job_order_number} once Step 1 is saved
+  const [divisionId, setDivisionId] = useState(null);
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [priority, setPriority] = useState("Normal");
+  const [requiredDate, setRequiredDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [poCount, setPoCount] = useState(0);
-  const [productCount, setProductCount] = useState(0);
+  const [done, setDone] = useState(null);
 
-  const [f, setF] = useState({
-    customerName: "", productItem: "", quantity: "", unit: "Nos", requiredDate: "", priority: "Normal",
-    poReceived: false, poNumber: "", poDate: "", notes: "",
-  });
-  const [specs, setSpecs] = useState({});
+  useEffect(() => {
+    listDivisions().then(({ data }) => setDivisionId((data || []).find((d) => d.code === divisionCode)?.id || null));
+  }, [divisionCode]);
 
-  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const setSpec = (k, v) => setSpecs((s) => ({ ...s, [k]: v }));
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
-  const step1Valid = useMemo(() => f.productItem.trim() && Number(f.quantity) > 0 && f.requiredDate, [f]);
+  const accept = useMemo(() => FACTORY_AI_ALLOWED_EXTS.map((x) => `.${x}`).join(","), []);
 
-  if (!meta) {
-    return <div className="fx-page"><div className="fx-empty">Unknown Factory segment</div></div>;
+  function pick(e, { fromCamera } = {}) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    if (!FACTORY_AI_ALLOWED_EXTS.includes(ext)) { setError(lang === "gu" ? "આ ફાઈલ પ્રકાર સપોર્ટેડ નથી" : "This file type isn't supported"); return; }
+    if (f.size > FACTORY_AI_MAX_FILE_MB * 1024 * 1024) { setError(`${lang === "gu" ? "ફાઈલ ખૂબ મોટી છે" : "File is too large"} (max ${FACTORY_AI_MAX_FILE_MB}MB)`); return; }
+    setError(null);
+    setFile(f);
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
+    void fromCamera;
   }
 
-  async function saveStep1AndNext() {
-    if (!step1Valid) { setError(lang === "gu" ? "પ્રોડક્ટ, જથ્થો અને તારીખ જરૂરી છે" : "Product, quantity and delivery date are required"); return; }
-    setError(null);
-    if (job) { setStep(2); return; } // already created -- just navigate forward
-    setBusy(true);
-    const { data, error: err } = await createSegmentJob({
-      divisionCode, customerName: f.customerName, productItem: f.productItem, quantity: Number(f.quantity), unit: f.unit,
-      requiredDate: f.requiredDate, priority: f.priority, notes: f.notes, poReceived: f.poReceived, poNumber: f.poNumber,
-      poDate: f.poDate || null, idempotencyKey: idemKey.current,
+  async function submit() {
+    if (!file) { setError(lang === "gu" ? "ફોટો અથવા ફાઇલ પસંદ કરો" : "Take a photo or choose a file first"); return; }
+    setBusy(true); setError(null);
+    const res = await factoryAiSubmit({
+      idempotencyKey: idemKey.current, projectId: null, workTitle: file.name, requiredDate: requiredDate || null,
+      priority, files: [file], divisionId,
     });
     setBusy(false);
-    if (err) { setError(friendlyRpcError(err)); return; }
-    setJob(data);
-    setStep(2);
+    if (res.error && res.step !== "extract") {
+      setError(res.step === "upload" ? (lang === "gu" ? "ફાઈલ અપલોડ નિષ્ફળ. ફરી પ્રયાસ કરો." : "Upload failed. Please retry.") : (lang === "gu" ? "કામ ન થયું. ફરી પ્રયાસ કરો." : "Something went wrong. Please retry."));
+      return;
+    }
+    setDone({ jobId: res.jobId, number: res.jobNumber });
+    idemKey.current = crypto.randomUUID();
   }
 
-  async function saveStep2AndNext() {
-    setBusy(true); setError(null);
-    const { error: err } = await updateSegmentSpecs(job.job_id, specs);
-    setBusy(false);
-    if (err) { setError(friendlyRpcError(err)); return; }
-    setStep(3);
-  }
+  if (!meta) return <div className="fx-page"><div className="fx-empty">Unknown Factory segment</div></div>;
 
-  const photosOk = productCount > 0 && (!f.poReceived || poCount > 0);
+  if (done) {
+    return (
+      <div className="fx-page">
+        <FactoryHeader lang={lang} profile={profile} title={`${meta.icon} ${lang === "gu" ? meta.gu : meta.en}`} showNav={false} />
+        <section className="fx-section">
+          <div className="msg success">
+            {lang === "gu" ? `જોબ કાર્ડ ${done.number} બનાવ્યું. વિગતો આપમેળે વંચાઈ રહી છે.` : `Job Card ${done.number} created. Details are being read automatically.`}
+          </div>
+          <div className="task-meta" style={{ gap: 8, marginTop: 10 }}>
+            <button type="button" className="btn btn-primary" style={{ minHeight: 48, width: "auto" }} onClick={() => navigate(`/factory/${segment}/${done.jobId}`)}>
+              {lang === "gu" ? "જોબ કાર્ડ ખોલો →" : "Open Job Card →"}
+            </button>
+            <button type="button" className="btn btn-outline" style={{ minHeight: 48, width: "auto" }}
+              onClick={() => { setDone(null); setFile(null); setPreview(null); setRequiredDate(""); setPriority("Normal"); }}>
+              {lang === "gu" ? "બીજું કામ ઉમેરો" : "Add Another"}
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="fx-page">
-      <FactoryHeader lang={lang} profile={profile} title={`${lang === "gu" ? "નવું" : "New"} ${lang === "gu" ? meta.gu : meta.en} ${lang === "gu" ? "કામ" : "Job"}`}
-        showNav={false} />
-      <button type="button" className="fx-tag gold" style={{ width: "auto" }} onClick={() => navigate(`/factory/${meta.route}`)}>
+      <FactoryHeader lang={lang} profile={profile} title={`${lang === "gu" ? "નવું" : "New"} ${lang === "gu" ? meta.gu : meta.en} ${lang === "gu" ? "કામ" : "Job"}`} showNav={false} />
+      <button type="button" className="fx-tag gold" style={{ width: "auto" }} onClick={() => navigate(`/factory/${segment}`)}>
         ← {lang === "gu" ? "પાછા" : "Back"}
       </button>
 
-      <div className="sub">{lang === "gu" ? `પગલું ${step} માંથી 3` : `Step ${step} of 3`}</div>
-      {error && <div className="msg error">{error}</div>}
-
-      {step === 1 && (
-        <section className="fx-section">
-          <h2>{lang === "gu" ? "ઓર્ડરની માહિતી" : "Order Information"}</h2>
-          <div className="field"><label>{lang === "gu" ? "પાર્ટી/ગ્રાહકનું નામ" : "Party / Customer Name"}</label>
-            <input type="text" value={f.customerName} onChange={(e) => set("customerName", e.target.value)} /></div>
-          <div className="field"><label>{lang === "gu" ? "પ્રોડક્ટ *" : "Product *"}</label>
-            <input type="text" value={f.productItem} onChange={(e) => set("productItem", e.target.value)} /></div>
-          <div className="task-meta" style={{ gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}><label>{lang === "gu" ? "જથ્થો *" : "Quantity *"}</label>
-              <input type="number" min="1" value={f.quantity} onChange={(e) => set("quantity", e.target.value)} /></div>
-            <div className="field" style={{ flex: 1 }}><label>{lang === "gu" ? "એકમ" : "Unit"}</label>
-              <input type="text" value={f.unit} onChange={(e) => set("unit", e.target.value)} /></div>
+      <section className="fx-section">
+        {!file && (
+          <div className="fx-hero" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <button type="button" className="fx-seg" onClick={() => cameraInputRef.current?.click()}>
+              <span className="icon">📷</span>
+              <span className="names"><span className="en">{lang === "gu" ? "ફોટો લો" : "Take Photo"}</span></span>
+            </button>
+            <button type="button" className="fx-seg" onClick={() => fileInputRef.current?.click()}>
+              <span className="icon">📁</span>
+              <span className="names"><span className="en">{lang === "gu" ? "PO/ઓર્ડર અપલોડ કરો" : "Upload Order Form/PO"}</span></span>
+            </button>
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => pick(e, { fromCamera: true })} />
+            <input ref={fileInputRef} type="file" accept={accept} style={{ display: "none" }} onChange={pick} />
           </div>
-          <div className="field"><label>{lang === "gu" ? "ડિલિવરી તારીખ *" : "Delivery Date *"}</label>
-            <input type="date" value={f.requiredDate} onChange={(e) => set("requiredDate", e.target.value)} /></div>
-          <div className="field"><label>{lang === "gu" ? "પ્રાથમિકતા" : "Priority"}</label>
-            <select value={f.priority} onChange={(e) => set("priority", e.target.value)}>
-              {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select></div>
+        )}
 
-          <h2 style={{ marginTop: 14 }}>{lang === "gu" ? "PO" : "PO"}</h2>
-          <label className="task-meta" style={{ gap: 8 }}>
-            <input type="checkbox" checked={f.poReceived} onChange={(e) => set("poReceived", e.target.checked)} style={{ width: "auto", minHeight: "auto" }} />
-            {lang === "gu" ? "PO મળ્યું છે" : "PO Received"}
-          </label>
-          {f.poReceived && (
-            <div className="task-meta" style={{ gap: 10 }}>
-              <div className="field" style={{ flex: 1 }}><label>{lang === "gu" ? "PO નંબર" : "PO Number"}</label>
-                <input type="text" value={f.poNumber} onChange={(e) => set("poNumber", e.target.value)} /></div>
-              <div className="field" style={{ flex: 1 }}><label>{lang === "gu" ? "PO તારીખ" : "PO Date"}</label>
-                <input type="date" value={f.poDate} onChange={(e) => set("poDate", e.target.value)} /></div>
+        {file && (
+          <div>
+            <div className="task-meta" style={{ justifyContent: "space-between" }}>
+              <strong>{lang === "gu" ? "પસંદ કરેલ ફાઇલ" : "Selected File"}</strong>
+              <button type="button" className="btn btn-outline" style={{ width: "auto", minHeight: 40 }}
+                onClick={() => { setFile(null); if (preview) URL.revokeObjectURL(preview); setPreview(null); }}>
+                🔄 {lang === "gu" ? "ફરી પસંદ કરો" : "Retake / Change"}
+              </button>
             </div>
-          )}
-          <div className="field"><label>{lang === "gu" ? "ખાસ સૂચનાઓ" : "Special Instructions"}</label>
-            <textarea rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></div>
+            {preview ? (
+              <img src={preview} alt="" style={{ maxWidth: "100%", maxHeight: 280, borderRadius: 10, marginTop: 8, display: "block" }} />
+            ) : (
+              <div className="sub" style={{ marginTop: 6 }}>📄 {file.name}</div>
+            )}
 
-          <button type="button" className="btn btn-primary" style={{ minHeight: 48, marginTop: 10 }} disabled={busy} onClick={saveStep1AndNext}>
-            {lang === "gu" ? "આગળ →" : "Next →"}
-          </button>
-        </section>
-      )}
+            <div className="task-meta" style={{ gap: 10, marginTop: 12 }}>
+              <div className="field" style={{ flex: 1 }}><label>{lang === "gu" ? "ડિલિવરી તારીખ" : "Delivery Date"}</label>
+                <input type="date" value={requiredDate} onChange={(e) => setRequiredDate(e.target.value)} /></div>
+              <div className="field" style={{ flex: 1 }}><label>{lang === "gu" ? "પ્રાથમિકતા" : "Priority"}</label>
+                <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+                  {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select></div>
+            </div>
+            <div className="sub" style={{ marginTop: 6 }}>
+              {lang === "gu" ? "બાકીની વિગતો આપમેળે વંચાશે — જે ન વંચાય તે જોબ કાર્ડ પર ચકાસણીમાં બતાવાશે."
+                : "The rest is read automatically — anything it can't read shows up for a quick check on the Job Card."}
+            </div>
 
-      {step === 2 && job && (
-        <section className="fx-section">
-          <h2>{lang === "gu" ? "સ્પષ્ટીકરણો" : "Specifications"}</h2>
-          <div className="sub">{job.job_order_number}</div>
-          {meta.specFields.map(([key, lbl]) => (
-            <div className="field" key={key}><label>{lang === "gu" ? lbl.gu : lbl.en}</label>
-              <input type="text" value={specs[key] || ""} onChange={(e) => setSpec(key, e.target.value)} /></div>
-          ))}
-          <div className="task-meta" style={{ gap: 8, marginTop: 10 }}>
-            <button type="button" className="btn btn-outline" style={{ minHeight: 48, width: "auto" }} onClick={() => setStep(1)}>
-              ← {lang === "gu" ? "પાછળ" : "Previous"}
-            </button>
-            <button type="button" className="btn btn-primary" style={{ minHeight: 48, width: "auto" }} disabled={busy} onClick={saveStep2AndNext}>
-              {lang === "gu" ? "આગળ →" : "Next →"}
+            <button type="button" className="btn btn-primary" style={{ minHeight: 48, marginTop: 12 }} disabled={busy} onClick={submit}>
+              {busy ? "…" : `✅ ${lang === "gu" ? "ફેક્ટરી જોબ બનાવો" : "Create Factory Job"}`}
             </button>
           </div>
-        </section>
-      )}
-
-      {step === 3 && job && (
-        <section className="fx-section">
-          <h2>{lang === "gu" ? "ફોટો પુરાવો" : "Photo Proof"}</h2>
-          <div className="sub">{job.job_order_number}</div>
-          {f.poReceived && (
-            <FieldPhotoProof lang={lang} entityId={job.job_id} sectionKey="po_photo" required myUserId={profile?.id}
-              label={lang === "gu" ? "PO ફોટો" : "PO Photo"} onCountChange={setPoCount} />
-          )}
-          <FieldPhotoProof lang={lang} entityId={job.job_id} sectionKey="product_photo" required myUserId={profile?.id}
-            label={lang === "gu" ? "પ્રોડક્ટ ફોટો" : "Product Photo"} onCountChange={setProductCount} />
-          <FieldPhotoProof lang={lang} entityId={job.job_id} sectionKey="drawing_photo" myUserId={profile?.id}
-            label={lang === "gu" ? "ડ્રોઈંગ / સંદર્ભ ફોટો" : "Drawing / Reference Photo"} />
-
-          <div className="task-meta" style={{ gap: 8, marginTop: 10 }}>
-            <button type="button" className="btn btn-outline" style={{ minHeight: 48, width: "auto" }} onClick={() => setStep(2)}>
-              ← {lang === "gu" ? "પાછળ" : "Previous"}
-            </button>
-            <button type="button" className="btn btn-primary" style={{ minHeight: 48, width: "auto" }} disabled={!photosOk}
-              onClick={() => navigate(`/factory/${meta.route}/${job.job_id}`)}>
-              🏁 {lang === "gu" ? "પૂર્ણ કરો" : "Finish"}
-            </button>
-          </div>
-          {!photosOk && <div className="sub" style={{ color: "var(--danger)", marginTop: 6 }}>{lang === "gu" ? "જરૂરી ફોટો અપલોડ કરો" : "Upload the required photo(s) to finish"}</div>}
-        </section>
-      )}
+        )}
+        {error && <div className="msg error" style={{ marginTop: 8 }}>{error}</div>}
+      </section>
     </div>
   );
 }

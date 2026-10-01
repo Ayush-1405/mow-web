@@ -2418,10 +2418,15 @@ export async function factoryAiRunExtraction(requestId) {
 // Returns { requestId, requestNumber, alreadySubmitted, step, error } --
 // `step` says how far it got so the UI can show a precise, friendly message
 // and a retry never duplicates the request.
-export async function factoryAiSubmit({ idempotencyKey, projectId, workTitle, workDescription, requiredDate, priority, files }) {
+export async function factoryAiSubmit({ idempotencyKey, projectId, workTitle, workDescription, requiredDate, priority, files, divisionId }) {
+  // p_division_id is always passed explicitly (even null) -- factory_ai_submit_request now has two overloads
+  // (the original 6-arg one is untouched/unused, kept only because this environment can't DROP FUNCTION; see
+  // mvp_pilot_factory_phase1_simplify_v2_85.sql). Always naming all 7 params keeps every caller unambiguously
+  // resolved to the one real (7-arg) function, instead of risking a "could not choose a best candidate" error.
   const { data, error } = await supabase.rpc("factory_ai_submit_request", {
     p_idempotency_key: idempotencyKey, p_project_id: projectId || null, p_work_title: workTitle,
     p_work_description: workDescription || null, p_required_date: requiredDate || null, p_priority: priority || "Normal",
+    p_division_id: divisionId || null,
   });
   if (error) return { step: "create", error };
   const row = Array.isArray(data) ? data[0] : data;

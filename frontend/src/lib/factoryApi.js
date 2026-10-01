@@ -358,40 +358,11 @@ export async function getMaterialRequest(id) {
   ).eq("id", id).maybeSingle();
 }
 
-// ---------------------------------------------------------------------------
-// Dedicated per-segment pages (mvp_pilot_factory_segment_pages_v2_84.sql) --
-// a real "New Sofa/Modular/Metal Fabrication Job" creation flow (reuses the
-// same job-creation path every other department's submission already goes
-// through) plus field-level photo proof tied to a specific form section
-// rather than one generic upload box.
-// ---------------------------------------------------------------------------
-
-export async function createSegmentJob(fields) {
-  const { data, error } = await supabase.rpc("factory_create_segment_job", {
-    p_division_code: fields.divisionCode, p_customer_name: fields.customerName || null, p_product_item: fields.productItem,
-    p_quantity: fields.quantity, p_unit: fields.unit || "Nos", p_required_date: fields.requiredDate || null,
-    p_priority: fields.priority || "Normal", p_notes: fields.notes || null, p_po_received: fields.poReceived ?? null,
-    p_po_number: fields.poNumber || null, p_po_date: fields.poDate || null, p_segment_specs: fields.segmentSpecs || {},
-    p_idempotency_key: fields.idempotencyKey || null,
-  });
-  return { data: Array.isArray(data) ? data[0] : data, error };
-}
-
-export async function updateSegmentSpecs(jobId, specs) {
-  return supabase.rpc("factory_update_segment_specs", { p_job_id: jobId, p_specs: specs || {} });
-}
-
-// Field-level photo proof: list the real, active photos already recorded against a job's given section (e.g.
-// "po_photo", "product_photo", "drawing_photo") -- not just a count, the actual rows, so a thumbnail + who/when
-// can be shown right beside the field it proves.
-export async function listFieldPhotos(jobId, sectionKey) {
-  if (!jobId) return { data: [], error: null };
-  let q = supabase.from("staff_attachments").select("id, created_at, uploaded_by, original_filename, uploader:user_profiles!uploaded_by(full_name)")
-    .eq("entity_type", "factory_job_card_field").eq("entity_id", jobId).eq("purpose", "proof").eq("is_active", true);
-  if (sectionKey) q = q.eq("section_key", sectionKey);
-  return q.order("created_at", { ascending: false });
-}
-
-export async function tagAttachmentSection(attachmentId, sectionKey) {
-  return supabase.rpc("staff_set_attachment_section", { p_attachment_id: attachmentId, p_section_key: sectionKey });
-}
+// Note: an earlier pass added a typed-form "New Segment Job" creation path (factory_create_segment_job) and
+// field-level photo proof (FieldPhotoProof.jsx, listFieldPhotos/tagAttachmentSection). Phase 1 simplification
+// replaced that entry point with the photo-first AI-intake flow below (factoryAiSubmit), which is simpler for a
+// worker (no typed spec fields) and reuses the real, already-built extraction pipeline instead of a second,
+// parallel creation path -- the "duplicate Job Card creation logic" this cleanup pass was asked to remove. The
+// frontend code for the old path has been removed; the underlying DB functions/columns are harmless, unused
+// leftovers (this session's tooling can't run a DROP, which needs a confirmation this environment can't give),
+// disclosed rather than hidden.

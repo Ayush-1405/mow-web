@@ -761,6 +761,7 @@ export default function App() {
       <Route path="/factory" element={deptPage("FACTORY")} />
       <Route path="/factory/inbox" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="inbox" />)} />
       <Route path="/factory/job-cards" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="jobcards" />)} />
+      <Route path="/factory/my-work" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="mytasks" />)} />
       <Route path="/factory/my-tasks" element={<Navigate to="/factory/tasks" replace />} />
       <Route path="/factory/tasks" element={deptModulePage("FACTORY", <FactoryTasks lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/factory/overview" element={deptModulePage("FACTORY", <FactoryWorkOverview lang={lang} profile={profile} lookups={lookups} />)} />
