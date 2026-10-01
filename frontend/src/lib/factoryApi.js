@@ -38,7 +38,7 @@ export async function listFactoryLocations() {
 }
 
 // tab: new | verify | accepted | assigned | in_production | returned | delayed | completed | done_today | active | all | mine
-export async function listJobCards({ tab = "all", search, sourceDept, status, location, division, assignee, dueFrom, dueTo, priority, delayed, profileId, from = 0, to = 29 } = {}) {
+export async function listJobCards({ tab = "all", search, sourceDept, status, stage, location, division, assignee, dueFrom, dueTo, priority, delayed, profileId, from = 0, to = 29 } = {}) {
   let q = supabase.from("factory_job_cards_v").select(LIST_COLUMNS, { count: "exact" }).eq("is_test_data", false);
   switch (tab) {
     case "new": q = q.eq("factory_status", "pending_verification").is("viewed_at", null); break;
@@ -62,6 +62,7 @@ export async function listJobCards({ tab = "all", search, sourceDept, status, lo
     default: break;
   }
   if (status) q = q.eq("factory_status", status);
+  if (stage) q = q.eq("current_stage", stage);
   if (sourceDept) q = q.eq("source_department_id", sourceDept);
   if (location) q = q.eq("factory_location_id", location);
   if (division) q = q.eq("division_id", division);
@@ -303,6 +304,31 @@ export async function listMaterialRequests({ tab = "open", jobCardId, search } =
   const s = safeSearch(search);
   if (s) q = q.or(`material.ilike.%${s}%,request_number.ilike.%${s}%,order_po_reference.ilike.%${s}%`);
   return q.order("created_at", { ascending: false }).limit(200);
+}
+
+// ---------------------------------------------------------------------------
+// Production-stage workflow (mvp_pilot_factory_stage_workflow_v2_83.sql) --
+// Start/Complete buttons per division-configured stage, with a server-side
+// mandatory-photo gate and automatic completion-percentage recalculation.
+// ---------------------------------------------------------------------------
+
+export async function listJobStages(jobId) {
+  if (!jobId) return { data: [], error: null };
+  const { data, error } = await supabase.rpc("factory_list_job_stages", { p_job_id: jobId });
+  return { data: data || [], error };
+}
+
+export async function startStage(jobId, stageCode, note) {
+  return supabase.rpc("factory_start_stage", { p_job_id: jobId, p_stage_code: stageCode, p_note: note || null });
+}
+
+export async function completeStage(jobId, stageCode, note) {
+  return supabase.rpc("factory_complete_stage", { p_job_id: jobId, p_stage_code: stageCode, p_note: note || null });
+}
+
+export async function getQcPendingCount(locationId) {
+  const { data, error } = await supabase.rpc("factory_qc_pending_count", { p_location: locationId || null });
+  return { data: data ?? null, error };
 }
 
 export async function createMaterialRequest(fields) {

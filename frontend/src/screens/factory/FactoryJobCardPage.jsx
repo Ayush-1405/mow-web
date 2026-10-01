@@ -4,12 +4,14 @@ import { supabase } from "../../lib/supabase";
 import FactoryHeader from "./FactoryHeader.jsx";
 import FactoryJobTasks from "./FactoryJobTasks.jsx";
 import ChatButton from "../../components/ChatButton.jsx";
+import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
+import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
 import {
   ActivityTab, AssignmentTab, FilePreview, FilesTab, ItemsTab, KeyDrawings, ProductionUpdate, VerificationTab,
 } from "./FactoryJobParts.jsx";
 import {
   getJobCard, jobTransition, listFactoryLocations, listFactoryPeople, listJobEvents, listJobFiles, listJobItems, markViewed,
-  subscribeJobDetail, updateDetails, listDivisions, setJobDivision,
+  subscribeJobDetail, updateDetails, listDivisions, setJobDivision, listJobStages, startStage, completeStage,
 } from "../../lib/factoryApi";
 import { PRIORITIES, STATUS, fmtDate, fmtDateTime, friendlyRpcError, label, roleInfo } from "./factoryConstants";
 
@@ -85,6 +87,110 @@ function DivisionPicker({ job, lang, isHead, onDone }) {
         </button>
       ))}
       {msg && <span className="msg error" style={{ padding: "2px 6px" }}>{msg}</span>}
+    </div>
+  );
+}
+
+// The real, button-based "WIP Stage Updates" workflow (handwritten spec): one row per division-configured stage,
+// Start/Complete buttons, and a mandatory photo before a photo-required stage can complete -- the server (not
+// this component) is the actual gate; a disabled button here is just a head start on the same rule.
+function StagesTab({ job, lang, canAct, onDone }) {
+  const [stages, setStages] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [showAll, setShowAll] = useState(false);
+  const [note, setNote] = useState("");
+
+  const load = useCallback(() => {
+    listJobStages(job.id).then(({ data }) => setStages(data || []));
+  }, [job.id]);
+  useEffect(() => { load(); }, [load, job.updated_at]);
+
+  if (!job.division_id) {
+    return <div className="fx-empty">{lang === "gu" ? "પહેલા ફેક્ટરી સેગમેન્ટ પસંદ કરો (ઉપર)" : "Select a Factory segment above before tracking production stages"}</div>;
+  }
+  if (job.factory_status !== "in_production" && job.factory_status !== "blocked") {
+    return <div className="fx-empty">{lang === "gu" ? "સ્ટેજ ફક્ત ઉત્પાદન ચાલુ હોય ત્યારે જ અપડેટ થાય છે" : "Stages can be tracked once this Job Card is in production"}</div>;
+  }
+  if (stages === null) return <div className="skeleton-block" style={{ height: 120 }} />;
+
+  const activeIdx = stages.findIndex((s) => s.status !== "completed");
+  const current = activeIdx >= 0 ? stages[activeIdx] : null;
+  const rest = stages.filter((_, i) => i !== activeIdx);
+
+  async function doStart(s) {
+    setBusy(true); setMsg(null);
+    const { error } = await startStage(job.id, s.stage_code, null);
+    setBusy(false);
+    if (error) { setMsg(friendlyRpcError(error)); return; }
+    load(); onDone?.();
+  }
+  async function doComplete(s) {
+    setBusy(true); setMsg(null);
+    const { error } = await completeStage(job.id, s.stage_code, note || null);
+    setBusy(false);
+    if (error) { setMsg(friendlyRpcError(error)); return; }
+    setNote("");
+    load(); onDone?.();
+  }
+
+  function Row({ s, big }) {
+    const badgeClass = s.status === "completed" ? "ok" : s.status === "in_progress" ? "info" : "";
+    const photoBlocked = s.requires_photo && s.status === "in_progress" && s.photo_count === 0;
+    return (
+      <div className={big ? "fx-section" : "fx-action"} style={big ? { marginTop: 10 } : { marginTop: 8 }}>
+        <div className="task-meta" style={{ justifyContent: "space-between" }}>
+          <strong>{lang === "gu" ? s.name_gu : s.name_en}</strong>
+          <span className={`badge ${badgeClass}`}>
+            {s.status === "completed" ? (lang === "gu" ? "પૂર્ણ" : "Completed")
+              : s.status === "in_progress" ? (lang === "gu" ? "ચાલુ" : "In Progress")
+              : (lang === "gu" ? "બાકી" : "Pending")}
+          </span>
+        </div>
+        {s.requires_photo && <span className="fx-tag gold" style={{ marginTop: 4 }}>📷 {lang === "gu" ? "ફોટો જરૂરી" : "Photo required"}</span>}
+        {s.status === "completed" && (
+          <div className="sub" style={{ marginTop: 4 }}>
+            {s.completed_by_name || "—"} · {fmtDateTime(s.completed_at)}
+          </div>
+        )}
+        {big && s.status === "in_progress" && (
+          <div style={{ marginTop: 8 }}>
+            <div className="sub">{lang === "gu" ? `શરૂ: ${s.started_by_name || "—"}` : `Started by ${s.started_by_name || "—"}`} · {fmtDateTime(s.started_at)}</div>
+            {s.stage_update_id && (
+              <>
+                <ProofPhotoUpload lang={lang} entityType="factory_job_card_stage" entityId={s.stage_update_id} existingCount={s.photo_count} onUploaded={load} />
+                <ProofPhotoViewer lang={lang} entityType="factory_job_card_stage" entityId={s.stage_update_id} />
+              </>
+            )}
+            {canAct && (
+              <>
+                <input type="text" placeholder={lang === "gu" ? "ટૂંકી નોંધ (વૈકલ્પિક)" : "Short note (optional)"} value={note} onChange={(e) => setNote(e.target.value)} style={{ marginTop: 6 }} />
+                <button type="button" className="btn btn-primary" style={{ marginTop: 6, minHeight: 48 }} disabled={busy || photoBlocked} onClick={() => doComplete(s)}>
+                  🔄 {lang === "gu" ? "સ્ટેજ પૂર્ણ કરો" : "Complete Stage"}
+                </button>
+                {photoBlocked && <div className="sub" style={{ color: "var(--danger)" }}>{lang === "gu" ? "પૂર્ણ કરવા માટે ફોટો જરૂરી છે" : "A photo is required before this stage can be completed"}</div>}
+              </>
+            )}
+          </div>
+        )}
+        {big && s.status === "pending" && canAct && (
+          <button type="button" className="btn btn-primary" style={{ marginTop: 8, minHeight: 48 }} disabled={busy} onClick={() => doStart(s)}>
+            ▶️ {lang === "gu" ? "સ્ટેજ શરૂ કરો" : "Start Stage"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="sub">{job.completion_percentage ?? 0}% {lang === "gu" ? "પૂર્ણ" : "complete"}</div>
+      {current ? <Row s={current} big /> : <div className="fx-empty">{lang === "gu" ? "બધા સ્ટેજ પૂર્ણ" : "All stages completed"}</div>}
+      {msg && <div className="msg error" style={{ marginTop: 8 }}>{msg}</div>}
+      <button type="button" className="btn btn-outline" style={{ marginTop: 10, width: "auto" }} onClick={() => setShowAll((v) => !v)}>
+        {showAll ? (lang === "gu" ? "ઓછું બતાવો" : "Hide other stages") : (lang === "gu" ? "બધા સ્ટેજ બતાવો" : `Show all stages (${stages.length})`)}
+      </button>
+      {showAll && rest.map((s) => <Row key={s.stage_code} s={s} />)}
     </div>
   );
 }
@@ -242,6 +348,7 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
   const tabs = [
     ["summary", "Summary"], ["items", `Items (${items.length})`], ["files", `Drawings & Files (${files.length})`],
     ["verify", `Verification${job.missing_count > 0 && ["pending_verification", "needs_clarification"].includes(job.factory_status) ? ` (${job.missing_count})` : ""}`],
+    ["stages", `Stages${job.completion_percentage ? ` (${job.completion_percentage}%)` : ""}`],
     ["tasks", "Tasks"], ["assign", "Assignment"], ["activity", "Activity"],
   ];
 
@@ -302,6 +409,7 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
         {tab === "items" && <ItemsTab jobId={job.id} items={items} canEdit={canEditItems} onChanged={load} />}
         {tab === "files" && <FilesTab jobId={job.id} files={files} canUpload={canUpload} onOpen={setPreview} onChanged={load} />}
         {tab === "verify" && <VerificationTab job={job} items={items} files={files} onGoItems={() => setTab("items")} onGoFiles={() => setTab("files")} />}
+        {tab === "stages" && <StagesTab job={job} lang={lang} canAct={role.isManager || mine} onDone={load} />}
         {tab === "tasks" && <FactoryJobTasks job={job} lang={lang} lookups={lookups} canCreate={role.isManager} />}
         {tab === "assign" && <AssignmentTab key={job.updated_at} job={job} people={people} canAssign={role.isManager} onDone={load} />}
         {tab === "activity" && <ActivityTab jobId={job.id} events={events} canComment onChanged={load} />}

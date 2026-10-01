@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import FactoryHeader from "./FactoryHeader.jsx";
 import {
   getDashboardCounts, getDashboardExtraCounts, getMyActions, listFactoryLocations, listJobCards, subscribeJobs,
-  getDivisionDashboardCounts, listMaterialRequests,
+  getDivisionDashboardCounts, listMaterialRequests, getQcPendingCount,
 } from "../../lib/factoryApi";
 import { ACTION_LABEL, STATUS, label, fmtDate, roleInfo } from "./factoryConstants";
 
@@ -39,7 +39,7 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    const [c, ec, a, l, dv, mr, pj, rc] = await Promise.all([
+    const [c, ec, a, l, dv, mr, pj, rc, qc] = await Promise.all([
       getDashboardCounts(location),
       getDashboardExtraCounts(location),
       getMyActions(),
@@ -48,6 +48,7 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
       listMaterialRequests({ tab: "open" }),
       listJobCards({ tab: "active", location, priority: ["Urgent", "Emergency", "High"], from: 0, to: 4 }),
       listJobCards({ tab: "completed", location, from: 0, to: 4 }),
+      getQcPendingCount(location),
     ]);
     if (c.error || a.error || l.error) {
       console.error("[FactoryDashboard] load failed", { counts: c.error?.message, actions: a.error?.message, latest: l.error?.message });
@@ -60,7 +61,7 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
     }
     // Division tiles and everything below them degrade quietly on their own errors -- never block or error the
     // rest of an already-working dashboard over a piece that depends on a newer migration/RPC.
-    setExtraCounts(ec.error ? null : ec.data);
+    setExtraCounts(ec.error ? null : { ...ec.data, qc_pending: qc.error ? null : qc.data });
     setDivisions(dv.error ? [] : dv.data || []);
     setMaterialShortages(mr.error ? [] : mr.data || []);
     setPriorityJobs(pj.error ? [] : pj.data || []);
@@ -149,16 +150,16 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
     </section>
   );
 
-  // Production status -- every card is a real, clickable, filtered destination. "QC Pending" is deliberately
-  // left out of this pass: there is no structured per-stage tracking yet (job_card_stage_updates does not exist
-  // -- the handwritten spec's own stage buttons need that table, which is real, separate work, disclosed as not
-  // yet built rather than faked with an unreliable free-text heuristic).
+  // Production status -- every card is a real, clickable, filtered destination. "QC Pending" is now backed by
+  // real data (job_card_stage_updates / current_stage, built in mvp_pilot_factory_stage_workflow_v2_83.sql) --
+  // previously disclosed as not derivable, now it is.
   const cards = [
     ["new_requests", { en: "New Work", gu: "નવું કામ" }, `/factory/inbox?tab=new${q}`, "hot"],
     ["accepted_unassigned", { en: "Unassigned", gu: "સોંપવાનું બાકી" }, `/factory/inbox?tab=accepted${q}`, ""],
     ["material_pending", { en: "Material Pending", gu: "મટિરિયલ બાકી" }, `/factory/material-to-order`, "warn"],
     ["assigned", { en: "Ready to Start", gu: "શરૂ કરવા તૈયાર" }, `/factory/inbox?tab=assigned${q}`, ""],
     ["in_production", { en: "In Production", gu: "ઉત્પાદનમાં" }, `/factory/inbox?tab=in_production${q}`, ""],
+    ["qc_pending", { en: "QC Pending", gu: "QC બાકી" }, `/factory/job-cards?status=in_production&stage=QC${q}`, "warn"],
     ["blocked", { en: "Blocked", gu: "અટકેલું" }, `/factory/job-cards?status=blocked${q}`, "warn"],
     ["delayed_blocked", { en: "Delayed", gu: "વિલંબિત" }, `/factory/inbox?tab=delayed${q}`, "warn"],
     ["ready_for_dispatch", { en: "Ready for Dispatch", gu: "ડિસ્પેચ માટે તૈયાર" }, `/factory/job-cards?status=ready_for_review${q}`, ""],
