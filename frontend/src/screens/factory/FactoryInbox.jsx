@@ -70,6 +70,7 @@ export default function FactoryInbox({ lang, profile, lookups, mode = "inbox" })
   const tabs = MODE_TABS[mode] || null;
   const tab = tabs ? (tabs.some(([k]) => k === params.get("tab")) ? params.get("tab") : MODE_DEFAULT[mode]) : MODE_DEFAULT[mode];
   const loc = params.get("loc") || null;
+  const division = params.get("division") || null;
 
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -90,7 +91,7 @@ export default function FactoryInbox({ lang, profile, lookups, mode = "inbox" })
   useEffect(() => { listFactoryLocations().then(({ data }) => setLocations(data || [])); }, []);
   useEffect(() => { if (mode === "mytasks") supabase.rpc("factory_my_profile_id").then(({ data }) => setMyProfile(data || "none")); }, [mode]);
   useEffect(() => { if (role.isManager) listFactoryPeople().then(({ data }) => setPeople(data || [])); }, [role.isManager]);
-  useEffect(() => { setLimitTo(PAGE); }, [tab, debounced, f, loc, mode]);
+  useEffect(() => { setLimitTo(PAGE); }, [tab, debounced, f, loc, division, mode]);
 
   const load = useCallback(async () => {
     if (mode === "mytasks" && !myProfile) return;
@@ -99,7 +100,7 @@ export default function FactoryInbox({ lang, profile, lookups, mode = "inbox" })
     setRefreshing(true);
     const [list, c] = await Promise.all([
       listJobCards({
-        tab, search: debounced, sourceDept: f.dept, status: f.status, location: loc, assignee: f.assignee, dueFrom: f.dueFrom, dueTo: f.dueTo,
+        tab, search: debounced, sourceDept: f.dept, status: f.status, location: loc, division, assignee: f.assignee, dueFrom: f.dueFrom, dueTo: f.dueTo,
         priority: f.priority, delayed: f.delayed === "yes" ? true : f.delayed === "no" ? false : undefined,
         profileId: myProfile && myProfile !== "none" ? myProfile : null, from: 0, to: limitTo - 1,
       }),
@@ -116,7 +117,7 @@ export default function FactoryInbox({ lang, profile, lookups, mode = "inbox" })
       if (c.data) setCounts(c.data);
     }
     setRefreshing(false);
-  }, [mode, tab, debounced, f, loc, limitTo, myProfile]);
+  }, [mode, tab, debounced, f, loc, division, limitTo, myProfile]);
 
   useEffect(() => { load(); }, [load]);
   const loadRef = useRef(load);

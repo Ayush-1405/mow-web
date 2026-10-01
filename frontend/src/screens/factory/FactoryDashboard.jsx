@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import FactoryHeader from "./FactoryHeader.jsx";
-import { getDashboardCounts, getMyActions, listFactoryLocations, listJobCards, subscribeJobs } from "../../lib/factoryApi";
+import {
+  getDashboardCounts, getMyActions, listFactoryLocations, listJobCards, subscribeJobs,
+  getDivisionDashboardCounts, listMaterialRequests,
+} from "../../lib/factoryApi";
 import { ACTION_LABEL, STATUS, label, fmtDate, roleInfo } from "./factoryConstants";
 
 // The whole page answers six questions from real data: what arrived, what
@@ -20,6 +23,8 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
   const [locations, setLocations] = useState([]);
   const [location, setLocation] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  const [divisions, setDivisions] = useState(null);
+  const [materialOpenCount, setMaterialOpenCount] = useState(null);
 
   useEffect(() => {
     listFactoryLocations().then(({ data }) => setLocations(data || []));
@@ -27,10 +32,12 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    const [c, a, l] = await Promise.all([
+    const [c, a, l, dv, mto] = await Promise.all([
       getDashboardCounts(location),
       getMyActions(),
       listJobCards({ tab: "active", location, from: 0, to: 4 }),
+      getDivisionDashboardCounts(location),
+      listMaterialRequests({ tab: "open" }),
     ]);
     if (c.error || a.error || l.error) {
       console.error("[FactoryDashboard] load failed", { counts: c.error?.message, actions: a.error?.message, latest: l.error?.message });
@@ -41,7 +48,10 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
       setActions(a.data || []);
       setLatest(l.data || []);
     }
-    setRefreshing(false);
+    // Division tiles and the Material-to-Order count degrade quietly (the migration they depend on may not be
+    // live yet in every environment) -- never block or error the rest of an already-working dashboard over them.
+    setDivisions(dv.error ? [] : dv.data || []);
+    setMaterialOpenCount(mto.error ? null : (mto.data || []).length);
   }, [location]);
 
   useEffect(() => { load(); }, [load]);
@@ -101,10 +111,32 @@ export default function FactoryDashboard({ lang, profile, lookups }) {
     </div>
   );
 
+  const divisionTiles = (
+    <section className="fx-section" aria-label="Production divisions">
+      <h2>{lang === "gu" ? "ઉત્પાદન વિભાગ" : "Divisions"}</h2>
+      <div className="fx-cards" aria-label="Production divisions">
+        {divisions === null && <div className="skeleton-block" style={{ height: 70 }} />}
+        {divisions && divisions.map((d) => (
+          <button key={d.division_id} type="button" className={`fx-card ${d.delayed_blocked > 0 ? "warn" : ""}`}
+            onClick={() => navigate(`/factory/job-cards?division=${d.division_id}${q}`)}>
+            <span className="n">{d.total_active ?? 0}</span>
+            <span className="l">{lang === "gu" ? d.division_name_gu : d.division_name_en}</span>
+          </button>
+        ))}
+        <button type="button" className={`fx-card ${materialOpenCount > 0 ? "hot" : ""}`} onClick={() => navigate("/factory/material-to-order")}>
+          <span className="n">{materialOpenCount ?? "…"}</span>
+          <span className="l">{lang === "gu" ? "મટિરિયલ ઓર્ડર" : "Material to Order"}</span>
+        </button>
+      </div>
+    </section>
+  );
+
   return (
     <div className="fx-page">
       <FactoryHeader lang={lang} profile={profile} title={lang === "gu" ? "ફેક્ટરી ડેશબોર્ડ" : "Factory Dashboard"}
         onRefresh={load} refreshing={refreshing} locations={locations} location={location} onLocation={setLocation} />
+
+      {divisionTiles}
 
       {error && (
         <div className="msg error">

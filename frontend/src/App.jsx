@@ -113,6 +113,7 @@ const FactoryProductTimeTracking = lazy(() => import("./screens/factory/FactoryP
 const FactoryProductCosting = lazy(() => import("./screens/factory/FactoryProductCosting.jsx"));
 const FactoryRawMaterialAvailability = lazy(() => import("./screens/factory/FactoryRawMaterialAvailability.jsx"));
 const FactoryMaterialIssue = lazy(() => import("./screens/factory/FactoryMaterialIssue.jsx"));
+const FactoryMaterialToOrder = lazy(() => import("./screens/factory/FactoryMaterialToOrder.jsx"));
 const FactoryMachineTracking = lazy(() => import("./screens/factory/FactoryMachineTracking.jsx"));
 const FactoryTransfer = lazy(() => import("./screens/factory/FactoryTransfer.jsx"));
 const FactoryDrawings = lazy(() => import("./screens/factory/FactoryDrawings.jsx"));
@@ -780,6 +781,7 @@ export default function App() {
       <Route path="/factory/product-costing" element={deptModulePage("FACTORY", <FactoryProductCosting lang={lang} profile={profile} />)} />
       <Route path="/factory/raw-material-availability" element={deptModulePage("FACTORY", <FactoryRawMaterialAvailability lang={lang} profile={profile} />)} />
       <Route path="/factory/material-issue" element={deptModulePage("FACTORY", <FactoryMaterialIssue lang={lang} profile={profile} />)} />
+      <Route path="/factory/material-to-order" element={deptModulePage("FACTORY", <FactoryMaterialToOrder lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/factory/machine-tracking" element={deptModulePage("FACTORY", <FactoryMachineTracking lang={lang} profile={profile} />)} />
       <Route path="/factory/transfer" element={deptModulePage("FACTORY", <FactoryTransfer lang={lang} profile={profile} />)} />
       <Route path="/factory/drawings" element={deptModulePage("FACTORY", <FactoryDrawings lang={lang} profile={profile} />)} />

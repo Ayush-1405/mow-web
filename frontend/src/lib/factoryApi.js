@@ -38,7 +38,7 @@ export async function listFactoryLocations() {
 }
 
 // tab: new | verify | accepted | assigned | in_production | returned | delayed | completed | done_today | active | all | mine
-export async function listJobCards({ tab = "all", search, sourceDept, status, location, assignee, dueFrom, dueTo, priority, delayed, profileId, from = 0, to = 29 } = {}) {
+export async function listJobCards({ tab = "all", search, sourceDept, status, location, division, assignee, dueFrom, dueTo, priority, delayed, profileId, from = 0, to = 29 } = {}) {
   let q = supabase.from("factory_job_cards_v").select(LIST_COLUMNS, { count: "exact" }).eq("is_test_data", false);
   switch (tab) {
     case "new": q = q.eq("factory_status", "pending_verification").is("viewed_at", null); break;
@@ -64,6 +64,7 @@ export async function listJobCards({ tab = "all", search, sourceDept, status, lo
   if (status) q = q.eq("factory_status", status);
   if (sourceDept) q = q.eq("source_department_id", sourceDept);
   if (location) q = q.eq("factory_location_id", location);
+  if (division) q = q.eq("division_id", division);
   if (assignee) q = q.or(`assigned_factory_coordinator.eq.${assignee},second_assignee_coordinator.eq.${assignee}`);
   if (dueFrom) q = q.gte("required_date", dueFrom);
   if (dueTo) q = q.lte("required_date", dueTo);
@@ -255,4 +256,64 @@ export function subscribeFactoryTasks(name, onChange) {
     subscribeTable(`${name}-jobs`, "inhouse_production_requests", null, fire),
   ];
   return () => { window.clearTimeout(timer); unsubs.forEach((u) => u()); };
+}
+
+// ---------------------------------------------------------------------------
+// Production Divisions (Sofa / Modular / Metal Fabrication) + division-scoped
+// stage templates + Material-to-Order. Backend: mvp_pilot_factory_divisions_material_v2_82b.sql.
+// Reads go through plain RLS-scoped selects (reference tables), writes through
+// SECURITY DEFINER RPCs that re-validate role server-side — same convention
+// as every other data-layer function in this file.
+// ---------------------------------------------------------------------------
+
+export async function listDivisions() {
+  const { data, error } = await supabase.from("production_divisions").select("*").eq("is_active", true).order("sort_order");
+  return { data: data || [], error };
+}
+
+export async function getDivisionDashboardCounts(locationId) {
+  const { data, error } = await supabase.rpc("factory_division_dashboard_counts", { p_location: locationId || null });
+  return { data: data || [], error };
+}
+
+export async function setJobDivision(jobId, divisionId) {
+  return supabase.rpc("factory_set_job_division", { p_job_id: jobId, p_division_id: divisionId });
+}
+
+export async function listStageTemplates(divisionId) {
+  if (!divisionId) return { data: [], error: null };
+  const { data, error } = await supabase.rpc("factory_list_stage_templates", { p_division_id: divisionId });
+  return { data: data || [], error };
+}
+
+// tab: open (REQUESTED/ORDERED/PARTIALLY_RECEIVED) | all
+export async function listMaterialRequests({ tab = "open", jobCardId, search } = {}) {
+  let q = supabase.from("factory_material_requests").select(
+    "*, requesting_department:departments(name_en,name_gu), job_card:inhouse_production_requests(job_order_number,product_item)"
+  ).eq("is_active", true);
+  if (tab === "open") q = q.in("status", ["REQUESTED", "ORDERED", "PARTIALLY_RECEIVED"]);
+  if (jobCardId) q = q.eq("job_card_id", jobCardId);
+  const s = safeSearch(search);
+  if (s) q = q.or(`material.ilike.%${s}%,request_number.ilike.%${s}%,order_po_reference.ilike.%${s}%`);
+  return q.order("created_at", { ascending: false }).limit(200);
+}
+
+export async function createMaterialRequest(fields) {
+  return supabase.rpc("factory_create_material_request", {
+    p_material: fields.material, p_requesting_department_id: fields.requestingDepartmentId, p_quantity: fields.quantity,
+    p_unit: fields.unit || "Nos", p_order_po_reference: fields.orderPoReference || null, p_priority: fields.priority || "Normal",
+    p_required_date: fields.requiredDate || null, p_job_card_id: fields.jobCardId || null, p_supplier: fields.supplier || null,
+    p_notes: fields.notes || null,
+  });
+}
+
+export async function updateMaterialRequestStatus(id, status, notes) {
+  return supabase.rpc("factory_update_material_request_status", { p_id: id, p_status: status, p_notes: notes || null });
+}
+
+export function subscribeMaterialRequests(name, onChange) {
+  let timer = null;
+  const fire = () => { window.clearTimeout(timer); timer = window.setTimeout(onChange, 250); };
+  const unsub = subscribeTable(name, "factory_material_requests", null, fire);
+  return () => { window.clearTimeout(timer); unsub(); };
 }

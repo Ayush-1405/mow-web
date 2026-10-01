@@ -53,6 +53,7 @@ export const MODULE_ROUTES = {
     "Drawings": "/factory/drawings",
     "Raw Material Availability": "/factory/raw-material-availability",
     "Material Issue": "/factory/material-issue",
+    "Material to Order": "/factory/material-to-order",
     "Machine Tracking": "/factory/machine-tracking",
     "WIP Stages": "/factory/wip-stages",
     "Worker Productivity": "/factory/worker-productivity",
