@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import {
-  listMaterialRequests, createMaterialRequest, updateMaterialRequestStatus, subscribeMaterialRequests,
-  searchJobCards,
+  listMaterialRequests, createMaterialRequest, updateMaterialRequestStatus, updateMaterialRequestFields,
+  subscribeMaterialRequests, searchJobCards, getMaterialRequest,
 } from "../../lib/factoryApi";
-import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
 import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
+import FieldPhotoProof from "../../components/FieldPhotoProof.jsx";
 
 const PRIORITIES = ["Normal", "High", "Urgent", "Emergency"];
 const STATUSES = ["REQUESTED", "ORDERED", "PARTIALLY_RECEIVED", "RECEIVED", "CANCELLED"];
@@ -14,6 +14,91 @@ const STATUS_BADGE = {
   REQUESTED: "ASSIGNED", ORDERED: "IN_PROGRESS", PARTIALLY_RECEIVED: "IN_PROGRESS", RECEIVED: "VERIFIED", CANCELLED: "RETURNED",
 };
 const emptyForm = { material: "", requestingDepartmentId: "", orderPoReference: "", priority: "Normal", requiredDate: "", quantity: "", unit: "Nos", jobCardId: "", jobCardLabel: "", supplier: "", notes: "" };
+
+// Latest handwritten-spec redesign: once a request exists, Material / Requesting Department / Order-PO / Party
+// Name / Person Name / Priority are six separate feature buttons, each with its own mandatory photo -- not one
+// combined form with a single photo box. Quantity/unit were already collected to create the row (the DB requires
+// them); these six sections are purely about the fields the spec names.
+const MATERIAL_FEATURES = [
+  ["material", "📦", { en: "Material", gu: "મટિરિયલ" }],
+  ["requestingDepartmentId", "🏭", { en: "Department", gu: "વિભાગ" }],
+  ["orderPoReference", "📄", { en: "Order / PO", gu: "ઓર્ડર / PO" }],
+  ["party_name", "🧾", { en: "Party Name", gu: "પાર્ટી નામ" }],
+  ["person_name", "🙋", { en: "Person Name", gu: "વ્યક્તિ નામ" }],
+  ["priority", "🚩", { en: "Priority", gu: "પ્રાયોરિટી" }],
+];
+
+function MaterialFieldSections({ row, lang, lookups, onSaved }) {
+  const [active, setActive] = useState(null);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  function open(key) {
+    setActive(key);
+    setMsg(null);
+    setValue(
+      key === "requestingDepartmentId" ? row.requesting_department_id || ""
+        : key === "orderPoReference" ? row.order_po_reference || ""
+        : row[key] || ""
+    );
+  }
+
+  async function save(key) {
+    setSaving(true); setMsg(null);
+    const patchKey = key === "requestingDepartmentId" ? "requesting_department_id" : key === "orderPoReference" ? "order_po_reference" : key;
+    const { error } = await updateMaterialRequestFields(row.id, { [patchKey]: value });
+    setSaving(false);
+    if (error) { setMsg({ type: "error", text: error.message }); return; }
+    setActive(null);
+    onSaved?.();
+  }
+
+  const current = (key) => (key === "requestingDepartmentId" ? row.requesting_department_id : key === "orderPoReference" ? row.order_po_reference : row[key]);
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="fx-cards" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        {MATERIAL_FEATURES.map(([key, icon, name]) => (
+          <button key={key} type="button" className="fx-seg" style={{ padding: 10, minHeight: 72 }} onClick={() => open(key)}>
+            <div style={{ fontSize: 22 }}>{icon}</div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{lang === "gu" ? name.gu : name.en}</div>
+            <div className="sub" style={{ fontSize: 11 }}>{current(key) ? "✅" : (lang === "gu" ? "ખાલી" : "Not set")}</div>
+          </button>
+        ))}
+      </div>
+
+      {active && (
+        <div className="fx-section" style={{ marginTop: 10 }}>
+          <div className="task-meta" style={{ justifyContent: "space-between" }}>
+            <strong>{lang === "gu" ? MATERIAL_FEATURES.find((f) => f[0] === active)[2].gu : MATERIAL_FEATURES.find((f) => f[0] === active)[2].en}</strong>
+            <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => setActive(null)}>{t("cancel", lang)}</button>
+          </div>
+
+          {active === "requestingDepartmentId" ? (
+            <select value={value} onChange={(e) => setValue(e.target.value)} style={{ marginTop: 8, minHeight: 48 }}>
+              <option value="">—</option>
+              {(lookups?.departments || []).map((d) => <option key={d.id} value={d.id}>{lang === "gu" ? d.name_gu : d.name_en}</option>)}
+            </select>
+          ) : active === "priority" ? (
+            <select value={value} onChange={(e) => setValue(e.target.value)} style={{ marginTop: 8, minHeight: 48 }}>
+              {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          ) : (
+            <input value={value} onChange={(e) => setValue(e.target.value)} style={{ marginTop: 8, minHeight: 48, fontSize: 16 }} />
+          )}
+
+          <FieldPhotoProof lang={lang} entityType="factory_material_request_field" entityId={row.id} sectionKey={`${active}_photo`} required label={lang === "gu" ? "ફોટો પુરાવો" : "Photo Proof"} />
+
+          {msg && <div className={`msg ${msg.type}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+          <button type="button" className="btn btn-primary" style={{ marginTop: 8, minHeight: 44 }} disabled={saving} onClick={() => save(active)}>
+            {saving ? "…" : `✅ ${t("save", lang) || (lang === "gu" ? "સાચવો" : "Save")}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // "Material to Order" (handwritten workflow, column 1) -- a real, dedicated request, never a second free-text note
 // buried inside a Job Card. Minimal typing: job-card search auto-fills nothing the worker doesn't already know,
@@ -29,7 +114,7 @@ export default function FactoryMaterialToOrder({ lang, lookups, autoOpenForm = f
   const [form, setForm] = useState(linkedJobCardId ? { ...emptyForm, jobCardId: linkedJobCardId, jobCardLabel: linkedJobCardLabel } : emptyForm);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
-  const [newId, setNewId] = useState(null); // id of the just-created request, for the photo-upload step
+  const [createdRow, setCreatedRow] = useState(null); // the just-created request, for the per-field photo step
   const [jobQuery, setJobQuery] = useState("");
   const [jobResults, setJobResults] = useState([]);
   const [busyId, setBusyId] = useState(null);
@@ -78,9 +163,15 @@ export default function FactoryMaterialToOrder({ lang, lookups, autoOpenForm = f
     });
     setSaving(false);
     if (err) { setSaveMsg({ type: "error", text: err.message }); return; }
-    setNewId(data.id);
+    setCreatedRow(data);
     setSaveMsg({ type: "success", text: `${t("requestNumberLabel", lang)}: ${data.request_number}` });
     setForm({ ...emptyForm, requestingDepartmentId: factoryDept?.id || "" });
+    load();
+  }
+
+  function refreshCreatedRow() {
+    if (!createdRow) return;
+    getMaterialRequest(createdRow.id).then(({ data }) => { if (data) setCreatedRow(data); });
     load();
   }
 
@@ -101,11 +192,11 @@ export default function FactoryMaterialToOrder({ lang, lookups, autoOpenForm = f
       </div>
 
       <div className="card">
-        <button type="button" className="btn btn-primary" style={{ minHeight: 48, fontSize: 16 }} onClick={() => { setShowForm((s) => !s); setSaveMsg(null); setNewId(null); }}>
+        <button type="button" className="btn btn-primary" style={{ minHeight: 48, fontSize: 16 }} onClick={() => { setShowForm((s) => !s); setSaveMsg(null); setCreatedRow(null); }}>
           {showForm ? t("cancel", lang) : `➕ ${t("requestMaterialAction", lang)}`}
         </button>
 
-        {showForm && (
+        {showForm && !createdRow && (
           <form onSubmit={submit} className="form-grid" style={{ marginTop: 12 }}>
             {saveMsg && <div className={`msg ${saveMsg.type}`} style={{ gridColumn: "1 / -1" }}>{saveMsg.text}</div>}
             <div className="field full">
@@ -120,22 +211,12 @@ export default function FactoryMaterialToOrder({ lang, lookups, autoOpenForm = f
               </select>
             </div>
             <div className="field">
-              <label>{t("orderPoReferenceLabel", lang)}</label>
-              <input value={form.orderPoReference} onChange={(e) => setForm((f) => ({ ...f, orderPoReference: e.target.value }))} style={{ minHeight: 48, fontSize: 16 }} />
-            </div>
-            <div className="field">
               <label>{t("quantityLabel", lang)} *</label>
               <input type="number" min="0.01" step="0.01" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} style={{ minHeight: 48, fontSize: 16 }} required />
             </div>
             <div className="field">
               <label>{t("unitLabel", lang)}</label>
               <input value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} style={{ minHeight: 48, fontSize: 16 }} />
-            </div>
-            <div className="field">
-              <label>{t("priorityLabel", lang)}</label>
-              <select value={form.priority} onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))} style={{ minHeight: 48 }}>
-                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
             </div>
             <div className="field">
               <label>{t("requiredDateLabel", lang)}</label>
@@ -180,10 +261,16 @@ export default function FactoryMaterialToOrder({ lang, lookups, autoOpenForm = f
           </form>
         )}
 
-        {newId && (
+        {createdRow && (
           <div style={{ marginTop: 12 }}>
-            <div className="sub" style={{ marginBottom: 6 }}>{t("attachPhotoDocumentHintMsg", lang)}</div>
-            <ProofPhotoUpload lang={lang} entityType="factory_material_request" entityId={newId} />
+            {saveMsg && <div className={`msg ${saveMsg.type}`}>{saveMsg.text}</div>}
+            <div className="sub" style={{ marginBottom: 6 }}>
+              {lang === "gu" ? "દરેક બટન ખોલો, વિગત ભરો અને ફોટો લો" : "Open each button, fill the detail and take its photo"}
+            </div>
+            <MaterialFieldSections row={createdRow} lang={lang} lookups={lookups} onSaved={refreshCreatedRow} />
+            <button type="button" className="btn btn-outline" style={{ marginTop: 10, width: "auto" }} onClick={() => { setCreatedRow(null); setShowForm(false); }}>
+              {lang === "gu" ? "પૂર્ણ — યાદી પર જાઓ" : "Done — back to list"}
+            </button>
           </div>
         )}
       </div>

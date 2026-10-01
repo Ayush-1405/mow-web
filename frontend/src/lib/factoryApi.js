@@ -368,17 +368,24 @@ export async function updateSegmentSpecs(jobId, specs) {
   return supabase.rpc("factory_update_segment_specs", { p_job_id: jobId, p_specs: specs || {} });
 }
 
-// Field-level photo proof: list the real, active photos already recorded against a job's given section (e.g.
+// Field-level photo proof: list the real, active photos already recorded against a record's given section (e.g.
 // "po_photo", "party_photo", "delivery_photo", "priority_photo", "bom_photo", "costing_photo") -- not just a
-// count, the actual rows, so a thumbnail + who/when can be shown right beside the field it proves.
-export async function listFieldPhotos(jobId, sectionKey) {
-  if (!jobId) return { data: [], error: null };
+// count, the actual rows, so a thumbnail + who/when can be shown right beside the field it proves. entityType
+// defaults to the Job Card field type; the Material-to-Order per-field redesign passes "factory_material_request_field".
+export async function listFieldPhotos(entityId, sectionKey, entityType = "factory_job_card_field") {
+  if (!entityId) return { data: [], error: null };
   let q = supabase.from("staff_attachments").select("id, created_at, uploaded_by, original_filename, uploader:user_profiles!uploaded_by(full_name)")
-    .eq("entity_type", "factory_job_card_field").eq("entity_id", jobId).eq("purpose", "proof").eq("is_active", true);
+    .eq("entity_type", entityType).eq("entity_id", entityId).eq("purpose", "proof").eq("is_active", true);
   if (sectionKey) q = q.eq("section_key", sectionKey);
   return q.order("created_at", { ascending: false });
 }
 
 export async function tagAttachmentSection(attachmentId, sectionKey) {
   return supabase.rpc("staff_set_attachment_section", { p_attachment_id: attachmentId, p_section_key: sectionKey });
+}
+
+// Material-to-Order per-field redesign: Material / Requesting Department / Order-PO / Party Name / Person Name /
+// Priority each save through this one patch RPC (mirrors factory_job_update_details's merge-by-key pattern).
+export async function updateMaterialRequestFields(id, patch) {
+  return supabase.rpc("factory_update_material_request_fields", { p_id: id, p_patch: patch || {} });
 }

@@ -5,12 +5,14 @@ import { ACCEPT_ATTR } from "../lib/fileTypes";
 import { t } from "../lib/i18n";
 
 // Reusable field-level photo proof control: Take Photo / Upload Photo / View Photo / Retake / Remove, tied to a
-// specific field/section on a Job Card (po_photo, party_photo, delivery_photo, priority_photo, bom_photo,
+// specific field/section on a parent record (po_photo, party_photo, delivery_photo, priority_photo, bom_photo,
 // costing_photo, material_photo, ...) rather than one generic upload box. Requires a real, already-created
-// entityId (the Job Card). Reuses the app's existing production-grade upload pipeline (uploadTaskProof ->
-// staff-file-url -> staff_record_attachment), tagged with section_key so a photo stays tied to the field it
-// proves. See mvp_pilot_factory_segment_pages_v2_84.sql for the entity_type/section_key this relies on.
-export default function FieldPhotoProof({ lang, entityId, sectionKey, label, required = false, myUserId, onCountChange }) {
+// entityId (a Job Card, or -- via entityType="factory_material_request_field" -- a Material to Order request).
+// Reuses the app's existing production-grade upload pipeline (uploadTaskProof -> staff-file-url ->
+// staff_record_attachment), tagged with section_key so a photo stays tied to the field it proves. See
+// mvp_pilot_factory_segment_pages_v2_84.sql / mvp_pilot_factory_material_order_fields_v2_88.sql for the
+// entity_type/section_key this relies on.
+export default function FieldPhotoProof({ lang, entityId, entityType = "factory_job_card_field", sectionKey, label, required = false, myUserId, onCountChange }) {
   const [photos, setPhotos] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -18,7 +20,7 @@ export default function FieldPhotoProof({ lang, entityId, sectionKey, label, req
 
   const load = useCallback(() => {
     if (!entityId) { setPhotos([]); onCountChange?.(0); return; }
-    listFieldPhotos(entityId, sectionKey).then(async ({ data }) => {
+    listFieldPhotos(entityId, sectionKey, entityType).then(async ({ data }) => {
       const rows = data || [];
       onCountChange?.(rows.length);
       const withUrls = await Promise.all(rows.map(async (r) => {
@@ -27,7 +29,7 @@ export default function FieldPhotoProof({ lang, entityId, sectionKey, label, req
       setPhotos(withUrls);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, sectionKey]);
+  }, [entityId, sectionKey, entityType]);
   useEffect(() => { load(); }, [load]);
 
   async function handleFile(e) {
@@ -37,7 +39,7 @@ export default function FieldPhotoProof({ lang, entityId, sectionKey, label, req
     setUploading(true);
     setError(null);
     try {
-      const res = await uploadTaskProof({ entityType: "factory_job_card_field", entityId, file, fileType: "image", purpose: "proof" });
+      const res = await uploadTaskProof({ entityType, entityId, file, fileType: "image", purpose: "proof" });
       await tagAttachmentSection(res.attachmentId, sectionKey);
       load();
     } catch (err) {

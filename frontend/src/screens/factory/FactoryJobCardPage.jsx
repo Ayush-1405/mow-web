@@ -368,6 +368,8 @@ export function StagesTab({ job, lang, canAct, onDone }) {
   const [msg, setMsg] = useState(null);
   const [showAll, setShowAll] = useState(false);
   const [note, setNote] = useState("");
+  const [reportingProblem, setReportingProblem] = useState(false);
+  const [problemNote, setProblemNote] = useState("");
 
   const load = useCallback(() => {
     listJobStages(job.id).then(({ data }) => setStages(data || []));
@@ -401,6 +403,25 @@ export function StagesTab({ job, lang, canAct, onDone }) {
     setNote("");
     load(); onDone?.();
   }
+  // "Report Problem" (handwritten WIP-stage spec) reuses the job-level block/unblock transition already built and
+  // tested for QuickActions -- a real production hold with a mandatory reason, visible on the Job Card's own
+  // timeline -- instead of inventing a second, parallel "stage problem" concept and schema.
+  async function doReportProblem() {
+    if (!problemNote.trim()) return;
+    setBusy(true); setMsg(null);
+    const { error } = await jobTransition(job.id, "block", problemNote.trim());
+    setBusy(false);
+    if (error) { setMsg(friendlyRpcError(error)); return; }
+    setProblemNote(""); setReportingProblem(false);
+    load(); onDone?.();
+  }
+  async function doResume() {
+    setBusy(true); setMsg(null);
+    const { error } = await jobTransition(job.id, "unblock", null);
+    setBusy(false);
+    if (error) { setMsg(friendlyRpcError(error)); return; }
+    load(); onDone?.();
+  }
 
   function Row({ s, big }) {
     const badgeClass = s.status === "completed" ? "ok" : s.status === "in_progress" ? "info" : "";
@@ -430,13 +451,26 @@ export function StagesTab({ job, lang, canAct, onDone }) {
                 <ProofPhotoViewer lang={lang} entityType="factory_job_card_stage" entityId={s.stage_update_id} />
               </>
             )}
-            {canAct && (
+            {canAct && job.factory_status !== "blocked" && (
               <>
                 <input type="text" placeholder={lang === "gu" ? "ટૂંકી નોંધ (વૈકલ્પિક)" : "Short note (optional)"} value={note} onChange={(e) => setNote(e.target.value)} style={{ marginTop: 6 }} />
-                <button type="button" className="btn btn-primary" style={{ marginTop: 6, minHeight: 48 }} disabled={busy || photoBlocked} onClick={() => doComplete(s)}>
-                  🔄 {lang === "gu" ? "સ્ટેજ પૂર્ણ કરો" : "Complete Stage"}
-                </button>
+                <div className="task-meta" style={{ gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-primary" style={{ minHeight: 48 }} disabled={busy || photoBlocked} onClick={() => doComplete(s)}>
+                    🔄 {lang === "gu" ? "સ્ટેજ પૂર્ણ કરો" : "Complete Stage"}
+                  </button>
+                  <button type="button" className="btn btn-outline" style={{ minHeight: 48 }} disabled={busy} onClick={() => setReportingProblem((v) => !v)}>
+                    ⚠️ {lang === "gu" ? "સમસ્યા જણાવો" : "Report Problem"}
+                  </button>
+                </div>
                 {photoBlocked && <div className="sub" style={{ color: "var(--danger)" }}>{lang === "gu" ? "પૂર્ણ કરવા માટે ફોટો જરૂરી છે" : "A photo is required before this stage can be completed"}</div>}
+                {reportingProblem && (
+                  <div style={{ marginTop: 8, padding: 8, border: "1px dashed var(--danger)", borderRadius: 8 }}>
+                    <textarea rows={2} placeholder={lang === "gu" ? "સમસ્યા શું છે?" : "What is the problem?"} value={problemNote} onChange={(e) => setProblemNote(e.target.value)} />
+                    <button type="button" className="btn btn-primary" style={{ marginTop: 6, minHeight: 44 }} disabled={busy || !problemNote.trim()} onClick={doReportProblem}>
+                      🚩 {lang === "gu" ? "સમસ્યા મોકલો — કામ રોકો" : "Submit — Hold This Job"}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -452,6 +486,17 @@ export function StagesTab({ job, lang, canAct, onDone }) {
 
   return (
     <div>
+      {job.factory_status === "blocked" && (
+        <div className="msg error" style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 700 }}>⚠️ {lang === "gu" ? "કામ રોકાયેલું છે" : "Work is on hold"}</div>
+          {job.blocked_reason && <div className="sub" style={{ marginTop: 2 }}>{job.blocked_reason}</div>}
+          {canAct && (
+            <button type="button" className="btn btn-primary" style={{ marginTop: 6, minHeight: 44, width: "auto" }} disabled={busy} onClick={doResume}>
+              ✅ {lang === "gu" ? "ફરી શરૂ કરો" : "Resume Work"}
+            </button>
+          )}
+        </div>
+      )}
       <div className="sub">{job.completion_percentage ?? 0}% {lang === "gu" ? "પૂર્ણ" : "complete"}</div>
       {current ? <Row s={current} big /> : <div className="fx-empty">{lang === "gu" ? "બધા સ્ટેજ પૂર્ણ" : "All stages completed"}</div>}
       {msg && <div className="msg error" style={{ marginTop: 8 }}>{msg}</div>}
