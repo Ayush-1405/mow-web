@@ -9,7 +9,7 @@ import {
 } from "./FactoryJobParts.jsx";
 import {
   getJobCard, jobTransition, listFactoryLocations, listFactoryPeople, listJobEvents, listJobFiles, listJobItems, markViewed,
-  subscribeJobDetail, updateDetails,
+  subscribeJobDetail, updateDetails, listDivisions, setJobDivision,
 } from "../../lib/factoryApi";
 import { PRIORITIES, STATUS, fmtDate, fmtDateTime, friendlyRpcError, label, roleInfo } from "./factoryConstants";
 
@@ -51,6 +51,41 @@ function DetailsEditor({ job, isManager, onDone }) {
       </div>
       {msg && <div className={`msg ${msg.type}`} style={{ marginTop: 8 }}>{msg.text}</div>}
     </form>
+  );
+}
+
+// Division badge + the "simple three-button selection" the spec asks for when a Job Card's division is
+// unclear. Head/Management only (factory_set_job_division re-checks this server-side regardless).
+function DivisionPicker({ job, lang, isHead, onDone }) {
+  const [divisions, setDivisions] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => { if (isHead && !job.division_id) listDivisions().then(({ data }) => setDivisions(data || [])); }, [isHead, job.division_id]);
+
+  if (job.division_id) {
+    return <span className="fx-tag gold">{lang === "gu" ? job.division_name_gu : job.division_name_en}</span>;
+  }
+  if (!isHead) return <span className="fx-tag">{lang === "gu" ? "વિભાગ નક્કી નથી" : "Division not set"}</span>;
+
+  async function choose(d) {
+    setBusy(true); setMsg(null);
+    const { error } = await setJobDivision(job.id, d.id);
+    setBusy(false);
+    if (error) { setMsg(error.message); return; }
+    onDone?.();
+  }
+
+  return (
+    <div className="task-meta" style={{ gap: 6, flexWrap: "wrap" }}>
+      <span className="sub">{lang === "gu" ? "વિભાગ પસંદ કરો:" : "Select division:"}</span>
+      {(divisions || []).map((d) => (
+        <button key={d.id} type="button" className="btn btn-outline" style={{ minHeight: 44, width: "auto" }} disabled={busy} onClick={() => choose(d)}>
+          {d.icon} {lang === "gu" ? d.name_gu : d.name_en}
+        </button>
+      ))}
+      {msg && <span className="msg error" style={{ padding: "2px 6px" }}>{msg}</span>}
+    </div>
   );
 }
 
@@ -220,6 +255,9 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
         {job.is_delayed && <span className="fx-tag bad">{job.is_blocked ? "Blocked" : "Delayed"}</span>}
         <span className="fx-tag">{job.priority}</span>
         <strong>{job.product_item || "—"}</strong>
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <DivisionPicker job={job} lang={lang} isHead={role.isHead} onDone={load} />
       </div>
 
       {job.factory_status === "needs_clarification" && (
