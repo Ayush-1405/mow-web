@@ -4,7 +4,10 @@
       "mcp__claude_ai_Supabase__apply_migration",
       "mcp__claude_ai_Supabase__execute_sql",
       "Bash(npm run *)",
-      "mcp__claude_ai_Supabase__deploy_edge_function"
+      "mcp__claude_ai_Supabase__deploy_edge_function",
+      "mcp__claude_ai_Supabase__list_projects",
+      "Bash(python3 -c ' *)",
+      "Bash(npm test *)"
     ]
   }
 }
