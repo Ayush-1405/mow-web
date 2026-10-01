@@ -117,6 +117,7 @@ const FactoryMaterialToOrder = lazy(() => import("./screens/factory/FactoryMater
 const FactoryMaterialOrderDetail = lazy(() => import("./screens/factory/FactoryMaterialOrderDetail.jsx"));
 const FactorySegmentBoard = lazy(() => import("./screens/factory/FactorySegmentBoard.jsx"));
 const FactorySegmentNewJob = lazy(() => import("./screens/factory/FactorySegmentNewJob.jsx"));
+const FactorySegmentWip = lazy(() => import("./screens/factory/FactorySegmentWip.jsx"));
 const FactoryMachineTracking = lazy(() => import("./screens/factory/FactoryMachineTracking.jsx"));
 const FactoryTransfer = lazy(() => import("./screens/factory/FactoryTransfer.jsx"));
 const FactoryDrawings = lazy(() => import("./screens/factory/FactoryDrawings.jsx"));
@@ -794,6 +795,7 @@ export default function App() {
       <Route path="/factory/material-orders/new" element={deptModulePage("FACTORY", <FactoryMaterialToOrder lang={lang} profile={profile} lookups={lookups} autoOpenForm />)} />
       <Route path="/factory/material-orders/:materialOrderId" element={deptModulePage("FACTORY", <FactoryMaterialOrderDetail lang={lang} />)} />
       <Route path="/factory/:segment/new" element={deptModulePage("FACTORY", <FactorySegmentNewJob lang={lang} profile={profile} />)} />
+      <Route path="/factory/:segment/:jobCardId/wip" element={deptModulePage("FACTORY", <FactorySegmentWip lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/factory/:segment/:id" element={deptModulePage("FACTORY", <FactoryJobCardPage lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/factory/:segment" element={deptModulePage("FACTORY", <FactorySegmentBoard lang={lang} profile={profile} lookups={lookups} />)} />
       <Route path="/factory/machine-tracking" element={deptModulePage("FACTORY", <FactoryMachineTracking lang={lang} profile={profile} />)} />

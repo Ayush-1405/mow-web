@@ -6,14 +6,15 @@ import FactoryJobTasks from "./FactoryJobTasks.jsx";
 import ChatButton from "../../components/ChatButton.jsx";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
 import ProofPhotoViewer from "../../components/ProofPhotoViewer.jsx";
+import FieldPhotoProof from "../../components/FieldPhotoProof.jsx";
 import {
   ActivityTab, AssignmentTab, FilePreview, FilesTab, ItemsTab, KeyDrawings, ProductionUpdate, VerificationTab,
 } from "./FactoryJobParts.jsx";
 import {
   getJobCard, jobTransition, listFactoryLocations, listFactoryPeople, listJobEvents, listJobFiles, listJobItems, markViewed,
-  subscribeJobDetail, updateDetails, listDivisions, setJobDivision, listJobStages, startStage, completeStage,
+  subscribeJobDetail, updateDetails, listDivisions, setJobDivision, listJobStages, startStage, completeStage, updateSegmentSpecs,
 } from "../../lib/factoryApi";
-import { PRIORITIES, STATUS, fmtDate, fmtDateTime, friendlyRpcError, label, roleInfo } from "./factoryConstants";
+import { PRIORITIES, STATUS, DIVISION_META, fmtDate, fmtDateTime, friendlyRpcError, label, roleInfo } from "./factoryConstants";
 
 const SOURCE_ROUTE = { retail: "/retail/orders", interior: "/interior-projects/purchase" };
 
@@ -91,10 +92,277 @@ function DivisionPicker({ job, lang, isHead, onDone }) {
   );
 }
 
+// --- Phase 1 "6 big buttons" restructure ---------------------------------------------------------------------
+// PO Received / Party Name / Delivery Date / Priority / WIP / Material, each its own small focused section
+// instead of one long form -- the PO/Party/Delivery/Priority sections save their couple of extra fields into
+// segment_specs (merge, never clobbers another section's keys) plus the three real po_received/po_number/
+// po_date columns, each gated behind one mandatory field-level photo. WIP opens the dedicated stage-engine
+// route; Material opens its own BOM/Costing/Priority sub-choice.
+function SimpleField({ label: lbl, value, onChange, type = "text", options }) {
+  return (
+    <div className="field">
+      <label>{lbl}</label>
+      {type === "select"
+        ? <select value={value || ""} onChange={(e) => onChange(e.target.value)}>{options.map((o) => <option key={o} value={o}>{o}</option>)}</select>
+        : <input type={type} value={value || ""} onChange={(e) => onChange(e.target.value)} />}
+    </div>
+  );
+}
+
+function PoSection({ job, lang, canEdit, onDone }) {
+  const [f, setF] = useState({ poReceived: job.po_received ?? false, poNumber: job.po_number || "", poDate: job.po_date || "",
+    orderReference: job.segment_specs?.order_reference || "", instructions: job.segment_specs?.po_instructions || "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    const r1 = await updateDetails(job.id, { po_received: f.poReceived, po_number: f.poNumber, po_date: f.poDate || null });
+    const r2 = await updateSegmentSpecs(job.id, { order_reference: f.orderReference, po_instructions: f.instructions });
+    setBusy(false);
+    if (r1.error || r2.error) { setMsg(friendlyRpcError(r1.error || r2.error)); return; }
+    setMsg(null); onDone?.();
+  }
+
+  return (
+    <div>
+      <label className="task-meta" style={{ gap: 8 }}>
+        <input type="checkbox" checked={f.poReceived} disabled={!canEdit} onChange={(e) => setF({ ...f, poReceived: e.target.checked })} style={{ width: "auto", minHeight: "auto" }} />
+        {lang === "gu" ? "PO મળ્યું છે" : "PO Received"}
+      </label>
+      <SimpleField label={lang === "gu" ? "PO નંબર" : "PO Number"} value={f.poNumber} onChange={(v) => setF({ ...f, poNumber: v })} />
+      <SimpleField label={lang === "gu" ? "PO તારીખ" : "PO Date"} type="date" value={f.poDate} onChange={(v) => setF({ ...f, poDate: v })} />
+      <SimpleField label={lang === "gu" ? "ઓર્ડર/સંદર્ભ નંબર" : "Order/Reference Number"} value={f.orderReference} onChange={(v) => setF({ ...f, orderReference: v })} />
+      <SimpleField label={lang === "gu" ? "ટૂંકી સૂચનાઓ" : "Short Instructions"} value={f.instructions} onChange={(v) => setF({ ...f, instructions: v })} />
+      <FieldPhotoProof lang={lang} entityId={job.id} sectionKey="po_photo" required label={lang === "gu" ? "PO ફોટો" : "PO Photo"} />
+      {canEdit && <button type="button" className="btn btn-primary" style={{ minHeight: 44, marginTop: 8 }} disabled={busy} onClick={save}>{lang === "gu" ? "સાચવો" : "Save"}</button>}
+      {msg && <div className="msg error" style={{ marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+function PartySection({ job, lang, canEdit, onDone }) {
+  const [f, setF] = useState({ customerName: job.customer_name || "", siteLocation: job.site_location || "",
+    contactPerson: job.segment_specs?.contact_person || "", referenceNumber: job.segment_specs?.party_reference || "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    const r1 = await updateDetails(job.id, { customer_name: f.customerName, site_location: f.siteLocation });
+    const r2 = await updateSegmentSpecs(job.id, { contact_person: f.contactPerson, party_reference: f.referenceNumber });
+    setBusy(false);
+    if (r1.error || r2.error) { setMsg(friendlyRpcError(r1.error || r2.error)); return; }
+    onDone?.();
+  }
+
+  return (
+    <div>
+      <SimpleField label={lang === "gu" ? "પાર્ટી/ગ્રાહકનું નામ" : "Party / Customer Name"} value={f.customerName} onChange={(v) => setF({ ...f, customerName: v })} />
+      <SimpleField label={lang === "gu" ? "પ્રોજેક્ટ/સાઈટ" : "Project / Site"} value={f.siteLocation} onChange={(v) => setF({ ...f, siteLocation: v })} />
+      <SimpleField label={lang === "gu" ? "સંપર્ક વ્યક્તિ" : "Contact Person"} value={f.contactPerson} onChange={(v) => setF({ ...f, contactPerson: v })} />
+      <SimpleField label={lang === "gu" ? "સંદર્ભ નંબર" : "Reference Number"} value={f.referenceNumber} onChange={(v) => setF({ ...f, referenceNumber: v })} />
+      <FieldPhotoProof lang={lang} entityId={job.id} sectionKey="party_photo" required label={lang === "gu" ? "પાર્ટી/ઓર્ડર ફોટો" : "Party/Order Reference Photo"} />
+      {canEdit && <button type="button" className="btn btn-primary" style={{ minHeight: 44, marginTop: 8 }} disabled={busy} onClick={save}>{lang === "gu" ? "સાચવો" : "Save"}</button>}
+      {msg && <div className="msg error" style={{ marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+function DeliverySection({ job, lang, canEdit, onDone }) {
+  const [f, setF] = useState({ requiredDate: job.required_date || "", plannedCompletion: job.segment_specs?.planned_completion || "",
+    address: job.segment_specs?.delivery_address || job.site_location || "", instructions: job.segment_specs?.delivery_instructions || "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    const r1 = await updateDetails(job.id, { required_date: f.requiredDate });
+    const r2 = await updateSegmentSpecs(job.id, { planned_completion: f.plannedCompletion, delivery_address: f.address, delivery_instructions: f.instructions });
+    setBusy(false);
+    if (r1.error || r2.error) { setMsg(friendlyRpcError(r1.error || r2.error)); return; }
+    onDone?.();
+  }
+
+  return (
+    <div>
+      <SimpleField label={lang === "gu" ? "જરૂરી ડિલિવરી તારીખ" : "Required Delivery Date"} type="date" value={f.requiredDate} onChange={(v) => setF({ ...f, requiredDate: v })} />
+      <SimpleField label={lang === "gu" ? "ફેક્ટરી પૂર્ણતા તારીખ" : "Planned Factory Completion"} type="date" value={f.plannedCompletion} onChange={(v) => setF({ ...f, plannedCompletion: v })} />
+      <SimpleField label={lang === "gu" ? "ડિલિવરી/સાઈટ સરનામું" : "Delivery / Site Address"} value={f.address} onChange={(v) => setF({ ...f, address: v })} />
+      <SimpleField label={lang === "gu" ? "ડિલિવરી સૂચનાઓ" : "Delivery Instructions"} value={f.instructions} onChange={(v) => setF({ ...f, instructions: v })} />
+      <FieldPhotoProof lang={lang} entityId={job.id} sectionKey="delivery_photo" label={lang === "gu" ? "ડિલિવરી સંદર્ભ ફોટો" : "Delivery Reference Photo"} />
+      {canEdit && <button type="button" className="btn btn-primary" style={{ minHeight: 44, marginTop: 8 }} disabled={busy} onClick={save}>{lang === "gu" ? "સાચવો" : "Save"}</button>}
+      {msg && <div className="msg error" style={{ marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+function PrioritySection({ job, lang, canEdit, onDone }) {
+  const [priority, setPriority] = useState(job.priority || "Normal");
+  const [f, setF] = useState({ reason: job.segment_specs?.priority_reason || "", approvedBy: job.segment_specs?.priority_approved_by || "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const BTNS = [["Normal", "🟢"], ["High", "🟠"], ["Urgent", "🔴"]];
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    const r1 = await updateDetails(job.id, { priority });
+    const r2 = await updateSegmentSpecs(job.id, { priority_reason: f.reason, priority_approved_by: f.approvedBy });
+    setBusy(false);
+    if (r1.error || r2.error) { setMsg(friendlyRpcError(r1.error || r2.error)); return; }
+    onDone?.();
+  }
+
+  return (
+    <div>
+      <div className="task-meta" style={{ gap: 8 }}>
+        {BTNS.map(([p, icon]) => (
+          <button key={p} type="button" className={`btn ${priority === p ? "btn-primary" : "btn-outline"}`} disabled={!canEdit}
+            style={{ minHeight: 48, width: "auto" }} onClick={() => setPriority(p)}>{icon} {p}</button>
+        ))}
+      </div>
+      <SimpleField label={lang === "gu" ? "કારણ" : "Priority Reason"} value={f.reason} onChange={(v) => setF({ ...f, reason: v })} />
+      <SimpleField label={lang === "gu" ? "મંજૂર કરનાર" : "Approved By"} value={f.approvedBy} onChange={(v) => setF({ ...f, approvedBy: v })} />
+      <FieldPhotoProof lang={lang} entityId={job.id} sectionKey="priority_photo" label={lang === "gu" ? "પ્રાથમિકતા સંદર્ભ ફોટો" : "Priority Reference Photo"} />
+      {canEdit && <button type="button" className="btn btn-primary" style={{ minHeight: 44, marginTop: 8 }} disabled={busy} onClick={save}>{lang === "gu" ? "સાચવો" : "Save"}</button>}
+      {msg && <div className="msg error" style={{ marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+// Material = BOM / Costing / Priority -- three large sub-buttons, progressive disclosure again. Costing is
+// gated client-side (role.isManager -- Head/Management/Supervisor) AND the data itself is only ever stored in
+// segment_specs.costing, which this component is the only place in the app that reads/writes -- an ordinary
+// worker's UI never requests or renders it.
+function MaterialSection({ job, lang, canEdit, isManager, navigate, segment, onDone }) {
+  const [sub, setSub] = useState(null);
+  const [bom, setBom] = useState(job.segment_specs?.bom || []);
+  const [item, setItem] = useState({ name: "", spec: "", quantity: "", unit: "Nos", available: true, requiredDate: "" });
+  const [cost, setCost] = useState({ material: job.segment_specs?.costing?.material || "", labour: job.segment_specs?.costing?.labour || "",
+    other: job.segment_specs?.costing?.other || "", note: job.segment_specs?.costing?.note || "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const total = (Number(cost.material) || 0) + (Number(cost.labour) || 0) + (Number(cost.other) || 0);
+
+  async function addBomItem() {
+    if (!item.name.trim() || !(Number(item.quantity) > 0)) return;
+    setBusy(true);
+    const next = [...bom, { ...item, quantity: Number(item.quantity) }];
+    const { error } = await updateSegmentSpecs(job.id, { bom: next });
+    setBusy(false);
+    if (!error) { setBom(next); setItem({ name: "", spec: "", quantity: "", unit: "Nos", available: true, requiredDate: "" }); onDone?.(); }
+  }
+
+  async function saveCosting() {
+    setBusy(true); setMsg(null);
+    const { error } = await updateSegmentSpecs(job.id, { costing: { ...cost, total } });
+    setBusy(false);
+    if (error) { setMsg(friendlyRpcError(error)); return; }
+    onDone?.();
+  }
+
+  if (!sub) {
+    return (
+      <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-outline" style={{ minHeight: 48, width: "auto" }} onClick={() => setSub("bom")}>📋 BOM</button>
+        {isManager && <button type="button" className="btn btn-outline" style={{ minHeight: 48, width: "auto" }} onClick={() => setSub("costing")}>💰 {lang === "gu" ? "કોસ્ટિંગ" : "Costing"}</button>}
+        <button type="button" className="btn btn-outline" style={{ minHeight: 48, width: "auto" }}
+          onClick={() => navigate(`/factory/material-to-order?jobCardId=${job.id}&jobCardLabel=${encodeURIComponent(`${job.job_order_number} · ${job.product_item || ""}`)}`)}>
+          📦 {lang === "gu" ? "મટિરિયલ પ્રાથમિકતા" : "Material Priority"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button type="button" className="fx-tag gold" style={{ width: "auto" }} onClick={() => setSub(null)}>← {lang === "gu" ? "પાછા" : "Back"}</button>
+      {sub === "bom" && (
+        <div style={{ marginTop: 8 }}>
+          {bom.map((b, i) => (
+            <div key={i} className="fx-action"><span className="t">{b.name} · {b.quantity} {b.unit}</span><span className="m">{b.spec || "—"}{b.requiredDate ? ` · ${b.requiredDate}` : ""}</span></div>
+          ))}
+          {canEdit && (
+            <>
+              <SimpleField label={lang === "gu" ? "મટિરિયલ/આઇટમ નામ" : "Material/Item Name"} value={item.name} onChange={(v) => setItem({ ...item, name: v })} />
+              <SimpleField label={lang === "gu" ? "સ્પષ્ટીકરણ" : "Specification"} value={item.spec} onChange={(v) => setItem({ ...item, spec: v })} />
+              <div className="task-meta" style={{ gap: 8 }}>
+                <SimpleField label={lang === "gu" ? "જથ્થો" : "Quantity"} type="number" value={item.quantity} onChange={(v) => setItem({ ...item, quantity: v })} />
+                <SimpleField label={lang === "gu" ? "એકમ" : "Unit"} value={item.unit} onChange={(v) => setItem({ ...item, unit: v })} />
+              </div>
+              <button type="button" className="btn btn-outline" style={{ minHeight: 44 }} disabled={busy} onClick={addBomItem}>➕ {lang === "gu" ? "ઉમેરો" : "Add Item"}</button>
+            </>
+          )}
+          <FieldPhotoProof lang={lang} entityId={job.id} sectionKey="bom_photo" label={lang === "gu" ? "BOM ફોટો/દસ્તાવેજ" : "BOM Photo/Document"} />
+        </div>
+      )}
+      {sub === "costing" && isManager && (
+        <div style={{ marginTop: 8 }}>
+          <SimpleField label={lang === "gu" ? "મટિરિયલ ખર્ચ" : "Material Cost"} type="number" value={cost.material} onChange={(v) => setCost({ ...cost, material: v })} />
+          <SimpleField label={lang === "gu" ? "મજૂરી ખર્ચ" : "Labour Cost"} type="number" value={cost.labour} onChange={(v) => setCost({ ...cost, labour: v })} />
+          <SimpleField label={lang === "gu" ? "અન્ય ખર્ચ" : "Other Approved Cost"} type="number" value={cost.other} onChange={(v) => setCost({ ...cost, other: v })} />
+          <div className="sub" style={{ marginTop: 4, fontWeight: 700 }}>{lang === "gu" ? "કુલ" : "Total"}: {total}</div>
+          <SimpleField label={lang === "gu" ? "નોંધ" : "Note"} value={cost.note} onChange={(v) => setCost({ ...cost, note: v })} />
+          <FieldPhotoProof lang={lang} entityId={job.id} sectionKey="costing_photo" required label={lang === "gu" ? "કોસ્ટિંગ પુરાવો" : "Costing Proof / Quotation"} />
+          <button type="button" className="btn btn-primary" style={{ minHeight: 44, marginTop: 8 }} disabled={busy} onClick={saveCosting}>{lang === "gu" ? "સાચવો" : "Save"}</button>
+          {msg && <div className="msg error" style={{ marginTop: 6 }}>{msg}</div>}
+        </div>
+      )}
+      {void segment}
+    </div>
+  );
+}
+
+const FEATURES = [
+  ["po", "📄", { en: "PO Received", gu: "PO મળ્યું" }],
+  ["party", "🧾", { en: "Party Name", gu: "પાર્ટી નામ" }],
+  ["delivery", "🚚", { en: "Delivery Date", gu: "ડિલિવરી તારીખ" }],
+  ["priority", "🚩", { en: "Priority", gu: "પ્રાથમિકતા" }],
+  ["wip", "🛠️", { en: "WIP", gu: "WIP" }],
+  ["material", "📦", { en: "Material", gu: "મટિરિયલ" }],
+];
+
+function FeatureSections({ job, lang, role, mine, onDone }) {
+  const navigate = useNavigate();
+  const [active, setActive] = useState(null);
+  const canEdit = role.isManager || mine;
+  const segmentRoute = DIVISION_META[job.division_code]?.route;
+
+  function openFeature(key) {
+    if (key === "wip") {
+      if (!segmentRoute) { setActive("wip-needs-division"); return; }
+      navigate(`/factory/${segmentRoute}/${job.id}/wip`);
+      return;
+    }
+    setActive(active === key ? null : key);
+  }
+
+  return (
+    <section className="fx-section">
+      <div className="fx-cards" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        {FEATURES.map(([key, icon, lbl]) => (
+          <button key={key} type="button" className={`fx-card ${active === key ? "hot" : ""}`} onClick={() => openFeature(key)}>
+            <span className="n" style={{ fontSize: 22 }}>{icon}</span>
+            <span className="l">{lang === "gu" ? lbl.gu : lbl.en}</span>
+          </button>
+        ))}
+      </div>
+      {active === "wip-needs-division" && (
+        <div className="msg info" style={{ marginTop: 8 }}>{lang === "gu" ? "પહેલા ઉપર ફેક્ટરી સેગમેન્ટ પસંદ કરો" : "Select a Factory segment above first"}</div>
+      )}
+      {active === "po" && <div style={{ marginTop: 10 }}><PoSection job={job} lang={lang} canEdit={canEdit} onDone={onDone} /></div>}
+      {active === "party" && <div style={{ marginTop: 10 }}><PartySection job={job} lang={lang} canEdit={canEdit} onDone={onDone} /></div>}
+      {active === "delivery" && <div style={{ marginTop: 10 }}><DeliverySection job={job} lang={lang} canEdit={canEdit} onDone={onDone} /></div>}
+      {active === "priority" && <div style={{ marginTop: 10 }}><PrioritySection job={job} lang={lang} canEdit={canEdit && role.isManager} onDone={onDone} /></div>}
+      {active === "material" && <div style={{ marginTop: 10 }}><MaterialSection job={job} lang={lang} canEdit={canEdit} isManager={role.isManager} navigate={navigate} segment={segmentRoute} onDone={onDone} /></div>}
+    </section>
+  );
+}
+
 // The real, button-based "WIP Stage Updates" workflow (handwritten spec): one row per division-configured stage,
 // Start/Complete buttons, and a mandatory photo before a photo-required stage can complete -- the server (not
 // this component) is the actual gate; a disabled button here is just a head start on the same rule.
-function StagesTab({ job, lang, canAct, onDone }) {
+export function StagesTab({ job, lang, canAct, onDone }) {
   const [stages, setStages] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -366,6 +634,8 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
       <div style={{ marginTop: 4 }}>
         <DivisionPicker job={job} lang={lang} isHead={role.isHead} onDone={load} />
       </div>
+
+      <FeatureSections job={job} lang={lang} role={role} mine={mine} onDone={load} />
 
       {job.factory_status === "needs_clarification" && (
         <div className="msg info"><strong>Returned for clarification:</strong> {job.clarification_note || "—"}</div>

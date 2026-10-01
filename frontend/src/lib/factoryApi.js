@@ -358,11 +358,27 @@ export async function getMaterialRequest(id) {
   ).eq("id", id).maybeSingle();
 }
 
-// Note: an earlier pass added a typed-form "New Segment Job" creation path (factory_create_segment_job) and
-// field-level photo proof (FieldPhotoProof.jsx, listFieldPhotos/tagAttachmentSection). Phase 1 simplification
-// replaced that entry point with the photo-first AI-intake flow below (factoryAiSubmit), which is simpler for a
-// worker (no typed spec fields) and reuses the real, already-built extraction pipeline instead of a second,
-// parallel creation path -- the "duplicate Job Card creation logic" this cleanup pass was asked to remove. The
-// frontend code for the old path has been removed; the underlying DB functions/columns are harmless, unused
-// leftovers (this session's tooling can't run a DROP, which needs a confirmation this environment can't give),
-// disclosed rather than hidden.
+// Note: Job Card CREATION is photo-first via factoryAiSubmit (lib/interiorApi.js) -- the old typed-form
+// factory_create_segment_job RPC is unused (left in the DB, harmless; DROP is gated behind a confirmation this
+// session's tooling can't satisfy). The pieces below ARE used, for the Job Card's own PO/Party/Delivery/
+// Priority/Material sections: each stores its few fields in segment_specs (merge, never clobbers other
+// sections) and carries one mandatory field-level photo via FieldPhotoProof.jsx.
+
+export async function updateSegmentSpecs(jobId, specs) {
+  return supabase.rpc("factory_update_segment_specs", { p_job_id: jobId, p_specs: specs || {} });
+}
+
+// Field-level photo proof: list the real, active photos already recorded against a job's given section (e.g.
+// "po_photo", "party_photo", "delivery_photo", "priority_photo", "bom_photo", "costing_photo") -- not just a
+// count, the actual rows, so a thumbnail + who/when can be shown right beside the field it proves.
+export async function listFieldPhotos(jobId, sectionKey) {
+  if (!jobId) return { data: [], error: null };
+  let q = supabase.from("staff_attachments").select("id, created_at, uploaded_by, original_filename, uploader:user_profiles!uploaded_by(full_name)")
+    .eq("entity_type", "factory_job_card_field").eq("entity_id", jobId).eq("purpose", "proof").eq("is_active", true);
+  if (sectionKey) q = q.eq("section_key", sectionKey);
+  return q.order("created_at", { ascending: false });
+}
+
+export async function tagAttachmentSection(attachmentId, sectionKey) {
+  return supabase.rpc("staff_set_attachment_section", { p_attachment_id: attachmentId, p_section_key: sectionKey });
+}

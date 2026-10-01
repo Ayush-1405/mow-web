@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import {
   listMaterialRequests, createMaterialRequest, updateMaterialRequestStatus, subscribeMaterialRequests,
@@ -19,11 +19,14 @@ const emptyForm = { material: "", requestingDepartmentId: "", orderPoReference: 
 // buried inside a Job Card. Minimal typing: job-card search auto-fills nothing the worker doesn't already know,
 // and the requesting department defaults to Factory itself.
 export default function FactoryMaterialToOrder({ lang, lookups, autoOpenForm = false }) {
+  const [params] = useSearchParams();
+  const linkedJobCardId = params.get("jobCardId") || "";
+  const linkedJobCardLabel = params.get("jobCardLabel") || "";
   const [tab, setTab] = useState("open");
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(false);
-  const [showForm, setShowForm] = useState(autoOpenForm);
-  const [form, setForm] = useState(emptyForm);
+  const [showForm, setShowForm] = useState(autoOpenForm || !!linkedJobCardId);
+  const [form, setForm] = useState(linkedJobCardId ? { ...emptyForm, jobCardId: linkedJobCardId, jobCardLabel: linkedJobCardLabel } : emptyForm);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [newId, setNewId] = useState(null); // id of the just-created request, for the photo-upload step
