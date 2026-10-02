@@ -8,6 +8,8 @@ import { subscribeTable } from "../lib/realtime";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 import FactoryTaskForm from "./factory/FactoryTaskForm.jsx";
+import FactorySegmentJobPicker from "./factory/FactorySegmentJobPicker.jsx";
+import { listSegmentLeadership, setTaskFactoryContext } from "../lib/factoryApi";
 
 // Fixed bilingual message only — never a raw Supabase/Postgres error string —
 // so a failed directory load can never leak backend detail. Persistent (with
@@ -53,6 +55,29 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   const [taskScope, setTaskScope] = useState("general");
   const isFactoryDept = lookups.departmentById?.[profile.department_id]?.code === "FACTORY";
   const canFactoryTask = !!(profile.permissions.hasGlobalOversight || (isFactoryDept && (profile.permissions.isDepartmentHead || profile.permissions.isSupervisor)));
+
+  // Factory Segment + Job Card routing (any department -> Factory/Manufacturing), independent of the
+  // Factory-leadership-only "Factory Task" scope toggle above (that toggle opens the richer, job-card-aware
+  // FactoryTaskForm for Factory's OWN Head/Supervisor; this handles the much more common case of an ordinary
+  // Interior/Retail/Accounts employee assigning a task TO Factory through the plain form below).
+  const factoryDeptId = useMemo(() => lookups.departments.find((d) => d.code === "FACTORY")?.id || null, [lookups.departments]);
+  const isFactoryTo = !!factoryDeptId && form.to_department_id === factoryDeptId;
+  const [factoryPick, setFactoryPick] = useState({ segmentCode: "", taskLinkType: "", jobCard: null });
+  // Segment leadership pool: only loaded when actually needed (an external, non-Factory caller targeting
+  // Factory) -- a Factory-internal caller keeps the normal department-wide assignee list (Part 4, rule 2).
+  const [segmentLeadership, setSegmentLeadership] = useState([]);
+  const restrictToLeadership = isFactoryTo && !isFactoryDept && !profile.permissions.hasGlobalOversight;
+  useEffect(() => {
+    if (!restrictToLeadership) return;
+    listSegmentLeadership().then(({ data }) => setSegmentLeadership(data || []));
+  }, [restrictToLeadership]);
+  // Switching To Department away from Factory clears the whole segment/link-type/Job Card choice -- it must
+  // never silently ride along on a task for another department (same rule as the Interior project clear below).
+  useEffect(() => {
+    if (!isFactoryTo) {
+      setFactoryPick((f) => (f.segmentCode ? { segmentCode: "", taskLinkType: "", jobCard: null } : f));
+    }
+  }, [isFactoryTo]);
   const [departments, setDepartments] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [directoryLoading, setDirectoryLoading] = useState(true);
@@ -208,8 +233,8 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // by both the assignee list (search-filtered) and the verifier list
   // (unfiltered) so the two stay in sync with the same authorized set.
   const usersInToDepartment = useMemo(
-    () => allUsers.filter((u) => u.department_id === form.to_department_id),
-    [allUsers, form.to_department_id],
+    () => (restrictToLeadership ? segmentLeadership : allUsers.filter((u) => u.department_id === form.to_department_id)),
+    [allUsers, form.to_department_id, restrictToLeadership, segmentLeadership],
   );
 
   const noActiveStaffInSelectedDept =
@@ -289,6 +314,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       quantity: "",
       project_id: "",
     }));
+    setFactoryPick({ segmentCode: "", taskLinkType: "", jobCard: null });
     setAssigneeSearch("");
     setProjectSearch("");
     tv.reset();
@@ -307,6 +333,21 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       if (form.second_assignee && form.second_assignee === form.assigned_to) {
         showToast("error", t("samePersonErrorMsg", lang));
         return;
+      }
+      // Part 10 validation -- Factory Segment is mandatory the moment To Department resolves to Factory.
+      if (isFactoryTo) {
+        if (!factoryPick.segmentCode) {
+          showToast("error", lang === "gu" ? "કૃપા કરીને ફેક્ટરી સેગમેન્ટ પસંદ કરો." : "Please select a Factory Segment.");
+          return;
+        }
+        if (factoryPick.segmentCode !== "MATERIAL_ORDER" && !factoryPick.taskLinkType) {
+          showToast("error", lang === "gu" ? "કૃપા કરીને જોબ કાર્ડ અથવા સામાન્ય ફેક્ટરી કામ પસંદ કરો." : "Please select a Job Card or choose General Factory Task.");
+          return;
+        }
+        if (factoryPick.taskLinkType === "job_card" && !factoryPick.jobCard) {
+          showToast("error", lang === "gu" ? "કૃપા કરીને જોબ કાર્ડ પસંદ કરો." : "Please select a Job Card or choose General Factory Task.");
+          return;
+        }
       }
     }
     setResult(null);
@@ -336,6 +377,21 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     });
     if (!outcome.ok) return; // the status panel shows the reason; the form and the recording are untouched
     setResult(outcome.task);
+    // The task already exists at this point (created above) -- this second step only attaches its Factory
+    // routing (re-validated server-side regardless of what the picker already enforced client-side). A
+    // failure here is a rare edge case (e.g. the Job Card closed in the few seconds since it was picked); the
+    // task itself is NOT rolled back -- it stays a valid, unrouted Factory task, same as any other task whose
+    // follow-up step failed, and the error says so plainly rather than claiming the whole thing failed.
+    if (isFactoryTo && factoryPick.segmentCode) {
+      const { error: ctxError } = await setTaskFactoryContext(
+        outcome.task.task_id, factoryPick.segmentCode, factoryPick.jobCard?.id || null, factoryPick.taskLinkType || "general",
+      );
+      if (ctxError) {
+        showToast("error", `${t("taskCreated", lang)} (${outcome.task.task_number}), ${lang === "gu" ? "પણ ફેક્ટરી રૂટિંગ નિષ્ફળ" : "but Factory routing failed"}: ${ctxError.message}`);
+        resetFormAfterSuccess();
+        return;
+      }
+    }
     showToast("success", t(outcome.hadVoice ? "taskAssignedWithVoice" : "taskCreated", lang));
     resetFormAfterSuccess();
   }
@@ -474,6 +530,10 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
               )
             )}
           </div>
+
+          {isFactoryTo && (
+            <FactorySegmentJobPicker lang={lang} value={factoryPick} onChange={setFactoryPick} />
+          )}
 
           {isInteriorTo && (
             <div className="field full">

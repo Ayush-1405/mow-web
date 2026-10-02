@@ -339,7 +339,10 @@ function FeatureSections({ job, lang, role, mine, onDone }) {
 
   return (
     <section className="fx-section">
-      <div className="fx-cards" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+      {/* .fx-cards' own mobile-first default (2 cols on phones, scaling to 3/6 on wider screens, factory.css)
+          -- no inline override here. A fixed 3-column grid at every width used to cram these 6 buttons too
+          tight on a 320-390px phone; letting it inherit fixes that without touching any other screen. */}
+      <div className="fx-cards">
         {FEATURES.map(([key, icon, lbl]) => (
           <button key={key} type="button" className={`fx-card ${active === key ? "hot" : ""}`} onClick={() => openFeature(key)}>
             <span className="n" style={{ fontSize: 22 }}>{icon}</span>

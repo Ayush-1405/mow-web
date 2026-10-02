@@ -58,7 +58,9 @@ function MaterialFieldSections({ row, lang, lookups, onSaved }) {
 
   return (
     <div style={{ marginTop: 10 }}>
-      <div className="fx-cards" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+      {/* Same fix as FactoryJobCardPage's FeatureSections: inherit .fx-cards' own mobile-first default
+          (2 cols on phones, more on wider screens) instead of forcing 3 columns at every width. */}
+      <div className="fx-cards">
         {MATERIAL_FEATURES.map(([key, icon, name]) => (
           <button key={key} type="button" className="fx-seg" style={{ padding: 10, minHeight: 72 }} onClick={() => open(key)}>
             <div style={{ fontSize: 22 }}>{icon}</div>

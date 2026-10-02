@@ -381,3 +381,32 @@ export async function tagAttachmentSection(attachmentId, sectionKey) {
 export async function updateMaterialRequestFields(id, patch) {
   return supabase.rpc("factory_update_material_request_fields", { p_id: id, p_patch: patch || {} });
 }
+
+// ---------------------------------------------------------------------------
+// Assign Task -> Factory Segment + Job Card routing (mvp_pilot_assign_task_factory_segment_v2_89.sql).
+// ---------------------------------------------------------------------------
+
+// Active Job Cards in one Factory segment only, richer than the generic searchJobCards() (division/priority/
+// photo-count) so a picker list can show enough to tell two candidates apart.
+export async function searchJobCardsByDivision(divisionCode, q, limit = 20) {
+  if (!divisionCode) return { data: [], error: null };
+  const { data, error } = await supabase.rpc("factory_search_job_cards_by_division", {
+    p_division_code: divisionCode, p_q: q || null, p_limit: limit,
+  });
+  return { data: data || [], error };
+}
+
+// Who an EXTERNAL department (not Factory itself) may assign a Factory task to: Head + Supervisors only.
+export async function listSegmentLeadership() {
+  const { data, error } = await supabase.rpc("factory_list_segment_leadership");
+  return { data: data || [], error };
+}
+
+// Called right after staff_create_task() whenever To Department resolved to Factory -- attaches and
+// server-side re-validates the Factory Segment / Job Card / link type, and sends the routing notifications.
+export async function setTaskFactoryContext(taskId, factorySegmentCode, jobCardId, taskLinkType) {
+  return supabase.rpc("staff_set_task_factory_context", {
+    p_task_id: taskId, p_factory_segment_code: factorySegmentCode,
+    p_job_card_id: jobCardId || null, p_task_link_type: taskLinkType || "general",
+  });
+}
