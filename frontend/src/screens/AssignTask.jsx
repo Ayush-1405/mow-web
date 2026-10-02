@@ -55,29 +55,6 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   const [taskScope, setTaskScope] = useState("general");
   const isFactoryDept = lookups.departmentById?.[profile.department_id]?.code === "FACTORY";
   const canFactoryTask = !!(profile.permissions.hasGlobalOversight || (isFactoryDept && (profile.permissions.isDepartmentHead || profile.permissions.isSupervisor)));
-
-  // Factory Segment + Job Card routing (any department -> Factory/Manufacturing), independent of the
-  // Factory-leadership-only "Factory Task" scope toggle above (that toggle opens the richer, job-card-aware
-  // FactoryTaskForm for Factory's OWN Head/Supervisor; this handles the much more common case of an ordinary
-  // Interior/Retail/Accounts employee assigning a task TO Factory through the plain form below).
-  const factoryDeptId = useMemo(() => lookups.departments.find((d) => d.code === "FACTORY")?.id || null, [lookups.departments]);
-  const isFactoryTo = !!factoryDeptId && form.to_department_id === factoryDeptId;
-  const [factoryPick, setFactoryPick] = useState({ segmentCode: "", taskLinkType: "", jobCard: null });
-  // Segment leadership pool: only loaded when actually needed (an external, non-Factory caller targeting
-  // Factory) -- a Factory-internal caller keeps the normal department-wide assignee list (Part 4, rule 2).
-  const [segmentLeadership, setSegmentLeadership] = useState([]);
-  const restrictToLeadership = isFactoryTo && !isFactoryDept && !profile.permissions.hasGlobalOversight;
-  useEffect(() => {
-    if (!restrictToLeadership) return;
-    listSegmentLeadership().then(({ data }) => setSegmentLeadership(data || []));
-  }, [restrictToLeadership]);
-  // Switching To Department away from Factory clears the whole segment/link-type/Job Card choice -- it must
-  // never silently ride along on a task for another department (same rule as the Interior project clear below).
-  useEffect(() => {
-    if (!isFactoryTo) {
-      setFactoryPick((f) => (f.segmentCode ? { segmentCode: "", taskLinkType: "", jobCard: null } : f));
-    }
-  }, [isFactoryTo]);
   const [departments, setDepartments] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [directoryLoading, setDirectoryLoading] = useState(true);
@@ -137,6 +114,29 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     quantity: "",
     project_id: typeof chatDraft.current.project_id === "string" ? chatDraft.current.project_id : "",
   });
+
+  // Factory Segment + Job Card routing (any department -> Factory/Manufacturing), independent of the
+  // Factory-leadership-only "Factory Task" scope toggle above (that toggle opens the richer, job-card-aware
+  // FactoryTaskForm for Factory's OWN Head/Supervisor; this handles the much more common case of an ordinary
+  // Interior/Retail/Accounts employee assigning a task TO Factory through the plain form below).
+  const factoryDeptId = useMemo(() => lookups.departments.find((d) => d.code === "FACTORY")?.id || null, [lookups.departments]);
+  const isFactoryTo = !!factoryDeptId && form.to_department_id === factoryDeptId;
+  const [factoryPick, setFactoryPick] = useState({ segmentCode: "", taskLinkType: "", jobCard: null });
+  // Segment leadership pool: only loaded when actually needed (an external, non-Factory caller targeting
+  // Factory) -- a Factory-internal caller keeps the normal department-wide assignee list (Part 4, rule 2).
+  const [segmentLeadership, setSegmentLeadership] = useState([]);
+  const restrictToLeadership = isFactoryTo && !isFactoryDept && !profile.permissions.hasGlobalOversight;
+  useEffect(() => {
+    if (!restrictToLeadership) return;
+    listSegmentLeadership().then(({ data }) => setSegmentLeadership(data || []));
+  }, [restrictToLeadership]);
+  // Switching To Department away from Factory clears the whole segment/link-type/Job Card choice -- it must
+  // never silently ride along on a task for another department (same rule as the Interior project clear below).
+  useEffect(() => {
+    if (!isFactoryTo) {
+      setFactoryPick((f) => (f.segmentCode ? { segmentCode: "", taskLinkType: "", jobCard: null } : f));
+    }
+  }, [isFactoryTo]);
 
   const interiorDeptId = useMemo(
     () => lookups.departments.find((d) => d.code === "INTERIOR")?.id || null,
