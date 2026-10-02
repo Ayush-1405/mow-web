@@ -26,7 +26,7 @@ export default function FactorySegmentWip({ lang, profile, lookups }) {
 
   return (
     <div className="fx-page">
-      <FactoryHeader lang={lang} profile={profile} title={`${job.job_order_number} · ${lang === "gu" ? "WIP" : "WIP"}`} showNav={false} />
+      <FactoryHeader lang={lang} profile={profile} title={`${job.job_order_number} · ${lang === "gu" ? "WIP" : "WIP"}`} />
       <Link to={`/factory/${segment}/${jobCardId}`} className="fx-tag gold" style={{ width: "auto" }}>
         ← {lang === "gu" ? "જોબ કાર્ડ" : "Job Card"}
       </Link>

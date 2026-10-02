@@ -75,7 +75,7 @@ export default function FactorySegmentNewJob({ lang, profile }) {
   if (done) {
     return (
       <div className="fx-page">
-        <FactoryHeader lang={lang} profile={profile} title={`${meta.icon} ${lang === "gu" ? meta.gu : meta.en}`} showNav={false} />
+        <FactoryHeader lang={lang} profile={profile} title={`${meta.icon} ${lang === "gu" ? meta.gu : meta.en}`} />
         <section className="fx-section">
           <div className="msg success">
             {lang === "gu" ? `જોબ કાર્ડ ${done.number} બનાવ્યું. વિગતો આપમેળે વંચાઈ રહી છે.` : `Job Card ${done.number} created. Details are being read automatically.`}
@@ -96,7 +96,7 @@ export default function FactorySegmentNewJob({ lang, profile }) {
 
   return (
     <div className="fx-page">
-      <FactoryHeader lang={lang} profile={profile} title={`${lang === "gu" ? "નવું" : "New"} ${lang === "gu" ? meta.gu : meta.en} ${lang === "gu" ? "કામ" : "Job"}`} showNav={false} />
+      <FactoryHeader lang={lang} profile={profile} title={`${lang === "gu" ? "નવું" : "New"} ${lang === "gu" ? meta.gu : meta.en} ${lang === "gu" ? "કામ" : "Job"}`} />
       <button type="button" className="fx-tag gold" style={{ width: "auto" }} onClick={() => navigate(`/factory/${segment}`)}>
         ← {lang === "gu" ? "પાછા" : "Back"}
       </button>

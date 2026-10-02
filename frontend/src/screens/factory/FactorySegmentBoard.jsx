@@ -78,7 +78,7 @@ export default function FactorySegmentBoard({ lang, profile, lookups }) {
 
   return (
     <div className="fx-page">
-      <FactoryHeader lang={lang} profile={profile} title={`${meta.icon} ${lang === "gu" ? meta.gu : meta.en}`} onRefresh={load} showNav={false} />
+      <FactoryHeader lang={lang} profile={profile} title={`${meta.icon} ${lang === "gu" ? meta.gu : meta.en}`} onRefresh={load} />
       <Link to="/factory" className="fx-tag gold" style={{ width: "auto" }}>← {lang === "gu" ? "ફેક્ટરી ડેશબોર્ડ" : "Factory Dashboard"}</Link>
 
       {role.isManager && (

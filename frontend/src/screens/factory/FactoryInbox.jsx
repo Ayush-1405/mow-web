@@ -144,7 +144,7 @@ export default function FactoryInbox({ lang, profile, lookups, mode = "inbox" })
   return (
     <div className="fx-page">
       <FactoryHeader lang={lang} profile={profile} title={title} onRefresh={load} refreshing={refreshing}
-        showNav={role.inFactory || role.admin} locations={locations} location={loc}
+        locations={locations} location={loc}
         onLocation={(v) => { const p = new URLSearchParams(params); if (v) p.set("loc", v); else p.delete("loc"); setParams(p, { replace: true }); }} />
 
       {mode === "requests" && !role.inFactory && !role.admin && (

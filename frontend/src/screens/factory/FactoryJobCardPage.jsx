@@ -703,7 +703,7 @@ export default function FactoryJobCardPage({ lang, profile, lookups }) {
 
   return (
     <div className="fx-page">
-      <FactoryHeader lang={lang} profile={profile} title={job.job_order_number} onRefresh={load} showNav={showNav} />
+      <FactoryHeader lang={lang} profile={profile} title={job.job_order_number} onRefresh={load} />
       {!showNav && <div><Link to="/factory-requests" className="fx-tag gold">← {lang === "gu" ? "મારી વિનંતીઓ" : "My Factory Requests"}</Link></div>}
 
       <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
