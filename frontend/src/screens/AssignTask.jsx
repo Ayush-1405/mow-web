@@ -9,7 +9,9 @@ import { useDebouncedValue } from "../lib/useDebouncedValue";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 import FactoryTaskForm from "./factory/FactoryTaskForm.jsx";
 import FactorySegmentJobPicker from "./factory/FactorySegmentJobPicker.jsx";
-import { listSegmentLeadership, setTaskFactoryContext } from "../lib/factoryApi";
+import { listSegmentLeadership, setTaskFactoryContext, setTaskFactoryPo } from "../lib/factoryApi";
+import { uploadTaskProof, resolveMimeType } from "../lib/api";
+import { detectFileType } from "./TaskDetail.jsx";
 
 // Fixed bilingual message only — never a raw Supabase/Postgres error string —
 // so a failed directory load can never leak backend detail. Persistent (with
@@ -26,6 +28,13 @@ const DIRECTORY_LOAD_ERROR = {
 const NO_ACTIVE_STAFF_MESSAGE = {
   en: "No active staff users in this department.",
   gu: "આ વિભાગમાં કોઈ સક્રિય સ્ટાફ યુઝર નથી.",
+};
+
+// Factory Segment + PO/Order Form picker's blank state. poFile is a plain browser File (not yet uploaded) --
+// see FactorySegmentJobPicker.jsx for why.
+const EMPTY_FACTORY_PICK = {
+  segmentCode: "", taskLinkType: "", poFile: null,
+  poNumber: "", partyName: "", productName: "", quantity: "", deliveryDate: "", instructions: "",
 };
 
 // Assign Task. Calls the approved staff_create_task RPC — all authorization
@@ -121,7 +130,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // Interior/Retail/Accounts employee assigning a task TO Factory through the plain form below).
   const factoryDeptId = useMemo(() => lookups.departments.find((d) => d.code === "FACTORY")?.id || null, [lookups.departments]);
   const isFactoryTo = !!factoryDeptId && form.to_department_id === factoryDeptId;
-  const [factoryPick, setFactoryPick] = useState({ segmentCode: "", taskLinkType: "", jobCard: null });
+  const [factoryPick, setFactoryPick] = useState(EMPTY_FACTORY_PICK);
   // Segment leadership pool: only loaded when actually needed (an external, non-Factory caller targeting
   // Factory) -- a Factory-internal caller keeps the normal department-wide assignee list (Part 4, rule 2).
   const [segmentLeadership, setSegmentLeadership] = useState([]);
@@ -130,11 +139,11 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     if (!restrictToLeadership) return;
     listSegmentLeadership().then(({ data }) => setSegmentLeadership(data || []));
   }, [restrictToLeadership]);
-  // Switching To Department away from Factory clears the whole segment/link-type/Job Card choice -- it must
-  // never silently ride along on a task for another department (same rule as the Interior project clear below).
+  // Switching To Department away from Factory clears the whole segment/link-type/PO choice -- it must never
+  // silently ride along on a task for another department (same rule as the Interior project clear below).
   useEffect(() => {
     if (!isFactoryTo) {
-      setFactoryPick((f) => (f.segmentCode ? { segmentCode: "", taskLinkType: "", jobCard: null } : f));
+      setFactoryPick((f) => (f.segmentCode ? EMPTY_FACTORY_PICK : f));
     }
   }, [isFactoryTo]);
 
@@ -314,7 +323,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       quantity: "",
       project_id: "",
     }));
-    setFactoryPick({ segmentCode: "", taskLinkType: "", jobCard: null });
+    setFactoryPick(EMPTY_FACTORY_PICK);
     setAssigneeSearch("");
     setProjectSearch("");
     tv.reset();
@@ -334,19 +343,26 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         showToast("error", t("samePersonErrorMsg", lang));
         return;
       }
-      // Part 10 validation -- Factory Segment is mandatory the moment To Department resolves to Factory.
+      // Part 10/11 validation -- Factory Segment is mandatory the moment To Department resolves to Factory;
+      // a PO/Order Form upload (never a Job Card number) is the only way to link a Job Card.
       if (isFactoryTo) {
         if (!factoryPick.segmentCode) {
           showToast("error", lang === "gu" ? "કૃપા કરીને ફેક્ટરી સેગમેન્ટ પસંદ કરો." : "Please select a Factory Segment.");
           return;
         }
-        if (factoryPick.segmentCode !== "MATERIAL_ORDER" && !factoryPick.taskLinkType) {
-          showToast("error", lang === "gu" ? "કૃપા કરીને જોબ કાર્ડ અથવા સામાન્ય ફેક્ટરી કામ પસંદ કરો." : "Please select a Job Card or choose General Factory Task.");
+        if (!factoryPick.taskLinkType) {
+          showToast("error", lang === "gu" ? "કૃપા કરીને PO/ઓર્ડર ફોર્મ અથવા સામાન્ય ફેક્ટરી કામ પસંદ કરો." : "Please attach a PO or Order Form, or choose General Factory Task.");
           return;
         }
-        if (factoryPick.taskLinkType === "job_card" && !factoryPick.jobCard) {
-          showToast("error", lang === "gu" ? "કૃપા કરીને જોબ કાર્ડ પસંદ કરો." : "Please select a Job Card or choose General Factory Task.");
-          return;
+        if (factoryPick.taskLinkType === "po_order_form") {
+          if (!factoryPick.poFile) {
+            showToast("error", lang === "gu" ? "કૃપા કરીને PO અથવા ઓર્ડર ફોર્મ જોડો." : "Please attach a PO or Order Form.");
+            return;
+          }
+          if (!factoryPick.poNumber.trim() && !factoryPick.partyName.trim() && !factoryPick.productName.trim()) {
+            showToast("error", lang === "gu" ? "કૃપા કરીને ઓર્ડરની વિગતો ચકાસો." : "Please verify the highlighted order details.");
+            return;
+          }
         }
       }
     }
@@ -383,13 +399,30 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     // task itself is NOT rolled back -- it stays a valid, unrouted Factory task, same as any other task whose
     // follow-up step failed, and the error says so plainly rather than claiming the whole thing failed.
     if (isFactoryTo && factoryPick.segmentCode) {
-      const { error: ctxError } = await setTaskFactoryContext(
-        outcome.task.task_id, factoryPick.segmentCode, factoryPick.jobCard?.id || null, factoryPick.taskLinkType || "general",
-      );
-      if (ctxError) {
-        showToast("error", `${t("taskCreated", lang)} (${outcome.task.task_number}), ${lang === "gu" ? "પણ ફેક્ટરી રૂટિંગ નિષ્ફળ" : "but Factory routing failed"}: ${ctxError.message}`);
+      const routingFailed = (msg) => {
+        showToast("error", `${t("taskCreated", lang)} (${outcome.task.task_number}), ${lang === "gu" ? "પણ ફેક્ટરી રૂટિંગ નિષ્ફળ" : "but Factory routing failed"}: ${msg}`);
         resetFormAfterSuccess();
-        return;
+      };
+      if (factoryPick.taskLinkType === "po_order_form") {
+        // The task now exists, so the PO file (held locally until now, same pattern as the voice recorder)
+        // uploads against its real entity id, then the match/create/verification-required decision happens
+        // server-side -- the creator never sees or picks a Job Card number at any point in this flow.
+        const category = detectFileType(resolveMimeType(factoryPick.poFile));
+        if (!category) { routingFailed(lang === "gu" ? "આ ફાઇલ પ્રકાર સમર્થિત નથી." : "This file type is not supported."); return; }
+        let attachmentId;
+        try {
+          ({ attachmentId } = await uploadTaskProof({ entityType: "task", entityId: outcome.task.task_id, file: factoryPick.poFile, fileType: category, purpose: "proof" }));
+        } catch (err) {
+          routingFailed(err.message || (lang === "gu" ? "ફાઇલ અપલોડ નિષ્ફળ. કૃપા કરીને ફરી પ્રયાસ કરો." : "File upload failed. Please retry."));
+          return;
+        }
+        const { error: poError } = await setTaskFactoryPo(outcome.task.task_id, factoryPick.segmentCode, attachmentId, factoryPick);
+        if (poError) { routingFailed(poError.message); return; }
+      } else {
+        const { error: ctxError } = await setTaskFactoryContext(
+          outcome.task.task_id, factoryPick.segmentCode, null, "general_factory_task",
+        );
+        if (ctxError) { routingFailed(ctxError.message); return; }
       }
     }
     showToast("success", t(outcome.hadVoice ? "taskAssignedWithVoice" : "taskCreated", lang));

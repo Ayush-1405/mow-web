@@ -407,6 +407,27 @@ export async function listSegmentLeadership() {
 export async function setTaskFactoryContext(taskId, factorySegmentCode, jobCardId, taskLinkType) {
   return supabase.rpc("staff_set_task_factory_context", {
     p_task_id: taskId, p_factory_segment_code: factorySegmentCode,
-    p_job_card_id: jobCardId || null, p_task_link_type: taskLinkType || "general",
+    p_job_card_id: jobCardId || null, p_task_link_type: taskLinkType || "general_factory_task",
   });
+}
+
+// PO/Order Form path: called right after staff_create_task() AND after the PO file itself has been uploaded
+// (uploadTaskProof, entityType="task") -- does the automatic Job Card matching/creation server-side
+// (mvp_pilot_assign_task_po_matching_v2_90.sql). No Job Card number is ever asked of the caller.
+export async function setTaskFactoryPo(taskId, factorySegmentCode, attachmentId, fields = {}) {
+  return supabase.rpc("staff_set_task_factory_po", {
+    p_task_id: taskId, p_factory_segment_code: factorySegmentCode, p_attachment_id: attachmentId,
+    p_po_number: fields.poNumber || null, p_party_name: fields.partyName || null, p_product_name: fields.productName || null,
+    p_quantity: fields.quantity === "" || fields.quantity == null ? null : Number(fields.quantity),
+    p_delivery_date: fields.deliveryDate || null, p_instructions: fields.instructions || null,
+  });
+}
+
+// Factory Head/Supervisor queue: PO uploads that matched more than one existing Job Card.
+export async function listPoVerificationTasks() {
+  const { data, error } = await supabase.rpc("factory_list_po_verification_tasks");
+  return { data: data || [], error };
+}
+export async function resolvePoVerification(taskId, jobCardId) {
+  return supabase.rpc("factory_resolve_po_verification", { p_task_id: taskId, p_job_card_id: jobCardId || null });
 }

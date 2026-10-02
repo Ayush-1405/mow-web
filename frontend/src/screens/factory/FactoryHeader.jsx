@@ -17,6 +17,7 @@ const NAV = [
   ["/factory/job-cards?status=ready_for_review", { en: "🚚 Ready for Dispatch", gu: "🚚 ડિસ્પેચ" }, false, "fx-hide-sm"],
   ["/factory/completed", { en: "🏁 Completed", gu: "🏁 પૂર્ણ" }, false, "fx-hide-sm"],
   ["/factory/master-report", { en: "📊 Reports", gu: "📊 રિપોર્ટ" }, false, ""],
+  ["/factory/po-verification", { en: "🔍 Verify POs", gu: "🔍 PO ચકાસણી" }, false, "fx-hide-sm", "leader"],
   ["/factory/overview", { en: "Overview", gu: "ઓવરવ્યુ" }, false, "fx-hide-sm", "leader"],
 ];
 

@@ -1,11 +1,9 @@
-import React, { useEffect, useState } from "react";
-import { useDebouncedValue } from "../../lib/useDebouncedValue";
-import { searchJobCardsByDivision } from "../../lib/factoryApi";
-import { DIVISION_META, fmtDate } from "./factoryConstants";
+import React, { useRef } from "react";
+import { ACCEPT_ATTR } from "../../lib/fileTypes";
 
 // The four Factory Segment choices (handwritten spec). Sofa/Modular/Metal Fabrication are real
-// production_divisions rows; Material to Order has no division and no Job Card concept, so it skips straight
-// past the "Task Link Type" step below -- there is nothing to link it to.
+// production_divisions rows; Material to Order has no division and no Job Card concept -- a PO uploaded under
+// it becomes a real Material to Order request instead (see staff_set_task_factory_po in the migration).
 const SEGMENTS = [
   ["SOFA", "🛋️", { en: "Sofa", gu: "સોફા" }],
   ["MODULAR", "🗄️", { en: "Modular", gu: "મોડ્યુલર" }],
@@ -13,45 +11,41 @@ const SEGMENTS = [
   ["MATERIAL_ORDER", "📦", { en: "Material to Order", gu: "મટિરિયલ ઓર્ડર" }],
 ];
 const LINK_TYPES = [
-  ["job_card", "📋", { en: "Link Existing Job Card", gu: "હાલનું જોબ કાર્ડ જોડો" }],
-  ["general", "🧰", { en: "General Factory Task", gu: "સામાન્ય ફેક્ટરી કામ" }],
+  ["po_order_form", "📎", { en: "Attach PO / Order Form", gu: "PO / ઓર્ડર ફોર્મ જોડો" }],
+  ["general_factory_task", "🧰", { en: "General Factory Task", gu: "સામાન્ય ફેક્ટરી કામ" }],
 ];
 
-// Shared by AssignTask.jsx (any department assigning INTO Factory) -- segment selection is mandatory the
-// moment To Department resolves to Factory; this component owns that whole sub-flow (segment -> link type ->
-// Job Card search) as one controlled unit so it isn't rebuilt twice.
+// Shared by AssignTask.jsx -- segment selection is mandatory the moment To Department resolves to Factory.
+// A task creator is NEVER asked to search for or know a Job Card number: picking "Attach PO / Order Form" shows
+// a simple upload + a handful of plain reference fields; matching an existing Job Card (or creating a new one,
+// or routing to a Factory Head/Supervisor for verification when more than one could match) happens entirely
+// server-side, in staff_set_task_factory_po, after the task itself is created.
 //
-// value: { segmentCode, taskLinkType, jobCard } (jobCard is the full picked row, or null)
-// locked: true when opened from an existing Job Card -- segment/link-type/job card are preset and read-only
-// (reassignment permission, if ever added, would simply pass locked=false instead).
-export default function FactorySegmentJobPicker({ lang, value, onChange, locked = false }) {
-  const { segmentCode, taskLinkType, jobCard } = value;
-  const [q, setQ] = useState("");
-  const dq = useDebouncedValue(q, 250);
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
+// value: { segmentCode, taskLinkType, poFile, poNumber, partyName, productName, quantity, deliveryDate, instructions }
+// poFile is a plain browser File, held here (not yet uploaded) -- the task doesn't exist yet at this point in
+// the flow, so the actual upload happens in AssignTask.jsx right after staff_create_task() succeeds (same
+// "hold it locally, upload only after the task exists" pattern the voice recorder already uses there).
+export default function FactorySegmentJobPicker({ lang, value, onChange }) {
+  const { segmentCode, taskLinkType, poFile } = value;
+  const fileRef = useRef(null);
+  const cameraRef = useRef(null);
 
-  useEffect(() => {
-    if (jobCard || taskLinkType !== "job_card" || !segmentCode || segmentCode === "MATERIAL_ORDER") { setResults([]); return undefined; }
-    let active = true;
-    setSearching(true);
-    searchJobCardsByDivision(segmentCode, dq.trim() || null).then(({ data }) => { if (active) { setResults(data || []); setSearching(false); } });
-    return () => { active = false; };
-  }, [segmentCode, dq, jobCard, taskLinkType]);
-
+  function set(patch) {
+    onChange({ ...value, ...patch });
+  }
   function pickSegment(code) {
-    if (locked) return;
-    onChange({ segmentCode: code, taskLinkType: code === "MATERIAL_ORDER" ? "general" : null, jobCard: null });
+    set({ segmentCode: code, taskLinkType: null, poFile: null, poNumber: "", partyName: "", productName: "", quantity: "", deliveryDate: "", instructions: "" });
   }
   function pickLinkType(type) {
-    onChange({ segmentCode, taskLinkType: type, jobCard: null });
+    set({ taskLinkType: type, poFile: type === "po_order_form" ? poFile : null });
   }
-  function pickJobCard(job) {
-    onChange({ segmentCode, taskLinkType, jobCard: job });
-    setQ(""); setResults([]);
+  function onFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) set({ poFile: file });
   }
-  function clearJobCard() {
-    onChange({ segmentCode, taskLinkType, jobCard: null });
+  function removeFile() {
+    set({ poFile: null });
   }
 
   return (
@@ -59,23 +53,21 @@ export default function FactorySegmentJobPicker({ lang, value, onChange, locked 
       <label>{lang === "gu" ? "ફેક્ટરી સેગમેન્ટ પસંદ કરો" : "Select Factory Segment"} *</label>
       <div className="fx-cards">
         {SEGMENTS.map(([code, icon, name]) => (
-          <button key={code} type="button" disabled={locked && segmentCode !== code}
-            className={`fx-card ${segmentCode === code ? "hot" : ""}`} onClick={() => pickSegment(code)}
-            aria-pressed={segmentCode === code} style={locked && segmentCode !== code ? { opacity: 0.4 } : undefined}>
+          <button key={code} type="button" className={`fx-card ${segmentCode === code ? "hot" : ""}`}
+            onClick={() => pickSegment(code)} aria-pressed={segmentCode === code}>
             <span className="n" style={{ fontSize: 26 }}>{icon}</span>
             <span className="l">{lang === "gu" ? name.gu : name.en}</span>
           </button>
         ))}
       </div>
 
-      {segmentCode && segmentCode !== "MATERIAL_ORDER" && (
+      {segmentCode && (
         <div style={{ marginTop: 12 }}>
           <label>{lang === "gu" ? "ટાસ્ક લિંક પ્રકાર" : "Task Link Type"} *</label>
           <div className="fx-cards" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
             {LINK_TYPES.map(([type, icon, name]) => (
-              <button key={type} type="button" disabled={locked && taskLinkType !== type}
-                className={`fx-card ${taskLinkType === type ? "hot" : ""}`} onClick={() => pickLinkType(type)}
-                aria-pressed={taskLinkType === type} style={locked && taskLinkType !== type ? { opacity: 0.4 } : undefined}>
+              <button key={type} type="button" className={`fx-card ${taskLinkType === type ? "hot" : ""}`}
+                onClick={() => pickLinkType(type)} aria-pressed={taskLinkType === type}>
                 <span className="n" style={{ fontSize: 22 }}>{icon}</span>
                 <span className="l">{lang === "gu" ? name.gu : name.en}</span>
               </button>
@@ -84,46 +76,86 @@ export default function FactorySegmentJobPicker({ lang, value, onChange, locked 
         </div>
       )}
 
-      {taskLinkType === "job_card" && segmentCode && segmentCode !== "MATERIAL_ORDER" && (
+      {taskLinkType === "po_order_form" && (
         <div style={{ marginTop: 10 }}>
-          {jobCard ? (
-            <div className="fx-jobpick">
-              <div>
-                <b>{jobCard.job_order_number}</b>{" "}
-                <span className="fx-tag gold">{jobCard.current_stage || jobCard.factory_status}</span>
-                {jobCard.priority && <span className="fx-tag">{jobCard.priority}</span>}
-                <div className="sub">
-                  {[jobCard.customer_name, jobCard.product_item, jobCard.project_code || jobCard.source_reference].filter(Boolean).join(" · ")}
+          <div className="fx-section" style={{ padding: 10 }}>
+            {!poFile ? (
+              <>
+                <div className="sub" style={{ marginBottom: 8 }}>
+                  {lang === "gu" ? "PO ફોટો લો અથવા ઓર્ડર ફોર્મ અપલોડ કરો" : "Take a PO photo or upload the Order Form"}
                 </div>
-                <div className="sub">
-                  {DIVISION_META[segmentCode]?.en} · {lang === "gu" ? "ડિલિવરી" : "Delivery"}: {fmtDate(jobCard.required_date)}
-                  {jobCard.photo_count > 0 ? ` · 📷 ${jobCard.photo_count}` : ""}
+                <div className="task-meta" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-primary" style={{ width: "auto", minHeight: 48 }} onClick={() => cameraRef.current?.click()}>
+                    📷 {lang === "gu" ? "PO ફોટો લો" : "Take PO Photo"}
+                  </button>
+                  <button type="button" className="btn btn-outline" style={{ width: "auto", minHeight: 48 }} onClick={() => fileRef.current?.click()}>
+                    🖼️ {lang === "gu" ? "ગેલેરીમાંથી પસંદ કરો" : "Choose from Gallery"}
+                  </button>
+                  <button type="button" className="btn btn-outline" style={{ width: "auto", minHeight: 48 }} onClick={() => fileRef.current?.click()}>
+                    📄 {lang === "gu" ? "ઓર્ડર ફોર્મ અપલોડ કરો" : "Upload Order Form / Document"}
+                  </button>
                 </div>
+                {/* Two inputs for the same target: capture=environment opens the rear camera directly on a phone;
+                    the plain picker (no capture attribute) opens the gallery/file browser. Both accept every
+                    format the spec lists -- ACCEPT_ATTR("task") already covers image/pdf/word/excel/drawing. */}
+                <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={onFile} />
+                <input ref={fileRef} type="file" accept={ACCEPT_ATTR("task")} style={{ display: "none" }} onChange={onFile} />
+              </>
+            ) : (
+              <div className="fx-jobpick">
+                <div>
+                  {poFile.type?.startsWith("image/") ? (
+                    <img src={URL.createObjectURL(poFile)} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border-strong)" }} />
+                  ) : (
+                    <div style={{ width: 72, height: 72, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, background: "var(--surface-2)", borderRadius: 8 }}>📄</div>
+                  )}
+                  <div className="sub" style={{ marginTop: 4, wordBreak: "break-all" }}>{poFile.name}</div>
+                </div>
+                <div className="task-meta" style={{ gap: 6, flexDirection: "column" }}>
+                  <button type="button" className="btn btn-outline" style={{ width: "auto", minHeight: 44 }} onClick={() => fileRef.current?.click()}>
+                    🔄 {lang === "gu" ? "બદલો" : "Replace"}
+                  </button>
+                  <button type="button" className="btn btn-outline" style={{ width: "auto", minHeight: 44 }} onClick={removeFile}>
+                    🗑️ {lang === "gu" ? "કાઢી નાખો" : "Remove"}
+                  </button>
+                </div>
+                <input ref={fileRef} type="file" accept={ACCEPT_ATTR("task")} style={{ display: "none" }} onChange={onFile} />
               </div>
-              {!locked && <button type="button" className="btn btn-outline" onClick={clearJobCard} aria-label="Change Job Card">{lang === "gu" ? "બદલો" : "Change"}</button>}
+            )}
+          </div>
+
+          {poFile && (
+            <div className="form-grid" style={{ marginTop: 10 }}>
+              <div className="field">
+                <label>{lang === "gu" ? "PO / ઓર્ડર નંબર" : "PO / Order Number"}</label>
+                <input value={value.poNumber || ""} onChange={(e) => set({ poNumber: e.target.value })} />
+              </div>
+              <div className="field">
+                <label>{lang === "gu" ? "પાર્ટી / ગ્રાહકનું નામ" : "Party / Customer Name"}</label>
+                <input value={value.partyName || ""} onChange={(e) => set({ partyName: e.target.value })} />
+              </div>
+              <div className="field">
+                <label>{lang === "gu" ? "પ્રોડક્ટ / કામનું નામ" : "Product / Work Name"}</label>
+                <input value={value.productName || ""} onChange={(e) => set({ productName: e.target.value })} />
+              </div>
+              <div className="field">
+                <label>{lang === "gu" ? "જથ્થો" : "Quantity"}</label>
+                <input type="number" min="0" step="any" inputMode="decimal" value={value.quantity || ""} onChange={(e) => set({ quantity: e.target.value })} />
+              </div>
+              <div className="field">
+                <label>{lang === "gu" ? "ડિલિવરી તારીખ" : "Delivery Date"}</label>
+                <input type="date" value={value.deliveryDate || ""} onChange={(e) => set({ deliveryDate: e.target.value })} />
+              </div>
+              <div className="field full">
+                <label>{lang === "gu" ? "ટૂંકી સૂચનાઓ" : "Short Instructions"}</label>
+                <textarea rows={2} value={value.instructions || ""} onChange={(e) => set({ instructions: e.target.value })} />
+              </div>
+              <div className="sub" style={{ gridColumn: "1 / -1" }}>
+                {lang === "gu"
+                  ? "અપલોડ કર્યા પછી, સિસ્ટમ હાલના જોબ કાર્ડ સાથે આપમેળે મેળ કરવાનો પ્રયાસ કરશે."
+                  : "After upload, the system automatically tries to match this with an existing Job Card."}
+              </div>
             </div>
-          ) : !locked && (
-            <>
-              <input type="search" placeholder={lang === "gu" ? "જોબ કાર્ડ, ગ્રાહક, પ્રોડક્ટ, PO શોધો…" : "Search Job Card no., customer, product, PO…"}
-                value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" />
-              {searching && <div className="sub">{lang === "gu" ? "શોધી રહ્યા છીએ…" : "Searching…"}</div>}
-              {results.length > 0 && (
-                <ul className="fx-results">
-                  {results.map((j) => (
-                    <li key={j.id}>
-                      <button type="button" onClick={() => pickJobCard(j)}>
-                        <b>{j.job_order_number}</b> — {j.customer_name || j.project_code || "—"}
-                        <span className="sub"> {j.product_item || ""} · {j.current_stage || j.factory_status} · {j.priority}
-                          {j.photo_count > 0 ? ` · 📷 ${j.photo_count}` : ""}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {!searching && dq.trim().length > 0 && results.length === 0 && (
-                <div className="sub">{lang === "gu" ? "કોઈ સક્રિય જોબ કાર્ડ મળ્યું નથી." : "No active Job Card matches."}</div>
-              )}
-            </>
           )}
         </div>
       )}
