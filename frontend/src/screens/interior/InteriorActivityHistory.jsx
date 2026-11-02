@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useRef, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
 import { listProjectActivity, listUnassignedActivity, assignActivityToProject } from "../../lib/interiorApi";
@@ -19,9 +19,11 @@ export default function InteriorActivityHistory({ lang, projectId, isElevated })
   const [showUnassigned, setShowUnassigned] = useState(false);
   const [unassignedRows, setUnassignedRows] = useState([]);
 
+  // The skeleton is for arriving at a project; background refreshes of the same one update the rows in place.
+  const loadedFor = useRef(undefined);
   const load = useCallback(async () => {
     if (!projectId) { setRows([]); setLoading(false); return; }
-    setLoading(true);
+    if (loadedFor.current !== projectId) { loadedFor.current = projectId; setLoading(true); }
     setError(false);
     const [{ data, error: err }, usersRes] = await Promise.all([
       listProjectActivity(projectId),

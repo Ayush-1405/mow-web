@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { friendlyError } from "./lib/friendlyError";
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "./lib/supabase";
@@ -260,6 +260,10 @@ export default function App() {
     return true;
   }, []);
 
+  // What the current `profile` state was built from. This reload runs on every return to the foreground, so an unchanged result must leave
+  // the state alone: a new object would re-render the whole app, tear down the realtime channels and re-apply the saved language.
+  const profileKey = useRef(null);
+
   const loadProfile = useCallback(async (userId) => {
     // The capability list is computed by the database from the caller's own role (auth.uid()); the browser never supplies a role.
     const [{ data, error }, capsRes] = await Promise.all([
@@ -272,9 +276,13 @@ export default function App() {
     }
     if (capsRes.error) console.warn("Could not load capabilities; sensitive features stay hidden:", capsRes.error.message);
     const roleCode = data.roles?.code || "";
-    setLang(data.language_pref === "gu" ? "gu" : "en");
     const p = withPermissions({ ...data, roleCode }, capsRes.data?.capabilities);
-    setProfile(p);
+    const key = JSON.stringify([data, capsRes.data?.capabilities]);
+    if (key !== profileKey.current) {
+      profileKey.current = key;
+      setLang(data.language_pref === "gu" ? "gu" : "en");
+      setProfile(p);
+    }
     return p;
   }, [showToast]);
 
@@ -292,12 +300,12 @@ export default function App() {
       if (!active) return;
       if (data?.session) {
         setSession(data.session);
-        const p = await loadProfile(data.session.user.id);
-        if (p) {
-          setMustChangePassword(!!p.must_change_password);
-          const ok = await loadLookups();
-          if (ok) await loadUnread();
-        }
+        // The home screen is the likely destination: fetch its chunk alongside the data so it doesn't start only after boot finishes.
+        if (window.location.pathname === "/") import("./screens/TodayTasks.jsx").catch(() => {});
+        // Independent requests run together; the unread badge fills in by itself and never holds up the first screen.
+        const [p, ok] = await Promise.all([loadProfile(data.session.user.id), loadLookups()]);
+        if (p) setMustChangePassword(!!p.must_change_password);
+        if (p && ok) loadUnread();
       }
       setBooting(false);
     }
@@ -305,6 +313,7 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       if (!newSession) {
+        profileKey.current = null;
         setProfile(null);
         setLookups(null);
       }
@@ -449,6 +458,7 @@ export default function App() {
   async function handleLogout() {
     await supabase.auth.signOut();
     setSession(null);
+    profileKey.current = null;
     setProfile(null);
     setLookups(null);
     setMustChangePassword(false);

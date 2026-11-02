@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
@@ -68,8 +68,10 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
   const [myTasks, setMyTasks] = useState([]);
   const [mySnags, setMySnags] = useState([]);
 
+  // The skeleton is for arriving at a project; background refreshes of the same one update the rows in place.
+  const loadedFor = useRef(undefined);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (loadedFor.current !== profile?.id) { loadedFor.current = profile?.id; setLoading(true); }
     setError(false);
     const [projRes, reportsRes, snagsRes, changesRes, materialsRes, tasksRes, mySnagsRes, designVersionsRes, purchaseRequestsRes] = await Promise.all([
       supabase.from("projects").select("*").eq("archived", false),

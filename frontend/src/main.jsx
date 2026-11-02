@@ -20,7 +20,8 @@ window.__mowApplyUpdate = () => updateSW(true);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
+    {/* Route changes run as a React transition: the current screen stays up until the next screen's chunk is ready, instead of flashing a skeleton */}
+    <BrowserRouter future={{ v7_startTransition: true }}>
       <App />
       <InstallPrompt />
     </BrowserRouter>

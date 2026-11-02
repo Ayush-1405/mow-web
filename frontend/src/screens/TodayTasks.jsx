@@ -14,6 +14,7 @@ import { ACTION_LABEL } from "./factory/factoryConstants";
 import { subscribeTable } from "../lib/realtime";
 import { useForegroundRefresh } from "../lib/useForegroundRefresh";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
+import { reuseMap, reuseRows, reuseValue } from "../lib/stableData";
 import { kolkataDateStr, addDaysToDateStr, daysBetweenDateStrs, kolkataDateOf, msUntilNextKolkataMidnight } from "../lib/kolkataTime";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 import { DateNavigator, QuickDateChips, TaskSearchBar, FilterButton, FilterFields, ActiveFilterChips, MobileFilterSheet } from "./TaskFilterBar.jsx";
@@ -64,6 +65,13 @@ function formatDisplayDate(dateStr, lang) {
 // attached, so comparing it against the Kolkata "today" string is always
 // correct with no further conversion; only the "Assigned Date" filter
 // (a real timestamptz column) needs the Kolkata-aware conversion helpers.
+// One task card, re-rendered only when one of its `deps` changes: the list holds up to 300 cards and the screen's state also covers the search
+// box and the reason fields, which change on every keystroke.
+const TaskCardSlot = React.memo(
+  function TaskCardSlot({ render }) { return render(); },
+  (a, b) => a.deps.length === b.deps.length && a.deps.every((d, i) => Object.is(d, b.deps[i])),
+);
+
 export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -235,9 +243,15 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const ids = taskIdsRef.current;
     if (!ids.length) { setVoiceByTask({}); return; }
     const { data, error } = await fetchVoiceInstructions(ids);
-    if (!error) setVoiceByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r])));
+    if (!error) {
+      const next = Object.fromEntries((data || []).map((r) => [r.task_id, r]));
+      setVoiceByTask((cur) => reuseMap(cur, next));
+    }
   }, []);
+  // Only the newest load may write state: switching lists while an older request is still in flight must not bring its rows back.
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     if (!loadedOnce.current) setLoading(true);
     // requirement_text/quantity now live directly on staff_tasks (every
     // task, not just Bridges — see mvp_pilot_task_requirement_quantity_
@@ -252,52 +266,52 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const { data, error } = await taskQuery
       .order("created_at", { ascending: false })
       .limit(300);
+    if (seq !== loadSeq.current) return;
     if (error) {
       showToast("error", error.message);
       setLoading(false);
       return;
     }
-    setTasks(data || []);
+    const rows = data || [];
     // Project-linked tasks (e.g. from Daily Site Updates) need the
     // project's code/customer/location shown as its own field, never
     // buried inside the description — a second small query only for the
     // distinct project_ids actually present, not every project this user
     // can see.
-    const projectIds = Array.from(new Set((data || []).map((tsk) => tsk.project_id).filter(Boolean)));
-    if (projectIds.length) {
-      const { data: projRows } = await supabase
-        .from("projects")
-        .select("id, project_code, customer, location, lead_executive_id, executive_assistant_id, stage, archived")
-        .in("id", projectIds);
-      setProjectsById(Object.fromEntries((projRows || []).map((p) => [p.id, p])));
-      // Lead Executive/Executive Assistant names live in Interior's own
-      // `profiles` table (a different id space from user_profiles) —
-      // loaded once, lazily, only once a project-linked task is actually
-      // visible, so a non-Interior caller never pays for this query.
-      if (!interiorProfilesLoadedRef.current) {
-        interiorProfilesLoadedRef.current = true;
-        const { data: peopleRows, error: peopleErr } = await listInteriorPeople();
-        if (!peopleErr) setInteriorProfilesById(Object.fromEntries((peopleRows || []).map((p) => [p.id, p])));
-      }
-    } else {
-      setProjectsById({});
-    }
+    const projectIds = Array.from(new Set(rows.map((tsk) => tsk.project_id).filter(Boolean)));
+    // Lead Executive/Executive Assistant names live in Interior's own
+    // `profiles` table (a different id space from user_profiles) —
+    // loaded once, lazily, only once a project-linked task is actually
+    // visible, so a non-Interior caller never pays for this query.
+    const loadPeople = projectIds.length > 0 && !interiorProfilesLoadedRef.current;
+    if (loadPeople) interiorProfilesLoadedRef.current = true;
     // Second Assignee: staff_task_assignees rows for every visible task
     // (RLS-scoped the same as staff_tasks itself) -- lets a task show
     // "Working With" plus each person's own acceptance/individual status,
     // and lets action-button gating check the caller's own row instead of
     // only the shared assigned_to/current_owner_id scalar columns.
-    const taskIds = (data || []).map((tsk) => tsk.id);
+    const taskIds = rows.map((tsk) => tsk.id);
     taskIdsRef.current = taskIds;
     refreshVoice();
-    if (taskIds.length) {
-      const { data: assigneeRows } = await supabase.from("staff_task_assignees").select("*").in("task_id", taskIds).eq("is_active", true);
-      const grouped = {};
-      (assigneeRows || []).forEach((r) => { (grouped[r.task_id] ||= []).push(r); });
-      setAssigneesByTask(grouped);
-    } else {
-      setAssigneesByTask({});
+    // Everything a card shows arrives together and is committed in one render, so cards never appear half-filled and then re-render.
+    const [projRes, peopleRes, assigneeRes] = await Promise.all([
+      projectIds.length
+        ? supabase.from("projects").select("id, project_code, customer, location, lead_executive_id, executive_assistant_id, stage, archived").in("id", projectIds)
+        : null,
+      loadPeople ? listInteriorPeople() : null,
+      taskIds.length ? supabase.from("staff_task_assignees").select("*").in("task_id", taskIds).eq("is_active", true) : null,
+    ]);
+    if (seq !== loadSeq.current) {
+      if (loadPeople) interiorProfilesLoadedRef.current = false;
+      return;
     }
+    const nextProjects = Object.fromEntries((projRes?.data || []).map((p) => [p.id, p]));
+    const nextAssignees = {};
+    (assigneeRes?.data || []).forEach((r) => { (nextAssignees[r.task_id] ||= []).push(r); });
+    setTasks((cur) => reuseRows(cur, rows));
+    setProjectsById((cur) => reuseValue(cur, nextProjects));
+    setAssigneesByTask((cur) => reuseMap(cur, nextAssignees));
+    if (peopleRes && !peopleRes.error) setInteriorProfilesById(Object.fromEntries((peopleRes.data || []).map((p) => [p.id, p])));
     loadedOnce.current = true;
     setLoading(false);
   }, [showToast, scopeDef.key, scopeDef.col, refreshVoice]);
@@ -326,7 +340,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   // active participant of -- Chat is the single place task messages live).
   const loadUnread = useCallback(async () => {
     const { data, error } = await taskChatUnread();
-    if (!error) setUnreadByTask(Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count])));
+    if (!error) {
+      const next = Object.fromEntries((data || []).map((r) => [r.task_id, r.unread_count]));
+      setUnreadByTask((cur) => reuseMap(cur, next));
+    }
   }, []);
 
   useEffect(() => {
@@ -763,6 +780,20 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   };
 
   function renderTaskCard(task) {
+    const id = task.id;
+    // Everything taskCardBody reads that can change. The per-card panel states are reduced to "is it this card", so opening a panel or
+    // typing a reason re-renders only that card rather than the whole list.
+    const deps = [
+      task, assigneesByTask[id], voiceByTask[id], unreadByTask[id], usersById, directory, projectsById, interiorProfilesById,
+      lookups, profile, lang, today, breakpoint, load, showToast, navigate,
+      busyId === id, detailsFor === id, proofFor === id, reassignFor === id, deleteConfirmFor === id,
+      returnReasonFor === id && returnReason, holdReasonFor === id && holdReason, reopenReasonFor === id && reopenReason,
+      returnReasonFor === id, holdReasonFor === id, reopenReasonFor === id,
+    ];
+    return <TaskCardSlot key={id} render={() => taskCardBody(task)} deps={deps} />;
+  }
+
+  function taskCardBody(task) {
     const status = statusOf(task.status_id);
     const statusCode = status?.code || "";
     const priority = priorityOf(task.priority_id);

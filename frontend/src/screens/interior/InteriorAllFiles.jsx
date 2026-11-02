@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { t } from "../../lib/i18n";
 import { listAttachments, listInteriorPeople, getAttachmentUrl, listMaterialSelectionAttachmentsForProject, listWorkingDrawingAttachmentsForProject } from "../../lib/interiorApi";
 import { subscribeTable } from "../../lib/realtime";
@@ -21,9 +21,11 @@ export default function InteriorAllFiles({ lang, projectId }) {
   const [moduleFilter, setModuleFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
 
+  // The skeleton is for arriving at a project; background refreshes of the same one update the rows in place.
+  const loadedFor = useRef(undefined);
   const load = useCallback(async () => {
     if (!projectId) { setRows([]); setLoading(false); return; }
-    setLoading(true);
+    if (loadedFor.current !== projectId) { loadedFor.current = projectId; setLoading(true); }
     setError(false);
     const [{ data, error: err }, peopleRes, msAttRes, wdaRes] = await Promise.all([
       listAttachments(projectId), listInteriorPeople(), listMaterialSelectionAttachmentsForProject(projectId),

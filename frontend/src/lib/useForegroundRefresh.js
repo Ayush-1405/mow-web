@@ -15,13 +15,15 @@ import { useEffect, useRef } from "react";
 // user had just picked) away, which looked like the page refreshing by
 // itself and made attachments impossible to upload. So: while a file dialog
 // is open, and for a few seconds after it closes, foreground refreshes are
-// skipped. A short minimum interval also stops focus + visibilitychange
-// (which often fire together) from double-loading.
+// skipped. A minimum interval also stops focus + visibilitychange (which
+// often fire together) from double-loading, and stops quick switches between
+// apps from refetching a screen that Realtime is already keeping current.
+// Regaining the network always refreshes: that is when events may be missing.
 
 let fileDialogOpen = false;
 let suppressUntil = 0;
 const SUPPRESS_AFTER_DIALOG_MS = 4000;
-const MIN_INTERVAL_MS = 3000;
+const MIN_INTERVAL_MS = 15000;
 
 function closeDialogWindow() {
   if (fileDialogOpen) {
@@ -49,7 +51,8 @@ if (typeof window !== "undefined" && !window.__mowFileDialogGuard) {
 }
 
 export function useForegroundRefresh(cb) {
-  const last = useRef(0);
+  // Starts at mount time: the screen has only just loaded its data.
+  const last = useRef(Date.now());
   useEffect(() => {
     if (typeof cb !== "function") return undefined;
     function run() {
@@ -62,11 +65,16 @@ export function useForegroundRefresh(cb) {
     function onVisible() {
       if (!document.hidden) run();
     }
-    window.addEventListener("online", run);
+    function onOnline() {
+      if (fileDialogOpen || Date.now() < suppressUntil) return;
+      last.current = Date.now();
+      cb();
+    }
+    window.addEventListener("online", onOnline);
     window.addEventListener("focus", run);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      window.removeEventListener("online", run);
+      window.removeEventListener("online", onOnline);
       window.removeEventListener("focus", run);
       document.removeEventListener("visibilitychange", onVisible);
     };

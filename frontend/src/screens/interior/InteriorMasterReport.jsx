@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
@@ -84,8 +84,10 @@ export default function InteriorMasterReport({ lang, staffProfile }) {
   // is still the real enforcement regardless of this value.
   const isOrgWide = isElevated || ["head", "director", "purchase", "crm"].includes(interiorProfile?.role);
 
+  // The skeleton is for arriving at a project; background refreshes of the same one update the rows in place.
+  const loadedFor = useRef(undefined);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (loadedFor.current !== projectId) { loadedFor.current = projectId; setLoading(true); }
     const [data, staffUsersRes] = await Promise.all([
       loadMasterReport(projectId, isOrgWide),
       // interior_pilot_audit_log.performed_by AND interior_payment_records.created_by

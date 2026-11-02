@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { formatCurrency } from "../../lib/retailModules";
@@ -60,8 +60,10 @@ export default function InteriorTimeline({ lang, staffProfile, lockedProjectId }
   // Execution role gets this button, however senior on this one project.
   const canDeleteProject = !!(staffProfile?.permissions?.canDelete || staffProfile?.permissions?.isDepartmentHead);
 
+  // The skeleton is for arriving at a project; background refreshes of the same one update the rows in place.
+  const loadedFor = useRef(undefined);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (loadedFor.current !== `${lockedProjectId}|${searchParams}`) { loadedFor.current = `${lockedProjectId}|${searchParams}`; setLoading(true); }
     setError(false);
     const [{ data, error: err }, peopleRes] = await Promise.all([listProjects(), listInteriorPeople()]);
     if (err) { setError(true); setLoading(false); return; }
