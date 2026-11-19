@@ -12,7 +12,7 @@ const REQUEST_COLUMNS =
   + "dept_decided_by, dept_decided_at, dept_decision_remarks, sent_to_procurement_at, proc_decided_by, proc_decided_at, proc_decision_remarks, "
   + "document_version, document_generated_at, order_confirmed_by, order_confirmed_at, "
   + "order_form_type, client_name, sales_person_name, preferred_vendor_name, delivery_date, delivered_to_client_at, order_total, urgency_reason, "
-  + "proc_assigned_to, overdue_since";
+  + "proc_assigned_to, overdue_since, print_template";
 
 export function listPurchaseRequests({ statuses, departmentId, limit = 300 } = {}) {
   let q = supabase.from("purchase_requests").select(REQUEST_COLUMNS).neq("proc_status", "LEGACY");
@@ -96,11 +96,15 @@ export const decideAmountApproval = (id, decision, remarks) => supabase.rpc("pro
 export const setPrimaryHead = (userId) => supabase.rpc("proc_set_primary_head", { p_user_id: userId });
 export const setApprovalLimit = (approver, amount) => supabase.rpc("proc_set_approval_limit", { p_approver: approver, p_max_amount: amount === "" || amount == null ? null : Number(amount) });
 
+// Blank optional numbers go as null (not 0), so the database applies its own default (e.g. the order total).
+const numOrNull = (v) => (String(v ?? "").trim() === "" ? null : Number(v));
+
 export function confirmOrder(id, f) {
   return supabase.rpc("proc_confirm_order", {
-    p_request_id: id, p_vendor_name: f.vendor_name, p_vendor_contact: f.vendor_contact, p_quotation_reference: f.quotation_reference,
-    p_po_number: f.po_number, p_order_date: f.order_date, p_ordered_quantity: Number(f.ordered_quantity), p_amount: Number(f.amount),
-    p_expected_delivery_date: f.expected_delivery_date, p_payment_terms: f.payment_terms, p_remarks: f.remarks,
+    p_request_id: id, p_vendor_name: f.vendor_name,
+    p_po_number: f.po_number, p_order_date: f.order_date, p_ordered_quantity: numOrNull(f.ordered_quantity), p_amount: numOrNull(f.amount),
+    p_expected_delivery_date: f.expected_delivery_date, p_payment_terms: f.payment_terms || null, p_remarks: f.remarks || null,
+    p_vendor_contact: f.vendor_contact || null, p_quotation_reference: f.quotation_reference || null,
     p_scope_of_work: f.scope_of_work || null,
   }).single();
 }
@@ -281,3 +285,22 @@ export const acceptOrderTask = (id) => supabase.rpc("proc_accept_order_task", { 
 export const finishOrderTask = (id, remarks) => supabase.rpc("proc_finish_order_task", { p_request_id: id, p_remarks: remarks });
 export const reopenOrderTask = (id, reason) => supabase.rpc("proc_reopen_order_task", { p_request_id: id, p_reason: reason });
 export const changeDueDate = (id, date, reason) => supabase.rpc("proc_change_due_date", { p_request_id: id, p_new_date: date, p_reason: reason });
+
+// ---- Official order-form printing (mvp_pilot_order_print_v3_08.sql) ----
+
+// May the signed-in user print / confirm this order (the employee handling it, or a Procurement Head / Supervisor)?
+export async function canWorkOrder(id) {
+  const { data, error } = await supabase.rpc("proc_can_work_order", { p_request_id: id });
+  return !error && data === true;
+}
+// Records a print (output PRINT) or a downloaded PDF (output PDF, with its stored copy). Returns { log_id, template, document_version, action }.
+export const recordOrderPrint = (id, output, pdfPath) => supabase.rpc("proc_record_order_print", { p_request_id: id, p_output: output, p_pdf_path: pdfPath || null });
+export const confirmPrint = (logId) => supabase.rpc("proc_confirm_print", { p_log_id: logId });
+export const setPrintTemplate = (id, template, reason) => supabase.rpc("proc_set_print_template", { p_request_id: id, p_template: template, p_reason: reason });
+
+// Stores a generated PDF of the order form under orders/<order id>/printed/ and returns its path (null if the upload failed).
+export async function uploadPrintedPdf(requestId, blob, fileName) {
+  const path = `orders/${requestId}/printed/${Date.now()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const { error } = await supabase.storage.from(ORDER_BUCKET).upload(path, blob, { contentType: "application/pdf" });
+  return error ? null : path;
+}

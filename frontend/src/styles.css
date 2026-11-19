@@ -1478,68 +1478,89 @@ textarea { min-height: 84px; resize: vertical; }
 .purchase-doc-signs span { display: block; border-top: 1px solid #333; margin-bottom: 4px; }
 .purchase-doc-foot { margin-top: 24px; font-size: 8.5pt; color: #555; border-top: 1px solid #ccc; padding-top: 6px; }
 
-/* ---------- Production Supply Order Form (components/OrderFormPrint.jsx): the paper stationery, printed ----------
-   White page, thin borders, dark-red labels, English + Gujarati. Interior prints on A5, Retail on A4 (the @page size is
-   set at print time by the order page). */
-.order-form { --of-red: #9b1c1c; color: #111; font: 10pt/1.35 Arial, "Noto Sans Gujarati", sans-serif; background: #fff; }
-.order-form .of-head { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--of-red); padding-bottom: 6px; }
-.order-form .of-logo { width: 46px; height: 46px; object-fit: contain; }
-.order-form .of-brand { flex: 1; }
-.order-form .of-company { font: 800 18pt/1 Georgia, serif; letter-spacing: 2px; color: #4a2c15; }
-.order-form .of-title { font-weight: 700; color: var(--of-red); margin-top: 3px; font-size: 10pt; }
-.order-form .of-no { border: 1px solid var(--of-red); padding: 4px 8px; text-align: center; min-width: 120px; }
-.order-form .of-no .of-label { display: block; font-size: 8pt; }
-.order-form .of-number { font-weight: 700; font-size: 11pt; }
-.order-form .of-gu { font-weight: 400; font-size: 0.85em; }
-.order-form .of-label { color: var(--of-red); font-weight: 700; }
-.order-form .of-info { margin: 8px 0; }
-.order-form .of-field { display: flex; gap: 6px; align-items: baseline; padding: 3px 0; }
-.order-form .of-field .of-label { white-space: nowrap; font-size: 9pt; }
-.order-form .of-value { flex: 1; border-bottom: 1px dotted #888; min-height: 1.2em; }
-.order-form .of-section-title { background: var(--of-red); color: #fff; font-weight: 700; padding: 3px 6px; margin-top: 6px; font-size: 9.5pt; }
-.order-form .of-table { width: 100%; border-collapse: collapse; }
-.order-form .of-table th { color: var(--of-red); font-size: 8.5pt; text-align: center; }
-.order-form .of-table th, .order-form .of-table td { border: 1px solid #555; padding: 4px 5px; vertical-align: top; }
-.order-form .of-table td { height: 22px; }
-.order-form .of-table tr { break-inside: avoid; }
-.order-form .of-sn { width: 34px; text-align: center; }
-.order-form .of-code { width: 80px; }
-.order-form .of-qty { width: 95px; }
-.order-form .of-rate { width: 75px; }
-.order-form .of-amt { width: 90px; }
-.order-form .of-num { text-align: right; white-space: nowrap; }
-.order-form .of-total td { font-weight: 700; color: var(--of-red); }
-.order-form .of-total td:first-child { text-align: right; }
-.order-form .of-bottom { display: flex; gap: 8px; margin-top: 8px; break-inside: avoid; }
-.order-form .of-box { flex: 1; border: 1px solid #555; padding: 5px 6px; min-height: 70px; }
-.order-form .of-drawings ol { margin: 4px 0 0 16px; padding: 0; font-size: 9pt; }
-.order-form .of-empty-box { min-height: 52px; }
-.order-form .of-remarks { white-space: pre-wrap; margin-top: 3px; }
-.order-form .of-signs { display: flex; gap: 12px; margin-top: 26px; break-inside: avoid; }
-.order-form .of-signs div { flex: 1; text-align: center; font-size: 8.5pt; color: var(--of-red); font-weight: 700; }
-.order-form .of-line { display: block; border-top: 1px solid #333; padding-top: 2px; margin-bottom: 2px; color: #111; font-weight: 400; min-height: 1.1em; }
-.order-form .of-foot { margin-top: 12px; border-top: 1px solid #ccc; padding-top: 4px; font-size: 7.5pt; color: #555; }
-/* Compact Interior form: everything on one A5 page. */
-.order-form-interior { font-size: 8pt; line-height: 1.25; }
-.order-form-interior .of-company { font-size: 13pt; letter-spacing: 1px; }
-.order-form-interior .of-title { font-size: 8pt; }
-.order-form-interior .of-logo { width: 34px; height: 34px; }
-.order-form-interior .of-no { min-width: 96px; padding: 2px 6px; }
-.order-form-interior .of-number { font-size: 9.5pt; }
-.order-form-interior .of-info { margin: 4px 0; }
-.order-form-interior .of-field { padding: 1px 0; }
-.order-form-interior .of-field .of-label { font-size: 7.5pt; }
-.order-form-interior .of-table th { font-size: 7pt; }
-.order-form-interior .of-table th, .order-form-interior .of-table td { padding: 2px 4px; }
-.order-form-interior .of-table td { height: 18px; }
-.order-form-interior .of-qty { width: 72px; }
-.order-form-interior .of-code { width: 60px; }
-.order-form-interior .of-box { min-height: 48px; padding: 3px 5px; }
-.order-form-interior .of-empty-box { min-height: 34px; }
-.order-form-interior .of-signs { margin-top: 16px; gap: 8px; }
-.order-form-interior .of-signs div { font-size: 7pt; }
-.order-form-interior .of-foot { margin-top: 6px; font-size: 6.5pt; }
-.order-form-retail .of-table td { height: 26px; }
+/* ---------- Production Supply Order Form (components/OrderFormPrint.jsx) ----------
+   Drawn after the company's two printed pads: the Interior pad (portrait, red ink) and the Retail pad (landscape, navy
+   ink). White page, thin borders, bold coloured labels with the Gujarati line under each. Everything is sized in `em`;
+   the paper (A5 / A4) sets the base font-size, so the same layout fills either page. */
+.mowf { --c: #c8202b; --line: #c8202b; color: #111; background: #fff; font-family: Arial, "Noto Sans Gujarati", "Nirmala UI", "Shruti", sans-serif;
+  display: flex; flex-direction: column; min-height: var(--form-h, auto); line-height: 1.22; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.mowf-retail { --c: #2c3a57; --line: #3b4763; }
+.mowf-frame { flex: 1; display: flex; flex-direction: column; border: 0.12em solid var(--line); min-height: 0; }
+.mowf-label { color: var(--c); font-weight: 700; }
+.mowf-gu { font-family: "Noto Sans Gujarati", "Nirmala UI", "Shruti", Arial, sans-serif; font-weight: 600; font-size: 0.92em; }
+.mowf-sub { color: #444; font-size: 0.9em; }
+.mowf-head { display: flex; align-items: center; gap: 1.2em; padding: 0.6em 1em 0.45em; border-bottom: 0.1em solid var(--line); }
+.mowf-logo { width: 9.6em; height: auto; color: var(--c); flex: none; }
+.mowf-title { flex: 1; color: var(--c); font-weight: 700; text-align: center; }
+.mowf-title-en { font-size: 1.32em; letter-spacing: 0.01em; }
+.mowf-title-gu { font-size: 1.12em; margin-top: 0.15em; }
+.mowf-no { color: #111; font-size: 1.05em; margin-left: 0.3em; white-space: nowrap; }
+.mowf-info { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.mowf-info th, .mowf-info td { border-bottom: 0.1em solid var(--line); padding: 0.32em 0.55em; vertical-align: middle; text-align: left; }
+.mowf-info th { font-weight: 700; font-size: 0.98em; }
+.mowf-info td { border-left: 0.1em solid var(--line); border-right: 0.1em solid var(--line); font-size: 1.08em; overflow-wrap: anywhere; }
+.mowf-info tr > *:last-child { border-right: 0; }
+.mowf-c-label { width: 27%; }
+.mowf-c-value { width: 23%; }
+.mowf-band { text-align: center; padding: 0.3em 0.4em; border-bottom: 0.1em solid var(--line); font-size: 1.04em; line-height: 1.25; }
+.mowf-items, .mowf-lines { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.mowf-items th { color: var(--c); font-weight: 700; padding: 0.38em 0.4em; border: 0.1em solid var(--line); border-top: 0; text-align: center; }
+.mowf-items td, .mowf-lines td { border: 0.1em solid var(--line); border-top: 0; padding: 0.3em 0.45em; height: 2.15em; vertical-align: middle; overflow-wrap: anywhere; }
+.mowf-items tr > *:first-child, .mowf-lines tr > *:first-child { border-left: 0; }
+.mowf-items tr > *:last-child, .mowf-lines tr > *:last-child { border-right: 0; }
+.mowf-items tr, .mowf-lines tr { break-inside: avoid; }
+.mowf-c-sn { width: 6%; }
+.mowf-retail .mowf-c-code { width: 13%; }
+.mowf-retail .mowf-c-qty { width: 12%; }
+.mowf-retail .mowf-c-rate { width: 11%; }
+.mowf-retail .mowf-c-amt { width: 13%; }
+.mowf-interior .mowf-c-sn { width: 7%; }
+.mowf-retail .mowf-items td { height: 2.3em; }
+.mowf-retail .mowf-info th, .mowf-retail .mowf-info td { padding: 0.38em 0.6em; }
+.mowf-lines td { height: 1.95em; font-size: 1.06em; }
+.mowf-desc { font-weight: 600; }
+.mowf-center { text-align: center; }
+.mowf-num { text-align: right; white-space: nowrap; }
+.mowf-total td { font-weight: 700; }
+.mowf-drawings { flex: 1; display: flex; flex-direction: column; padding: 0.4em 0.8em; min-height: 6em; border-bottom: 0.1em solid var(--line); }
+.mowf-drawings-label { text-align: center; font-size: 1.06em; }
+.mowf-files { margin: 0.5em 0 0 1.4em; padding: 0; font-size: 0.98em; }
+.mowf-after th, .mowf-after td { border-top: 0; }
+.mowf-after td { border-right: 0; }
+.mowf-foot { display: flex; align-items: flex-end; gap: 1em; padding: 0.45em 0.7em 0.55em; }
+.mowf-remarks { flex: 1; display: flex; gap: 0.6em; align-items: flex-start; }
+.mowf-remarks-text { flex: 1; white-space: pre-wrap; font-size: 1.04em; }
+.mowf-sign { display: flex; align-items: flex-end; gap: 0.6em; }
+.mowf-retail .mowf-foot { flex: 1; align-items: flex-end; }
+.mowf-sign-line { display: inline-block; width: 13em; border-bottom: 0.08em solid #333; height: 1.4em; }
+.mowf-meta { margin-top: 0.35em; font-size: 0.78em; color: #666; text-align: center; }
+
+/* Paper sizes: page box, printable area (6 mm margins) and the base font-size that scales the whole form. */
+.op-sheet { --m: 6mm; background: #fff; width: var(--pw); min-height: var(--ph); padding: var(--m); box-sizing: border-box; box-shadow: 0 4px 24px rgba(0,0,0,.25); }
+.op-sheet[data-paper="A5P"] { --pw: 148mm; --ph: 210mm; font-size: 7.4pt; }
+.op-sheet[data-paper="A4P"] { --pw: 210mm; --ph: 297mm; font-size: 10.4pt; }
+.op-sheet[data-paper="A4L"] { --pw: 297mm; --ph: 210mm; font-size: 10.2pt; }
+.op-sheet[data-paper="A5L"] { --pw: 210mm; --ph: 148mm; font-size: 7.2pt; }
+.op-sheet .mowf { --form-h: calc(var(--ph) - 2 * var(--m) - 2mm); }
+
+/* Print preview (components/OrderPrintPreview.jsx): the sheet on a grey desk, with a toolbar that never prints. */
+.op-overlay { position: fixed; inset: 0; z-index: 3000; background: #5b5650; display: flex; flex-direction: column; }
+.op-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.op-toolbar h2 { margin: 0 auto 0 0; font-size: 16px; }
+.op-toolbar select { width: auto; margin: 0; }
+.op-toolbar .btn { width: auto; margin: 0; }
+.op-confirm { padding: 10px 14px; background: var(--info-bg); border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.op-confirm .btn { width: auto; margin: 0; }
+.op-scroll { flex: 1; overflow: auto; padding: 18px; }
+.op-stage { transform-origin: top left; width: max-content; margin: 0 auto; }
+@media print {
+  body.printing-order-form > *:not(.op-overlay) { display: none !important; }
+  body.printing-order-form .op-overlay { position: static; background: #fff; display: block; }
+  body.printing-order-form .op-toolbar, body.printing-order-form .op-confirm { display: none !important; }
+  body.printing-order-form .op-scroll { padding: 0; overflow: visible; }
+  body.printing-order-form .op-stage { transform: none !important; width: auto; margin: 0; }
+  body.printing-order-form .op-sheet { box-shadow: none; padding: 0; width: auto; min-height: 0; }
+}
 
 /* Procurement screens */
 .proc-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }

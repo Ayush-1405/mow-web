@@ -105,14 +105,18 @@ export function procurementRoles(profile, departments) {
 }
 
 // Mirrors proc_confirm_order's checks so the form can point at the field before the round trip; the database re-checks everything.
-export function validateOrderForm(f) {
+// orderForm: a Production Supply Order Form order, where only vendor, PO / reference number, order date and expected delivery
+// are required (proc_confirm_order v3_08); anything else typed is still checked.
+export function validateOrderForm(f, { orderForm = false } = {}) {
   const errors = {};
-  const req = ["vendor_name", "vendor_contact", "quotation_reference", "po_number", "order_date", "ordered_quantity", "amount", "expected_delivery_date", "payment_terms", "remarks"];
+  const req = orderForm ? ["vendor_name", "po_number", "order_date", "expected_delivery_date"]
+    : ["vendor_name", "vendor_contact", "quotation_reference", "po_number", "order_date", "ordered_quantity", "amount", "expected_delivery_date", "payment_terms", "remarks"];
   req.forEach((k) => { if (!String(f[k] ?? "").trim()) errors[k] = "required"; });
   const digits = String(f.vendor_contact || "").replace(/\D/g, "");
-  if (!errors.vendor_contact && (digits.length < 10 || digits.length > 13)) errors.vendor_contact = "phone";
-  if (!errors.ordered_quantity && !(Number(f.ordered_quantity) > 0)) errors.ordered_quantity = "positive";
-  if (!errors.amount && !(Number(f.amount) > 0)) errors.amount = "positive";
+  if (!errors.vendor_contact && (digits.length || !orderForm) && (digits.length < 10 || digits.length > 13)) errors.vendor_contact = "phone";
+  const filled = (v) => String(v ?? "").trim() !== "";
+  if (!errors.ordered_quantity && (filled(f.ordered_quantity) || !orderForm) && !(Number(f.ordered_quantity) > 0)) errors.ordered_quantity = "positive";
+  if (!errors.amount && (filled(f.amount) || !orderForm) && !(Number(f.amount) > 0)) errors.amount = "positive";
   if (!errors.expected_delivery_date && !errors.order_date && f.expected_delivery_date < f.order_date) errors.expected_delivery_date = "beforeOrder";
   return errors;
 }
@@ -289,3 +293,8 @@ export const TASK_FILTERS = [
   { key: "completed", en: "Completed", gu: "પૂર્ણ", test: (r, t) => t?.stage === "COMPLETED" },
   { key: "all", en: "All records", gu: "બધા રેકોર્ડ", test: () => true },
 ];
+
+// The form an order prints on: the Procurement Head's override, else the form chosen when it was raised (v3_08).
+export function orderFormTemplate(request) {
+  return request?.print_template || request?.order_form_type || "RETAIL";
+}

@@ -1,136 +1,155 @@
 import React from "react";
-import { fmtDate, priorityLabel } from "../lib/procurementRules";
+import MowLogo from "./MowLogo";
+import { fmtDate, orderFormTemplate } from "../lib/procurementRules";
 
-// Mood of Wood "Production Supply Order Form" -- the company's physical order stationery, drawn for printing.
-// INTERIOR: compact form (A5): item, code, qty/size and remarks per line, plus a drawings box.
-// RETAIL: large form (A4): S.N., item code, description, qty/size, rate, amount, with at least five lines and a total.
-// Rendered outside #root and shown only by the print stylesheet, like PurchaseDocument. Labels are English + Gujarati,
-// as on the paper forms. Empty values print as blank writing lines, the way the paper form is filled in by hand.
+// The official Mood of Wood "Production Supply Order Form", drawn to match the company's two printed pads:
+//   INTERIOR - small portrait pad printed in red: info grid, numbered item lines, a large Drawings area, Remarks.
+//   RETAIL   - large landscape pad printed in navy: info grid and a six-column item table (S.N., Item Code, item details,
+//              Qty./Size, Rate, Amount) with at least five rows, then Signature.
+// Every value comes from the accepted order; an empty field stays blank, as on the paper pad. The labels are the
+// pad's own English + Gujarati wording. Sizes are in `em` so one design serves A5 and A4 (font-size set per paper).
 
-const LOGO = "/icons/icon-512.png";
-const fmt = (d) => (d ? fmtDate(d) : "");
+const L = {
+  formNo: ["PRODUCTION SUPPLY ORDER FORM NO :", "પ્રોડક્શન સપ્લાય ઓર્ડર ફોર્મ નંબર :"],
+  issued: ["Ordered Issued Person Name :", "ઓર્ડર જારી કરાયેલ વ્યક્તિનું નામ :"],
+  sales: ["Sales Person Name :", "વેચાણ વ્યક્તિનું નામ :"],
+  client: ["Client Name :", "ગ્રાહકનું નામ :"],
+  issueDate: ["Product Order issue Date :", "પ્રોડક્ટ ઓર્ડર ઇશ્યુ તારીખ :"],
+  vendor: ["Product Vendor Name :", "ઉત્પાદન વિક્રેતાનું નામ :"],
+  doneDate: ["Product Done Date :", "ઉત્પાદન પૂર્ણ તારીખ :"],
+  delivered: ["Delivered to Client Date :", "ક્લાઈન્ટ ડિલિવરી તારીખ :"],
+  items: ["Production Item Details :", "ઉત્પાદન આઇટમ વિગતો :"],
+  drawings: ["Drawings :", "ચિત્ર :"],
+  remarks: ["Remarks :", "ટિપ્પણીઓ :"],
+  signature: ["Signature :", "સહી :"],
+};
+
+const date = (d) => (d ? fmtDate(d) : "");
 const money = (n) => (n === null || n === undefined || n === "" ? "" : Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
-function Field({ en, gu, value }) {
+function Label({ k, inline }) {
   return (
-    <div className="of-field">
-      <span className="of-label">{en} <span className="of-gu">/ {gu}</span> :</span>
-      <span className="of-value">{value || ""}</span>
-    </div>
+    <span className="mowf-label">
+      {L[k][0]}{inline ? " " : <br />}<span className="mowf-gu">{L[k][1]}</span>
+    </span>
   );
 }
 
-export default function OrderFormPrint({ request, items, context, order, files, contact }) {
+export default function OrderFormPrint({ request, items = [], context, order, files = [], template, meta }) {
   if (!request) return null;
-  const retail = request.order_form_type === "RETAIL";
-  const vendor = order?.vendors?.name || request.preferred_vendor_name;
-  const rows = retail ? [...items, ...Array.from({ length: Math.max(0, 5 - items.length) }, () => null)] : items;
-  const total = items.reduce((s, i) => s + (i.amount === null || i.amount === undefined ? 0 : Number(i.amount)), 0);
-  const hasAmounts = items.some((i) => i.amount !== null && i.amount !== undefined);
+  const tpl = template || orderFormTemplate(request);
+  const retail = tpl === "RETAIL";
+  const vendor = order?.vendors?.name || request.preferred_vendor_name || "";
+  const lines = [...items].sort((a, b) => (a.line_no || 0) - (b.line_no || 0));
+  const minRows = retail ? 5 : 3;
+  const rows = [...lines, ...Array.from({ length: Math.max(0, minRows - lines.length) }, () => null)];
+  const hasAmounts = lines.some((i) => i.amount !== null && i.amount !== undefined);
+  const total = lines.reduce((s, i) => s + (i.amount === null || i.amount === undefined ? 0 : Number(i.amount)), 0);
+  const drawings = files.map((f) => f.original_file_name || f.file_name).filter(Boolean);
+  const issuedBy = context?.requester_name || "";
+  const client = request.client_name || (context?.project_code ? `${context.project_code}${context.customer ? ` — ${context.customer}` : ""}` : "");
 
   return (
-    <div className={`purchase-doc order-form ${retail ? "order-form-retail" : "order-form-interior"}`} aria-hidden="true">
-      <header className="of-head">
-        <img src={LOGO} alt="" className="of-logo" />
-        <div className="of-brand">
-          <div className="of-company">MOOD OF WOOD</div>
-          <div className="of-title">PRODUCTION SUPPLY ORDER FORM <span className="of-gu">/ પ્રોડક્શન સપ્લાય ઓર્ડર ફોર્મ</span></div>
-        </div>
-        <div className="of-no">
-          <span className="of-label">NO. / નં.</span>
-          <span className="of-number">{request.request_number}</span>
-        </div>
-      </header>
+    <div className={`mowf ${retail ? "mowf-retail" : "mowf-interior"}`}>
+      <div className="mowf-frame">
+        <header className="mowf-head">
+          <MowLogo className="mowf-logo" />
+          <div className="mowf-title">
+            <div className="mowf-title-en">{L.formNo[0]} <span className="mowf-no">{request.request_number}</span></div>
+            <div className="mowf-gu mowf-title-gu">{L.formNo[1]}</div>
+          </div>
+        </header>
 
-      <section className="of-info">
-        <Field en="Ordered Issued Person Name" gu="ઓર્ડર આપનારનું નામ" value={context?.requester_name} />
-        <Field en="Sales Person Name" gu="સેલ્સ પર્સનનું નામ" value={request.sales_person_name} />
-        <Field en="Client Name" gu="ગ્રાહકનું નામ" value={request.client_name || context?.customer} />
-        <Field en="Product Order Issue Date" gu="ઓર્ડર આપ્યાની તારીખ" value={fmt(order?.order_date || request.created_at)} />
-        <Field en="Product Vendor Name" gu="વેન્ડરનું નામ" value={vendor} />
-        <Field en="Due Date (Product Done)" gu="ડ્યુ તારીખ (પ્રોડક્ટ તૈયાર)" value={fmt(request.required_by_date)} />
-        <Field en="Delivered to Client Date" gu="ગ્રાહકને ડિલિવરી તારીખ" value={fmt(request.delivered_to_client_at || request.delivery_date)} />
-        {(request.is_emergency || (request.priority && request.priority !== "NORMAL")) && (
-          <Field en="Priority" gu="પ્રાથમિકતા" value={`${priorityLabel(request.is_emergency ? "EMERGENCY" : request.priority)}${request.urgency_reason || request.emergency_reason ? ` — ${request.urgency_reason || request.emergency_reason}` : ""}`} />
+        <table className="mowf-info">
+          <colgroup><col className="mowf-c-label" /><col className="mowf-c-value" /><col className="mowf-c-label" /><col className="mowf-c-value" /></colgroup>
+          <tbody>
+            <tr><th><Label k="issued" /></th><td>{issuedBy}</td><th><Label k="sales" /></th><td>{request.sales_person_name || ""}</td></tr>
+            <tr><th><Label k="client" inline /></th><td colSpan={3}>{client}</td></tr>
+            <tr><th><Label k="issueDate" /></th><td>{date(order?.order_date || request.created_at)}</td><th><Label k="vendor" /></th><td>{vendor}</td></tr>
+            <tr><th><Label k="doneDate" /></th><td>{date(request.required_by_date)}</td><th><Label k="delivered" /></th><td>{date(request.delivered_to_client_at || request.delivery_date)}</td></tr>
+          </tbody>
+        </table>
+
+        <div className="mowf-band"><span className="mowf-label">{L.items[0]}</span><br /><span className="mowf-label mowf-gu">{L.items[1]}</span></div>
+
+        {retail ? (
+          <table className="mowf-items">
+            <colgroup><col className="mowf-c-sn" /><col className="mowf-c-code" /><col /><col className="mowf-c-qty" /><col className="mowf-c-rate" /><col className="mowf-c-amt" /></colgroup>
+            <thead>
+              <tr>
+                <th>S.N.</th><th>Item Code</th><th><span className="mowf-gu">આઇટમ વિગતો</span> <span className="mowf-sub">/ Item Description</span></th>
+                <th>Qty.Size</th><th>Rate</th><th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((i, n) => (
+                <tr key={i?.id || `b${n}`}>
+                  <td className="mowf-center">{n + 1}</td>
+                  <td>{i?.item_code || ""}</td>
+                  <td>{i?.description || ""}{i?.line_remarks ? <span className="mowf-sub"> — {i.line_remarks}</span> : null}</td>
+                  <td>{i?.qty_size || ""}</td>
+                  <td className="mowf-num">{money(i?.rate)}</td>
+                  <td className="mowf-num">{money(i?.amount)}</td>
+                </tr>
+              ))}
+              {hasAmounts && (
+                <tr className="mowf-total"><td colSpan={5} className="mowf-num"><span className="mowf-label">Total / કુલ</span></td><td className="mowf-num">{money(total)}</td></tr>
+              )}
+            </tbody>
+          </table>
+        ) : (
+          <table className="mowf-lines">
+            <colgroup><col className="mowf-c-sn" /><col /></colgroup>
+            <tbody>
+              {rows.map((i, n) => (
+                <tr key={i?.id || `b${n}`}>
+                  <td className="mowf-center mowf-label">{n + 1}</td>
+                  <td>
+                    {i && <>
+                      <span className="mowf-desc">{i.description}</span>
+                      {i.item_code && <span className="mowf-sub"> · Code {i.item_code}</span>}
+                      {i.qty_size && <span> · {i.qty_size}</span>}
+                      {i.line_remarks && <span className="mowf-sub"> · {i.line_remarks}</span>}
+                    </>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
-        {context?.project_code && <Field en="Project" gu="પ્રોજેક્ટ" value={`${context.project_code}${context.customer ? ` — ${context.customer}` : ""}`} />}
-      </section>
 
-      <div className="of-section-title">PRODUCTION ITEM DETAILS <span className="of-gu">/ પ્રોડક્શન આઇટમ વિગત</span></div>
-      <table className="of-table">
-        <thead>
-          {retail ? (
-            <tr>
-              <th className="of-sn">S.N.<div className="of-gu">ક્રમ</div></th>
-              <th className="of-code">Item Code<div className="of-gu">આઇટમ કોડ</div></th>
-              <th>Item Description<div className="of-gu">આઇટમ વર્ણન</div></th>
-              <th className="of-qty">Qty. / Size<div className="of-gu">જથ્થો / માપ</div></th>
-              <th className="of-rate">Rate<div className="of-gu">ભાવ</div></th>
-              <th className="of-amt">Amount<div className="of-gu">રકમ</div></th>
-            </tr>
-          ) : (
-            <tr>
-              <th className="of-sn">S.N.<div className="of-gu">ક્રમ</div></th>
-              <th>Item Description<div className="of-gu">આઇટમ વર્ણન</div></th>
-              <th className="of-code">Item Code<div className="of-gu">આઇટમ કોડ</div></th>
-              <th className="of-qty">Qty. / Size<div className="of-gu">જથ્થો / માપ</div></th>
-              <th>Remarks<div className="of-gu">નોંધ</div></th>
-            </tr>
+        {!retail && (
+          <section className="mowf-drawings">
+            <div className="mowf-drawings-label"><span className="mowf-label">{L.drawings[0]} <span className="mowf-gu">{L.drawings[1]}</span></span></div>
+            {drawings.length > 0 && <ol className="mowf-files">{drawings.map((d, n) => <li key={`${d}${n}`}>{d}</li>)}</ol>}
+          </section>
+        )}
+
+        {retail && (
+          <table className="mowf-info mowf-after">
+            <colgroup><col className="mowf-c-label" /><col /></colgroup>
+            <tbody>
+              <tr><th><Label k="remarks" inline /></th><td>{request.remarks || ""}</td></tr>
+              <tr><th><Label k="drawings" inline /></th><td>{drawings.length ? drawings.join(", ") : ""}</td></tr>
+            </tbody>
+          </table>
+        )}
+
+        <footer className="mowf-foot">
+          {!retail && (
+            <div className="mowf-remarks"><Label k="remarks" /><div className="mowf-remarks-text">{request.remarks || ""}</div></div>
           )}
-        </thead>
-        <tbody>
-          {rows.map((i, n) => (retail ? (
-            <tr key={i?.id || `blank-${n}`}>
-              <td className="of-sn">{n + 1}</td>
-              <td>{i?.item_code || ""}</td>
-              <td>{i?.description || ""}</td>
-              <td>{i?.qty_size || ""}</td>
-              <td className="of-num">{money(i?.rate)}</td>
-              <td className="of-num">{money(i?.amount)}</td>
-            </tr>
-          ) : (
-            <tr key={i?.id || `blank-${n}`}>
-              <td className="of-sn">{n + 1}</td>
-              <td>{i?.description || ""}</td>
-              <td>{i?.item_code || ""}</td>
-              <td>{i?.qty_size || ""}</td>
-              <td>{i?.line_remarks || ""}</td>
-            </tr>
-          )))}
-          {retail && (
-            <tr className="of-total">
-              <td colSpan={5}>TOTAL <span className="of-gu">/ કુલ</span></td>
-              <td className="of-num">{hasAmounts ? money(total) : ""}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      <section className="of-bottom">
-        <div className="of-box of-drawings">
-          <div className="of-label">DRAWINGS <span className="of-gu">/ ડ્રોઇંગ</span></div>
-          {files?.length ? (
-            <ol>{files.map((f) => <li key={f.id}>{f.original_file_name || f.file_name}</li>)}</ol>
-          ) : <div className="of-empty-box" />}
+          <div className="mowf-sign"><Label k="signature" /><span className="mowf-sign-line" /></div>
+        </footer>
+      </div>
+      {meta && (
+        <div className="mowf-meta">
+          {[context?.department_name, context?.department_head_name && `Dept Head: ${context.department_head_name}`,
+            context?.project_code && `Project: ${context.project_code}`, request.required_by_date && `Due ${date(request.required_by_date)}`,
+            meta.taskNumber && `Task ${meta.taskNumber}`, order?.po_number && `PO ${order.po_number}`,
+            `v${meta.version || 1}`, meta.printedBy && `Printed by ${meta.printedBy} ${meta.printedAt || ""}`].filter(Boolean).join(" · ")}
         </div>
-        <div className="of-box">
-          <div className="of-label">REMARKS <span className="of-gu">/ નોંધ</span></div>
-          <div className="of-remarks">{request.remarks || ""}</div>
-        </div>
-      </section>
-
-      <section className="of-signs">
-        <div><span className="of-line">{context?.requester_name || ""}</span>Ordered by <span className="of-gu">/ ઓર્ડર આપનાર</span></div>
-        <div><span className="of-line">{context?.dept_approver_name || context?.department_head_name || ""}</span>Department Head <span className="of-gu">/ વિભાગ વડા</span></div>
-        <div><span className="of-line">{context?.procurement_decider_name || ""}</span>Procurement <span className="of-gu">/ ખરીદી</span></div>
-        <div><span className="of-line" />Signature <span className="of-gu">/ સહી</span></div>
-      </section>
-
-      <footer className="of-foot">
-        {context?.department_name} · {request.delivery_location ? `Deliver to: ${request.delivery_location} · ` : ""}
-        Procurement Head: {contact?.name || "—"}{contact?.phone ? ` (${contact.phone})` : ""}
-        {order?.po_number ? ` · PO ${order.po_number}` : ""} · Printed {fmtDate(new Date().toISOString())} {new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
-      </footer>
+      )}
     </div>
   );
 }

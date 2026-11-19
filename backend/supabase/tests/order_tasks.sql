@@ -120,11 +120,10 @@ begin
     (select count(distinct recipient_id) from notifications where entity_id = v_id and title_en like '%Due date changed from%' and recipient_id in (u_p1, u_ph, u_e)) = 3);
 
   ---------------------------------------------------------------- TEST 7 / 8: accepted and ordered is not done
-  perform public.zz_as(u_ph); set local role authenticated;
-  perform public.proc_procurement_decision(v_id, 'ACCEPT', null);
-  reset role;
-  v_log := public.zz_chk(v_log, 'T7  the Head accepting the order keeps the employee who took the task; still IN PROGRESS',
-    (public.zz_task(v_id)).assigned_to = u_p1 and public.zz_tcode(v_id) = 'IN_PROGRESS');
+  -- (v3_08) accepting the task already accepted the order for the employee who took it.
+  v_log := public.zz_chk(v_log, 'T7  the order was accepted with the task, by that employee; the task is still IN PROGRESS',
+    (select proc_status from purchase_requests where id = v_id) = 'ACCEPTED_BY_PROCUREMENT' and (select proc_decided_by from purchase_requests where id = v_id) = u_p1
+    and (public.zz_task(v_id)).assigned_to = u_p1 and public.zz_tcode(v_id) = 'IN_PROGRESS');
   perform public.zz_as(u_p1); set local role authenticated;
   begin perform public.proc_finish_order_task(v_id, 'done'); v_log := public.zz_chk(v_log, 'T7  accepted but not ordered: cannot be marked done', false);
   exception when others then v_log := public.zz_chk(v_log, 'T7  accepted but not ordered: cannot be marked done', sqlerrm ilike '%not been placed%'); end;

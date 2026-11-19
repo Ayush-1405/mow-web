@@ -10,7 +10,7 @@ import { L, TASK_STAGES, fmtDate, taskStageLabel, todayIST } from "../../lib/pro
 const fmtTime = (d) => (d ? `${fmtDate(d)} ${new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}` : "—");
 const CLOSED = ["CLOSED", "CANCELLED", "REJECTED_BY_DEPT_HEAD", "REJECTED_BY_PROCUREMENT", "EMERGENCY_REJECTED", "LEGACY"];
 
-export default function OrderTaskPanel({ lang, req, roles, profile, busy, run, onInfo }) {
+export default function OrderTaskPanel({ lang, req, roles, profile, busy, run, onInfo, canPrint, onPrint }) {
   const [info, setInfo] = useState(null);
   const [remarks, setRemarks] = useState("");
   const [reopenReason, setReopenReason] = useState("");
@@ -47,6 +47,11 @@ export default function OrderTaskPanel({ lang, req, roles, profile, busy, run, o
         {info.verified_at && <div><dt>{L(lang, "Verified", "ચકાસ્યું")}</dt><dd>{info.verified_by_name} · {fmtTime(info.verified_at)}</dd></div>}
       </dl>
 
+      {canPrint && onPrint && ["ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED"].includes(req.proc_status) && (
+        <button type="button" className="btn btn-primary" style={{ width: "auto", marginTop: 10, fontSize: 18, minHeight: 56, padding: "0 24px" }} disabled={busy} onClick={onPrint}>
+          🖨 {req.proc_status === "ACCEPTED_BY_PROCUREMENT" ? L(lang, "PRINT ORDER FORM", "ઓર્ડર ફોર્મ છાપો") : L(lang, "Print order form again", "ઓર્ડર ફોર્મ ફરી છાપો")}
+        </button>
+      )}
       {info.can_accept && (
         <button type="button" className="btn btn-gold" style={{ width: "auto", marginTop: 10 }} disabled={busy} onClick={() => run(() => acceptOrderTask(req.id))}>
           {L(lang, "Accept task", "કાર્ય સ્વીકારો")}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   answerClarification, cancelPurchaseRequest, confirmOrder, decideAmountApproval, deptDecision, getApprovalLimits, getCurrentOrder,
   getPurchaseRequest, getRequestContext, listAmountApprovals, listPrintLogs, listStatusHistory, procurementDecision, recordPrint,
@@ -18,10 +18,10 @@ import ProcurementContactCard from "../../components/ProcurementContactCard";
 import { useProcurementContact } from "../../lib/useProcurementContact";
 import PurchaseDocument from "../../components/PurchaseDocument";
 import PurchaseLifecyclePanels from "./PurchaseLifecyclePanels";
-import OrderFormPrint from "../../components/OrderFormPrint";
+import OrderPrintPreview from "../../components/OrderPrintPreview";
 import DeadlinePanel from "./DeadlinePanel";
 import OrderTaskPanel from "./OrderTaskPanel";
-import { amendOrder, completeOrder, listOrderItems, markDelivered, openOrderFile, uploadOrderFile } from "../../lib/procurementApi";
+import { amendOrder, canWorkOrder, completeOrder, listOrderItems, markDelivered, openOrderFile, uploadOrderFile } from "../../lib/procurementApi";
 
 // DD-MM-YYYY HH:MM in IST, the format used across Procurement.
 const fmt = (d) => (d ? `${fmtDate(d)} ${new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}` : "—");
@@ -51,6 +51,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [params, setParams] = useSearchParams();
   const contact = useProcurementContact();
   const [state, setState] = useState({ loading: true, error: null });
   const [req, setReq] = useState(null);
@@ -67,6 +68,9 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   const [orderForm, setOrderForm] = useState(ORDER_EMPTY);
   const [orderErrors, setOrderErrors] = useState({});
   const [printType, setPrintType] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [canWork, setCanWork] = useState(false);
+  const [placedFiles, setPlacedFiles] = useState([]);
   const [items, setItems] = useState([]);
   const [taskInfo, setTaskInfo] = useState(null);
 
@@ -79,6 +83,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
       listPurchaseAttachments(id), data.order_form_type ? listOrderItems(id) : Promise.resolve({ data: [] }),
     ]);
     setItems(it.data || []);
+    setCanWork(data.order_form_type || data.print_template ? await canWorkOrder(id) : false);
     setReq(data);
     setCtx(c[id] || null);
     setHistory(h.data || []);
@@ -87,7 +92,10 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
     setApprovals(a.data || []);
     setLimits(lim.data || []);
     setFiles(att.data || []);
-    setOrderForm((f) => (f.ordered_quantity ? f : { ...f, ordered_quantity: String(data.quantity ?? "") }));
+    setOrderForm((f) => (f.ordered_quantity ? f : {
+      ...f, ordered_quantity: String(data.quantity ?? ""), vendor_name: f.vendor_name || data.preferred_vendor_name || "",
+      amount: f.amount || (data.order_total != null ? String(data.order_total) : ""), expected_delivery_date: f.expected_delivery_date || data.delivery_date || "",
+    }));
     setState({ loading: false, error: null });
   }, [id, lang]);
 
@@ -142,11 +150,19 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
 
   async function submitOrder(e) {
     e.preventDefault();
-    const found = validateOrderForm(orderForm);
+    const found = validateOrderForm(orderForm, { orderForm: !!req.order_form_type });
     if (isWorkOrder && !orderForm.scope_of_work.trim()) found.scope_of_work = "required";
     setOrderErrors(found);
     if (Object.keys(found).length) return;
-    await run(() => confirmOrder(id, orderForm));
+    const ok = await run(() => confirmOrder(id, orderForm));
+    // Supporting documents (vendor PO, confirmation) are attached to the order once it is placed.
+    if (ok && placedFiles.length) {
+      const failed = [];
+      for (const f of placedFiles) { const { error } = await uploadOrderFile(id, f); if (error) failed.push(f.name); }
+      setPlacedFiles([]);
+      if (failed.length) setActionError(L(lang, "These files did not upload: ", "આ ફાઇલો અપલોડ ન થઈ: ") + failed.join(", "));
+      await load();
+    }
   }
 
   async function openFile(path) {
@@ -165,6 +181,16 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   }
 
   const timeline = useMemo(() => history.slice().reverse(), [history]);
+  const isOrderForm = !!(req?.order_form_type || req?.print_template);
+  const mayPrint = (canProcure || canWork) && isOrderForm
+    && ["ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED", "ORDER_PLACED", "VENDOR_CONFIRMED", "IN_PRODUCTION", "READY_FOR_DISPATCH", "IN_TRANSIT",
+        "DELAYED", "PARTIALLY_RECEIVED", "RECEIVED", "GRN_VERIFIED", "INVOICE_VERIFIED", "PAYMENT_PENDING", "PARTIALLY_PAID", "PAID", "CLOSED"].includes(req?.proc_status);
+  useEffect(() => {
+    if (params.get("print") === "1" && mayPrint) {
+      setShowPreview(true);
+      setParams({}, { replace: true });
+    }
+  }, [params, mayPrint, setParams]);
 
   if (state.loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 90 }} /><div className="skeleton-block" style={{ height: 320 }} /></div>;
   if (state.error) {
@@ -204,7 +230,8 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
 
       <DeadlinePanel lang={lang} req={req} ctx={ctx} order={order} roles={roles} procurementDeptId={procurementDeptId} busy={busy} run={run} />
 
-      <OrderTaskPanel lang={lang} req={req} roles={roles} profile={profile} busy={busy} run={run} onInfo={setTaskInfo} />
+      <OrderTaskPanel lang={lang} req={req} roles={roles} profile={profile} busy={busy} run={run} onInfo={setTaskInfo}
+        canPrint={mayPrint} onPrint={() => setShowPreview(true)} />
 
       <div className="card">
         <h2>{L(lang, "Request details", "વિનંતીની વિગતો")}</h2>
@@ -296,7 +323,19 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
         </div>
       )}
 
-      {canProcure && ["ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED"].includes(status) && (
+      {isOrderForm && (canProcure || canWork) && ["ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED"].includes(status) && (
+        <div className="card">
+          <h2>{L(lang, "Step 1 — Print the official order form", "પગલું 1 — સત્તાવાર ઓર્ડર ફોર્મ છાપો")}</h2>
+          <button className="btn btn-primary" style={{ fontSize: 18, minHeight: 56, width: "auto", padding: "0 24px" }} disabled={busy} onClick={() => setShowPreview(true)}>
+            🖨 {status === "ACCEPTED_BY_PROCUREMENT" ? L(lang, "PRINT ORDER FORM", "ઓર્ડર ફોર્મ છાપો") : L(lang, "Print order form again", "ઓર્ડર ફોર્મ ફરી છાપો")}
+          </button>
+          <div className="sub" style={{ marginTop: 6 }}>
+            {L(lang, "Opens a preview of the Mood of Wood form with this order filled in. Print on any printer, or download the PDF.",
+              "આ ઓર્ડર ભરેલું મૂડ ઓફ વુડ ફોર્મ દેખાશે. કોઈપણ પ્રિન્ટર પર છાપો અથવા PDF ડાઉનલોડ કરો.")}
+          </div>
+        </div>
+      )}
+      {!isOrderForm && canProcure && ["ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED"].includes(status) && (
         <div className="card">
           <h2>{L(lang, "Step 1 — Print the purchase document", "પગલું 1 — ખરીદી દસ્તાવેજ છાપો")}</h2>
           <button className="btn btn-primary" style={{ fontSize: 17, minHeight: 52 }} disabled={busy} onClick={() => print("PURCHASE_REQUEST")}>
@@ -309,9 +348,11 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
         </div>
       )}
 
-      {canProcure && status === "DOCUMENT_GENERATED" && (
+      {(canProcure || (isOrderForm && canWork)) && status === "DOCUMENT_GENERATED" && (
         <form className="card form-grid" onSubmit={submitOrder} noValidate>
-          <h2 className="field full">{L(lang, "Step 2 — Confirm order placed", "પગલું 2 — ઓર્ડર મૂક્યાની પુષ્ટિ કરો")}</h2>
+          <h2 className="field full">{L(lang, "Step 2 — CONFIRM ORDER PLACED", "પગલું 2 — ઓર્ડર મૂક્યાની પુષ્ટિ કરો")}</h2>
+          {isOrderForm && <div className="sub field full">{L(lang, "After sending the printed form to the vendor: vendor, the vendor's PO / reference number and the expected delivery date are required.",
+            "છાપેલું ફોર્મ વેન્ડરને મોકલ્યા પછી: વેન્ડર, વેન્ડરનો PO / સંદર્ભ નંબર અને અપેક્ષિત ડિલિવરી તારીખ જરૂરી છે.")}</div>}
           {limitProc != null && (
             <div className="msg info field full">
               {L(lang, `Orders above Rs ${Number(limitProc).toLocaleString("en-IN")} need Management approval first.`,
@@ -322,14 +363,15 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
           )}
           {ORDER_FIELDS.map(([k, en, gu, type]) => (
             <div className="field" key={k}>
-              <label>{L(lang, en, gu)} *</label>
+              <label>{isOrderForm && k === "po_number" ? L(lang, "Vendor PO / reference number", "વેન્ડર PO / સંદર્ભ નંબર") : L(lang, en, gu)}
+                {(!isOrderForm || ["vendor_name", "po_number", "order_date", "expected_delivery_date"].includes(k)) && " *"}</label>
               <input type={type} inputMode={type === "number" ? "decimal" : undefined} min={type === "number" ? "0" : undefined} step={type === "number" ? "any" : undefined}
                 value={orderForm[k]} onChange={(e) => { setOrderForm((f) => ({ ...f, [k]: e.target.value })); setOrderErrors((x) => ({ ...x, [k]: undefined })); }} />
               {orderErrors[k] && <div className="sub" style={{ color: "var(--danger, #a23434)" }}>{L(lang, ...ORDER_ERRORS[orderErrors[k]])}</div>}
             </div>
           ))}
           <div className="field full">
-            <label>{L(lang, "Procurement remarks", "ખરીદી વિભાગની નોંધ")} *</label>
+            <label>{L(lang, "Procurement remarks", "ખરીદી વિભાગની નોંધ")}{!isOrderForm && " *"}</label>
             <textarea rows={2} value={orderForm.remarks} onChange={(e) => { setOrderForm((f) => ({ ...f, remarks: e.target.value })); setOrderErrors((x) => ({ ...x, remarks: undefined })); }} />
             {orderErrors.remarks && <div className="sub" style={{ color: "var(--danger, #a23434)" }}>{L(lang, ...ORDER_ERRORS.required)}</div>}
           </div>
@@ -339,6 +381,12 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
               <textarea rows={3} value={orderForm.scope_of_work} placeholder={L(lang, "What exactly is to be done, deliverables, milestones and deadline", "બરાબર શું કરવાનું છે, ડિલિવરેબલ્સ, માઇલસ્ટોન અને સમયમર્યાદા")}
                 onChange={(e) => { setOrderForm((f) => ({ ...f, scope_of_work: e.target.value })); setOrderErrors((x) => ({ ...x, scope_of_work: undefined })); }} />
               {orderErrors.scope_of_work && <div className="sub" style={{ color: "var(--danger, #a23434)" }}>{L(lang, ...ORDER_ERRORS.required)}</div>}
+            </div>
+          )}
+          {isOrderForm && (
+            <div className="field full">
+              <label>{L(lang, "Supporting documents (vendor PO, confirmation)", "આધાર દસ્તાવેજ (વેન્ડર PO, પુષ્ટિ)")}</label>
+              <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" onChange={(e) => setPlacedFiles(Array.from(e.target.files || []))} />
             </div>
           )}
           <div className="field full btn-row">
@@ -413,8 +461,12 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
             <ul className="proc-history">
               {prints.map((p) => (
                 <li key={p.id} className="sub">
-                  {p.document_type === "PURCHASE_ORDER" ? L(lang, "Purchase order", "ખરીદી ઓર્ડર") : L(lang, "Purchase request", "ખરીદી વિનંતી")} v{p.document_version} ·{" "}
-                  {p.action === "REPRINT" ? L(lang, "reprint", "ફરી પ્રિન્ટ") : L(lang, "print started", "પ્રિન્ટ શરૂ")} · {fmt(p.printed_at)}
+                  {p.template ? `${p.template === "INTERIOR" ? L(lang, "Interior order form", "ઇન્ટિરિયર ઓર્ડર ફોર્મ") : L(lang, "Retail order form", "રિટેલ ઓર્ડર ફોર્મ")}`
+                    : p.document_type === "PURCHASE_ORDER" ? L(lang, "Purchase order", "ખરીદી ઓર્ડર") : L(lang, "Purchase request", "ખરીદી વિનંતી")} v{p.document_version} ·{" "}
+                  {p.output === "PDF" ? L(lang, "PDF downloaded", "PDF ડાઉનલોડ") : p.action === "REPRINT" ? L(lang, "reprint started", "ફરી પ્રિન્ટ શરૂ") : L(lang, "print started", "પ્રિન્ટ શરૂ")}
+                  {" · "}{fmt(p.printed_at)}
+                  {p.print_confirmed_at && ` · ✓ ${L(lang, "confirmed printed", "છપાયાની પુષ્ટિ")} ${fmt(p.print_confirmed_at)}`}
+                  {p.pdf_storage_path && <> · <button type="button" className="link-btn" onClick={() => openOrderFile(p.pdf_storage_path)}>{L(lang, "open PDF", "PDF ખોલો")}</button></>}
                 </li>
               ))}
             </ul>
@@ -426,9 +478,11 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
         <OrderFollowThrough lang={lang} req={req} order={order} canProcure={canProcure} canVerify={roles.canProcure} taskInfo={taskInfo} busy={busy} run={run} />
       )}
 
-      {printType && req.order_form_type && createPortal(
-        <OrderFormPrint request={req} items={items} context={ctx} order={order} files={files} contact={contact} />,
-        document.body,
+      {showPreview && (
+        <OrderPrintPreview lang={lang} request={req} items={items} context={ctx} order={order}
+          files={files.filter((f) => !String(f.storage_path || "").includes("/printed/"))} taskNumber={taskInfo?.task_number}
+          printedBy={profile.full_name} canChangeTemplate={roles.isProcurementHead || roles.isManagement}
+          onClose={() => setShowPreview(false)} onChanged={load} />
       )}
       {printType && !req.order_form_type && createPortal(
         <PurchaseDocument type={printType} request={req} context={ctx} order={order} contact={contact} version={printType === "PURCHASE_ORDER" ? order?.version_number : docVersion} />,

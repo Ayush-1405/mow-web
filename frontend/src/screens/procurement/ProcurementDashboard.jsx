@@ -113,7 +113,7 @@ export default function ProcurementDashboard({ lang, profile, lookups }) {
     setBusyId(id); setActionMsg(null);
     const { error } = await acceptOrderTask(id);
     setBusyId(null);
-    setActionMsg(error ? { type: "error", text: friendlyError(error.message) } : { type: "success", text: L(lang, "Accepted — this order task is now yours.", "સ્વીકાર્યું — આ કાર્ય હવે તમારું છે.") });
+    setActionMsg(error ? { type: "error", text: friendlyError(error.message) } : { type: "success", id, text: L(lang, "Accepted — this order is now yours.", "સ્વીકાર્યું — આ ઓર્ડર હવે તમારો છે.") });
     await load();
   }
 
@@ -140,7 +140,16 @@ export default function ProcurementDashboard({ lang, profile, lookups }) {
       </div>
 
       <ReminderHealth lang={lang} data={reminders} />
-      {actionMsg && <div className={`msg ${actionMsg.type}`}>{actionMsg.text}</div>}
+      {actionMsg && (
+        <div className={`msg ${actionMsg.type}`} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span>{actionMsg.text}</span>
+          {actionMsg.id && (
+            <Link className="btn btn-primary" style={{ width: "auto", margin: 0 }} to={`/purchase-requests/${actionMsg.id}?print=1`}>
+              🖨 {L(lang, "PRINT ORDER FORM", "ઓર્ડર ફોર્મ છાપો")}
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="proc-kpis">
         {DUE_TILES.map((t) => (

@@ -195,3 +195,22 @@ test("every stage the server can return has a label", () => {
   }
   assert.equal(taskStageLabel("WAITING_FOR_GRN", "en"), "Waiting for GRN");
 });
+
+// ---- Official order-form printing (v3_08) ----
+import { orderFormTemplate } from "../src/lib/procurementRules.js";
+
+test("the print template follows the Head's override, then the form chosen on the order", () => {
+  assert.equal(orderFormTemplate({ order_form_type: "INTERIOR" }), "INTERIOR");
+  assert.equal(orderFormTemplate({ order_form_type: "INTERIOR", print_template: "RETAIL" }), "RETAIL");
+  assert.equal(orderFormTemplate({ order_form_type: "RETAIL" }), "RETAIL");
+});
+
+test("Order Placed for an order form needs only vendor, PO / reference, order date and expected delivery", () => {
+  const f = { vendor_name: "Shree Furniture", po_number: "VPO-12", order_date: "2026-11-19", expected_delivery_date: "2026-11-25" };
+  assert.deepEqual(validateOrderForm(f, { orderForm: true }), {});
+  assert.equal(validateOrderForm({ ...f, po_number: "" }, { orderForm: true }).po_number, "required");
+  assert.equal(validateOrderForm({ ...f, vendor_contact: "123" }, { orderForm: true }).vendor_contact, "phone", "a phone, when typed, must be valid");
+  assert.equal(validateOrderForm({ ...f, amount: "0" }, { orderForm: true }).amount, "positive");
+  assert.equal(validateOrderForm({ ...f, expected_delivery_date: "2026-11-01" }, { orderForm: true }).expected_delivery_date, "beforeOrder");
+  assert.ok(Object.keys(validateOrderForm(f)).length > 0, "other requests still need every field");
+});
