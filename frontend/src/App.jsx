@@ -13,6 +13,7 @@ import { useAppViewport } from "./lib/useAppViewport";
 import UpdateBanner from "./components/UpdateBanner.jsx";
 import Login from "./screens/Login.jsx";
 import ChangePassword from "./screens/ChangePassword.jsx";
+import AddPhone from "./screens/AddPhone.jsx";
 import DeptShell from "./components/DeptShell.jsx";
 import ManagementBadge from "./components/ManagementBadge.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -135,6 +136,15 @@ const InteriorMasterReportSelect = lazy(() => import("./screens/interior/Interio
 const InteriorMasterReport = lazy(() => import("./screens/interior/InteriorMasterReport.jsx"));
 const InteriorWorkingDrawings = lazy(() => import("./screens/interior/InteriorWorkingDrawings.jsx"));
 const InteriorDeletedFiles = lazy(() => import("./screens/interior/InteriorDeletedFiles.jsx"));
+const ProcurementDashboard = lazy(() => import("./screens/procurement/ProcurementDashboard.jsx"));
+const MyProfile = lazy(() => import("./screens/MyProfile.jsx"));
+const OrderForm = lazy(() => import("./screens/procurement/OrderForm.jsx"));
+const PurchaseRequestList = lazy(() => import("./screens/procurement/PurchaseRequestList.jsx"));
+const PurchaseRequestForm = lazy(() => import("./screens/procurement/PurchaseRequestForm.jsx"));
+const PurchaseRequestDetail = lazy(() => import("./screens/procurement/PurchaseRequestDetail.jsx"));
+const ProcurementVendors = lazy(() => import("./screens/procurement/ProcurementVendors.jsx"));
+const ProcurementReminders = lazy(() => import("./screens/procurement/ProcurementReminders.jsx"));
+const ProcurementRejections = lazy(() => import("./screens/procurement/ProcurementRejections.jsx"));
 
 // Lightweight loading skeleton shown only while a lazy chunk is actually
 // in flight (typically well under a second on a normal connection, and
@@ -566,6 +576,11 @@ export default function App() {
     return <div className="center-page"><div className="spinner" style={{ border: "2.5px solid #ebe3d6", borderTopColor: "#7a4a24" }} /></div>;
   }
 
+  // The mobile number is also a login id: anyone without one adds it before using the app (shown on every open until done).
+  if (!String(profile.phone || "").trim()) {
+    return <AddPhone lang={lang} profile={profile} onDone={() => loadProfile(session.user.id)} onLogout={handleLogout} />;
+  }
+
   // Department dashboard route element: looks up the department row by its
   // stable `code` and gates it with ProtectedRoute using the SAME
   // access.canAccessDepartment() check the sidebar itself was filtered
@@ -753,7 +768,28 @@ export default function App() {
         </ProtectedRoute>
       )} />
       <Route path="/b2b-b2g" element={deptPage("B2B_B2G")} />
-      <Route path="/procurement" element={deptPage("PROCUREMENT")} />
+      <Route path="/procurement" element={deptModulePage("PROCUREMENT", <ProcurementDashboard lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/procurement/requests" element={deptModulePage("PROCUREMENT", <PurchaseRequestList lang={lang} profile={profile} lookups={lookups} mode="procurement" />)} />
+      <Route path="/procurement/vendors" element={deptModulePage("PROCUREMENT", <ProcurementVendors lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/procurement/reminders" element={deptModulePage("PROCUREMENT", <ProcurementReminders lang={lang} profile={profile} lookups={lookups} />)} />
+      <Route path="/procurement/rejections" element={deptModulePage("PROCUREMENT", <ProcurementRejections lang={lang} />)} />
+      {/* Every department raises and tracks purchase requests here; what each person sees and may do is decided by RLS and the proc_* functions. */}
+      {[
+        ["/profile", <MyProfile key="me" lang={lang} onSaved={() => loadProfile(session.user.id)} />],
+        ["/profile/:userId", <MyProfile key="person" lang={lang} />],
+        ["/purchase-requests", <PurchaseRequestList key="list" lang={lang} profile={profile} lookups={lookups} mode="requests" />],
+        ["/orders/new", <OrderForm key="order-new" lang={lang} profile={profile} lookups={lookups} />],
+        ["/orders/:id/edit", <OrderForm key="order-edit" lang={lang} profile={profile} lookups={lookups} />],
+        ["/purchase-requests/new", <Navigate key="new" to="/orders/new" replace />],
+        ["/purchase-requests/:id/edit", <PurchaseRequestForm key="edit" lang={lang} profile={profile} lookups={lookups} />],
+        ["/purchase-requests/:id", <PurchaseRequestDetail key="detail" lang={lang} profile={profile} lookups={lookups} />],
+      ].map(([path, element]) => (
+        <Route key={path} path={path} element={
+          <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+            {element}
+          </DeptShell>
+        } />
+      ))}
       {/* Simplified home for Godown, Inventory & Dispatch (v2_93o) — two big, icon-first tiles instead of the full
           Department Functions grid, since most Godown staff aren't office workers. The full grid + reports stay
           one tap away at /inventory/setup, nothing removed. */}
@@ -841,6 +877,7 @@ export default function App() {
           { key: "refresh", icon: "🔄", label: t("refresh", lang), iconOnly: true, onClick: () => window.location.reload() },
           { key: "lang", label: lang === "en" ? "ગુજરાતી" : "EN", onClick: () => setLang(lang === "en" ? "gu" : "en") },
           ...(myDepartmentRoute ? [{ key: "departments", icon: "🗼", label: t("departmentsNav", lang), onClick: () => navigate(myDepartmentRoute) }] : []),
+          { key: "profile", icon: "👤", label: lang === "gu" ? "મારી પ્રોફાઇલ" : "My Profile", onClick: () => navigate("/profile") },
           { key: "logout", label: t("logout", lang), onClick: handleLogout },
         ]}
       />

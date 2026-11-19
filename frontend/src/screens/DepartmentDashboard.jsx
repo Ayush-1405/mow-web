@@ -254,6 +254,8 @@ export default function DepartmentDashboard({ lang, profile, department, onOpenL
         <div className="btn-row">
           <button className="btn btn-outline" onClick={() => onOpenLegacy("tasks")}>{t("openMyTasks", lang)}</button>
           <button className="btn btn-outline" onClick={() => onOpenLegacy("assign")}>{t("assignATask", lang)}</button>
+          <button className="btn btn-primary" onClick={() => navigate("/orders/new")}>📝 {lang === "gu" ? "ઓર્ડર બનાવો" : "Create order"}</button>
+          <button className="btn btn-outline" onClick={() => navigate("/purchase-requests")}>{lang === "gu" ? "મારા ઓર્ડર" : "My orders"}</button>
           <button className="btn btn-outline" onClick={() => onOpenLegacy("bridges")}>{t("crossDeptBridges", lang)}</button>
         </div>
       </div>

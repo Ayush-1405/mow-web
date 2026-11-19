@@ -1,7 +1,13 @@
 # Mood Of Wood — Interior Project Management System
 
 Context, workflow and design.
-Last updated 22 August 2026.
+Last updated 4 November 2026.
+
+> **Picking up the work? Start at [section 12](#12-where-work-stands--start-here).**
+> Sections 1–8 still describe the Interior workflow as first designed in
+> August 2026. Sections 9 and 10 were brought up to date in November 2026:
+> the app is no longer one `index.html` file but a React app covering
+> several departments.
 
 ---
 
@@ -321,50 +327,69 @@ Same application, same data, same permissions — only the layout changes below
 
 ## 9. How it is built and deployed
 
-One file — `index.html` — containing the HTML, CSS and JavaScript. No build
-step, no framework, no bundler. Settings live in `config.js`.
+*Rewritten November 2026. The single-file `index.html` app described here
+before has been replaced.*
+
+A React 18 single-page app built with Vite 5, installable as a phone app
+(PWA), on top of one Supabase project (Postgres with Row Level Security,
+Auth, Storage, Realtime and Edge Functions). It covers several departments,
+not just Interior: Factory, Retail, Godown, Dispatch, Interior, Chat and the
+management screens.
 
 ```
-index.html                 the whole dashboard
-config.js                  Supabase URL + publishable key (the only settings file)
-api/                       serverless functions, Vercel
-  _lib.js                  auth check, role rules, audit
-  users-create.js          create employee (Auth user + profile)
-  users-set-password.js    temporary password on an existing UID
-  users-update.js          role, department, active
-  whoami.js                diagnostic
-*.sql                      the migrations already run
-START-MOOD-OF-WOOD.bat     local viewer for Windows (PowerShell, no installs)
+frontend/                         the app
+  src/App.jsx                     sign-in, start-up loading and every route
+  src/screens/                    shared screens (Today's Tasks, Assign Task, ...)
+  src/screens/<department>/       factory, retail, godown, dispatch, interior, chat
+  src/lib/                        Supabase client, access rules, translations, helpers
+  src/sw.js                       service worker (offline shell, push notifications)
+  tests/                          unit tests, run with `npm test`
+  .env                            Supabase settings, committed, points at the LIVE project
+  .env.production                 production overrides (only the app origin)
+backend/supabase/
+  migrations/                     162 SQL migrations
+  functions/                      11 Edge Functions (staff-login, staff-create-user, send-push, AI helpers, ...)
+  tests/                          SQL tests (access matrix, retail flows, ...)
+  config.toml                     project ref bykmyttaesuyjwvtnxks
+backend/api/                      Vercel functions (health check); see the warning below
+backend/docs/                     architecture blueprint and pilot plans
+package.json, vercel.json         Vercel build settings at the repository root
+.github/workflows/frontend-ci.yml lint and build on every frontend change (Node 20)
 ```
 
-**Security**: the browser holds only the publishable key. The service role key
-lives in Vercel environment variables and is used only inside `/api`. Every
-admin call sends the caller's ordinary Supabase token; the server verifies it,
-loads their profile, and re-checks their role before doing anything.
-Passwords are never read, logged or displayed — only replaced.
+**Security**: the browser holds only the publishable (anon) key, which is
+meant to be public. The real boundary is Row Level Security and the database
+functions, which check the caller's own role. Staff sign in through the
+`staff-login` Edge Function. Hiding buttons in the app is for convenience,
+never for security.
 
-**Deployment**: `vercel --prod` from the folder, or connect a Git repository.
-**Not** by dragging the folder onto the Vercel dashboard — that publishes
-`/api` as static files and every admin function returns 404. This has bitten
-this project once already.
+**Deployment**: Vercel builds from the repository root using `vercel.json`.
+It runs `npm run vercel-build`, which builds `frontend/` and serves
+`frontend/dist`. `index.html` and `sw.js` are sent uncached so a new release
+reaches phones; everything in `/assets` is cached for a year. CI runs lint
+and build on every push to `main` that touches `frontend/`.
 
-Check after deploying: open `/api/whoami`. JSON is correct; Vercel's 404 page
-or JavaScript source means the functions did not build.
+**Warning, still open**: `backend/api` is not found by Vercel's function
+builder, which only looks for `api/` at the repository root. The note in the
+root `package.json` explains this. Fix it before relying on those functions
+in production.
 
 ---
 
 ## 10. Known limits, honestly
 
-1. **Tasks, snags, change requests, attachments and the freeze checklist are
-   still device-only.** Two people looking at the same project see different
-   task lists. This is the largest remaining gap.
-2. **Attachments hold metadata only.** The file itself lives in the browser
-   session and disappears when the tab closes. Supabase Storage is not
-   connected.
+*Status checked against the code in November 2026. Items 1, 2 and 4 are
+resolved. Items 3, 5 and 6 have not been re-checked.*
+
+1. ~~Tasks, snags, change requests, attachments and the freeze checklist are
+   still device-only.~~ **Resolved:** tasks and snags now live in Supabase
+   (`staff_tasks`, `tasks`, `snags`) and are shared by everyone.
+2. ~~Attachments hold metadata only.~~ **Resolved:** files are stored in
+   Supabase Storage (the `interior-attachments` bucket).
 3. **No customer email automation.** Planned, then deliberately deferred;
    it needs Resend plus DNS records on moodofwood.in.
-4. **No live updates.** You see new reports on page load or by pressing
-   Refresh. For a ten-person team this was judged enough.
+4. ~~No live updates.~~ **Resolved:** screens subscribe to Supabase Realtime
+   and update by themselves.
 5. **Roles are fixed in code.** Adding "Senior Designer" means a small code
    change, not a settings screen. This was a deliberate trade — making roles
    dynamic means rewriting every permission check.
@@ -374,6 +399,9 @@ or JavaScript source means the functions did not build.
 ---
 
 ## 11. Suggested order of work from here
+
+*Written in August 2026 for the Interior module; items 2 and 3 are done. For
+the current next steps, see section 12.*
 
 1. **Use it.** Two weeks of real projects with the whole team before building
    anything else. Several features on the wish list will look different
@@ -388,3 +416,205 @@ The system is only worth what people put into it daily. The morning routine
 matters more than the next feature: PM in the Control Tower before any calls,
 site team filing before they leave site, and one rule for everyone —
 *if it is not in the dashboard, it did not happen.*
+
+---
+
+## 12. Where work stands — start here
+
+*Written 4 November 2026, at the end of a performance pass.*
+
+### Running it on the Windows machine
+
+The repository is at `D:\staff pilot\mow-web`.
+
+```powershell
+cd "D:\staff pilot\mow-web\frontend"
+npm.cmd ci          # first time, or after package-lock.json changes
+npm.cmd run dev     # http://localhost:5173
+npm.cmd test        # unit tests
+npm.cmd run lint
+npm.cmd run build
+```
+
+- Use `npm.cmd`, not `npm`: PowerShell's execution policy blocks `npm.ps1`
+  on this machine. Running
+  `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+  once fixes that permanently.
+- Git was installed on 2 November 2026 (version 2.56). A terminal opened
+  before then won't find `git` until it is restarted.
+- This machine has Node 26, but CI uses Node 20. Both pass today.
+- **Local development uses the live database.** `frontend/.env` points at
+  the same Supabase project as production, so anything you do after signing
+  in on `localhost` changes real data.
+
+### The performance branch: `perf/smoothness`
+
+One commit, `d3126ea`, on top of `main` (`5b85307`). It exists **only on
+this machine**: it has not been pushed, merged or deployed.
+
+What it changes:
+
+1. **Today's Tasks**: each task card redraws only when its own data changes.
+   Before, every keystroke in the search box or a reason field rebuilt all
+   300 cards.
+2. **Refetches keep unchanged data as-is** (`frontend/src/lib/stableData.js`,
+   with tests), so a refresh that finds nothing new causes no redraw.
+3. **Today's Tasks loading**: a card's details arrive together instead of
+   popping in. An older, slower request can no longer overwrite a newer list.
+4. **Returning to the app**: an unchanged profile no longer redraws the whole
+   app or restarts its live connections. From reading the code, this should
+   also stop a manual language switch resetting when you come back. That
+   hasn't been tested.
+5. **Background refresh on return** (`useForegroundRefresh`): at most once
+   every 15 seconds. Coming back online always refreshes.
+6. **Start-up**: profile and lookup data load in parallel, and the unread
+   badge no longer holds up the first screen.
+7. **Moving between screens**: the current screen stays up until the next one
+   is ready, instead of flashing a skeleton.
+8. **Five Interior screens** (Head Dashboard, Activity History, All Files,
+   Master Report, Timeline) no longer flash a skeleton on background
+   refreshes. Switching project still shows one.
+
+Measured on a local copy of the app against a fake API, with 300 tasks and
+Chrome slowed to about the speed of a mid-range phone:
+
+| Action | Before | After |
+|---|---|---|
+| Each keystroke in search | 170–250 ms | 43–56 ms |
+| Each keystroke in a reason box | 150–245 ms | 43–54 ms |
+| Returning to the app within 15 seconds | 250–340 ms, 8 requests | about 10 ms, 0 requests |
+| Returning after 15 seconds, nothing changed | 250–375 ms, 8 requests | 41–61 ms, 8 requests |
+| Start-up until tasks appear | 2.1–2.3 s | 2.0–2.9 s, no real gain |
+
+The benchmark also checked that changed server data still reaches the right
+card, panels open and switch correctly, and navigation works with no page
+errors. Its script is outside the repository, in a temporary folder that
+Windows may clear:
+`C:\Users\ayush\AppData\Local\Temp\claude\d--staff-pilot\2e96bfd6-1cd4-4820-af9e-af619fbd1106\scratchpad\bench\bench.mjs`
+
+**Tradeoff**: live updates still arrive instantly, but a screen with no live
+subscription can now be up to 15 seconds stale after you switch back to the
+app.
+
+### Next steps, in order
+
+1. **Test the branch with real use**, signed in with a real account, ideally
+   on a phone. None of this has been tried on a real account, with real live
+   updates, on a phone, or on the five Interior screens. Check:
+   - Typing in the Today's Tasks search box
+   - Opening Return / Hold / Reopen on a card
+   - Accept, Start, Complete and Reassign
+   - Switching between task lists
+   - Opening each of the five Interior screens and switching project
+   - Leaving the app and coming back
+
+   Remember this is the live database (see above).
+2. **Merge it**: `git push -u origin perf/smoothness`, open a pull request,
+   let CI pass, then merge to `main`.
+3. **Set up a separate database for development and testing.** It is for
+   safety, not speed. The options are a Supabase branch or a second project
+   (either may cost money), or a local copy with `supabase start` (needs
+   Docker and the Supabase CLI, neither installed yet). Then point
+   `frontend/.env` at it, keep the live values in `.env.production` or
+   Vercel's settings, and stop committing `frontend/.env`.
+4. **Database speed.** No database changes have been made. Start with the
+   Supabase dashboard's Performance Advisor, which only reads. The main
+   suspect is the access rules: in the migrations, only 5 of the 97 `CREATE
+   POLICY` statements that use `auth.uid()` use the faster
+   `(select auth.uid())` form, though later migrations may have replaced
+   some. Test any change on the development database first.
+5. **Start-up time.** The main JavaScript file is about 264 KB, and probably
+   includes all the English and Gujarati text (`src/lib/i18n.js`, 165 KB).
+   This is the likely cause, but it hasn't been confirmed.
+6. **Package security warnings** in code that ships to users (`npm audit
+   --omit=dev`):
+   - `xlsx`: high (prototype pollution, ReDoS), no fix available. It matters
+     most if users upload spreadsheets.
+   - `react-router-dom`: moderate. The fix means moving to v7, which is a
+     breaking change.
+7. **Move `backend/api` to a root `api/` folder** (see section 9) if those
+   functions are needed in production.
+
+### Ruled out, so you don't repeat it
+
+- **`content-visibility: auto` on task cards** would speed up long lists, but
+  it clips each card's "More" dropdown (`ActionMenu`), which is positioned
+  inside the card.
+- **Changing database (MySQL, MongoDB and so on)**: Supabase/PostgreSQL suits
+  this app's linked data, transactions and access rules. A move would mean
+  rewriting most of the backend, with no real gain for users.
+
+### Baseline before you start
+
+- Tests: 30 passing (`npm.cmd test` in `frontend/`).
+- Lint: 0 errors, 8 warnings, all of which already existed.
+- Build: passes.
+
+### Central Procurement branch: `procurement/central`
+
+Every department places orders through Procurement: Department Head approval →
+Procurement accept / reject / return → print the order form → confirm Order
+Placed → delivery → completed. Every change goes through a `proc_*` database
+function that checks role and status; direct writes are blocked.
+
+**On LIVE (all applied and recorded in `supabase_migrations.schema_migrations`):**
+`v3_01` (foundation), `v3_02` (lifecycle), `v3_03` (phone login + the
+`staff-login` / `staff-create-user` Edge Functions), `v3_04` (My Profile), and
+on 16-11-2026 `v3_05` and `v3_06`. Backup taken just before:
+`backups/live-before-order-forms-reminders-20261116-1526.dump`. All five
+Procurement SQL tests (212 checks) pass on live, run inside `begin; … rollback;`.
+
+Note: the screens on this branch need `v3_05` + `v3_06`. Against a database
+without them, `purchase_requests` returns 400 (`42703 column … does not
+exist`), which the screens show as "Procurement is not switched on".
+
+What `v3_05` and `v3_06` add:
+
+- `mvp_pilot_order_forms_v3_05.sql` + `tests/order_forms.sql`: multi-item
+  order forms (Interior compact A5, Retail A4 with rate/amount), attachments,
+  return for correction, delivered / completed, amendments. Priorities are
+  Normal / High / Urgent / Emergency; Urgent and Emergency need a reason;
+  Emergency goes to Management first.
+- `mvp_pilot_order_reminders_v3_06.sql` + `tests/order_reminders.sql`: due
+  dates and automatic reminders (below).
+
+**How reminders work (v3_06).** `pg_cron` job `procurement-order-reminders`
+runs `proc_run_reminders()` every 15 minutes inside the database, so it does
+not depend on anyone's browser. Each reminder is a `notifications` row (in-app
+bell), and the existing push trigger sends it to phones. Rules (IST):
+
+- Waiting for acceptance: immediately, after 2 h, after 24 h (escalation to the
+  Procurement Head), then daily.
+- Accepted but Order Placed not confirmed: immediately, after 24 h, then daily.
+- Due date (any open stage until delivered): 3 days before, 1 day before, on
+  the day, then daily while overdue. 2 days overdue → Management. 5 days →
+  critical to Management + the department's Head. An overdue order gets
+  `overdue_since` and a history note; its status is never changed.
+- Timed reminders respect working days, reminder hours and company holidays
+  (`procurement_settings`, `procurement_holidays`; edited on
+  `/procurement/reminders`). Arrival and acceptance messages are immediate.
+- No duplicates: `procurement_reminders` is unique per order + kind + cycle +
+  person. It also keeps delivery status, read time and retries (5 attempts for
+  the notification, 3 for a failed phone push). Each run is logged in
+  `procurement_reminder_runs`. The Reminders page and the dashboard say plainly
+  when the schedule is missing or has not run for 30 minutes.
+
+**Before relying on reminders:** set the primary Procurement Head
+(`proc_set_primary_head`, Management only). Until then the longest-serving
+Procurement Department Head gets escalations. Add phone numbers so the printed
+form and messages show them.
+
+**Orders as Procurement tasks (`v3_07`, written and tested, NOT yet on live).**
+`mvp_pilot_order_tasks_v3_07.sql` + `tests/order_tasks.sql`. Every submitted
+order gets one `staff_tasks` row (`purchase_request_id` FK, unique;
+`system_key = PROC_ORDER:<order id>`) and, from another department, one
+`bridges` row. The order stays the source of truth: a trigger on its status
+history keeps the task's due date, priority, description and status in step,
+and `proc_task_stage()` derives the work stage (Open, Waiting for vendor,
+Waiting for GRN, Completion pending …). When the order reaches Procurement every
+active Procurement member is put on the task; the first to accept owns it (row
+lock). The assignee can mark it done only after delivery is verified (GRN or
+direct delivery) and a PO exists; the Procurement Head then verifies and
+completes the order, which closes the task. Generic task actions on order tasks
+are refused with a pointer to the order page. Dry run on live (rolled back):
+v3_07 applies cleanly, 259/259 checks pass across six Procurement test files.

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
 import { TaskTimeline, ReassignPanel, AttachmentsList, ProjectSiteSection } from "./TaskDetail.jsx";
@@ -281,6 +282,9 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
         const iAmVerifier = task && task.verifier_id === profile.id;
         const canManage = profile.permissions.canLead;
         const busy = busyId === bridge.task_id;
+        // A Procurement order's Bridge (v3_07): its progress is driven by the order, so it links there instead of offering the
+        // generic task actions (the database refuses them on order tasks).
+        const orderId = task?.source_module === "procurement" && String(task.system_key || "").startsWith("PROC_ORDER:") ? task.system_key.slice(11) : null;
 
         return (
           <div className="task-card" key={bridge.id}>
@@ -342,7 +346,18 @@ export default function Bridges({ lang, profile, lookups, showToast }) {
               </div>
             )}
 
-            {task && (
+            {task && orderId && (
+              <div className="btn-row">
+                <Link className="btn btn-primary" to={`/purchase-requests/${orderId}`}>
+                  📦 {lang === "gu" ? "ઓર્ડર ખોલો" : "Open order"}{task.reference_number ? ` ${task.reference_number}` : ""}
+                </Link>
+                <div className="task-actions-secondary">
+                  <ChatButton taskId={task.id} unread={unreadByTask[task.id] || 0} wrapStyle={{ minWidth: 0 }} />
+                </div>
+              </div>
+            )}
+
+            {task && !orderId && (
               <div className="btn-row">
                 {statusCode === "ASSIGNED" && isAssignee && (
                   <>

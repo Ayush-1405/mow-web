@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { useInteriorProfile } from "../../lib/interiorProfileContext";
 import { formatCurrency } from "../../lib/retailModules";
@@ -7,7 +7,7 @@ import { subscribeTable } from "../../lib/realtime";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 import {
   listProjects, listInteriorPeople,
-  listFactoryLocations, listVendors, createVendor,
+  listFactoryLocations, createVendor,
   listPurchaseChecklistItems, listPurchaseRequests, listAllPurchaseRequests,
   createPurchaseRequest, updatePurchaseRequest, archivePurchaseRequest,
   listPurchaseRequestItems, createPurchaseRequestItem, updatePurchaseRequestItem,
@@ -86,6 +86,7 @@ const emptyItemForm = {
 };
 
 export default function InteriorPurchaseManagement({ lang, staffProfile, lockedProjectId: lockedProjectIdProp }) {
+  const navigate = useNavigate();
   const { projectId: routeProjectId } = useParams();
   const lockedProjectId = lockedProjectIdProp || routeProjectId;
   const profile = useInteriorProfile();
@@ -96,7 +97,6 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
   const [error, setError] = useState(false);
   const [projects, setProjects] = useState([]);
   const [people, setPeople] = useState([]);
-  const [vendors, setVendors] = useState([]);
   const [factoryLocations, setFactoryLocations] = useState([]);
   const [checklistItems, setChecklistItems] = useState([]);
   const [projectId, setProjectId] = useState("");
@@ -116,13 +116,12 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const [{ data, error: err }, peopleRes, vendorsRes, locRes, itemsRes] = await Promise.all([
-      listProjects(), listInteriorPeople(), listVendors(), listFactoryLocations(), listPurchaseChecklistItems(),
+    const [{ data, error: err }, peopleRes, locRes, itemsRes] = await Promise.all([
+      listProjects(), listInteriorPeople(), listFactoryLocations(), listPurchaseChecklistItems(),
     ]);
     if (err) { setError(true); setLoading(false); return; }
     setProjects(data || []);
     setPeople(peopleRes.data || []);
-    setVendors(vendorsRes.data || []);
     setFactoryLocations(locRes.data || []);
     setChecklistItems(itemsRes.data || []);
     if (data?.length) setProjectId((cur) => cur || lockedProjectId || data[0].id);
@@ -232,6 +231,8 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
   async function handleCreateRequest(e) {
     e.preventDefault();
     if (!newForm.purchase_source) return;
+    // Buying from outside is Procurement's job: the request goes to the Interior Head, then Procurement (procurement_v3_01).
+    if (newForm.purchase_source === "outsourced") { navigate(`/orders/new?project=${projectId}`); return; }
     const payload = {
       project_id: projectId, area_id: newForm.area_id || null, purchase_source: newForm.purchase_source,
       priority: newForm.priority, purpose: newForm.purpose || null, notes: newForm.notes || null,
@@ -387,27 +388,12 @@ export default function InteriorPurchaseManagement({ lang, staffProfile, lockedP
                 <InhousePanel lang={lang} projectId={projectId} project={project} request={currentRequest} inhouse={detail.inhouse}
                   factoryLocations={factoryLocations} people={people} profile={profile} onChanged={refreshAll} />
               )}
-              {activeTab === "outsource" && (
-                <OutsourcePanel lang={lang} projectId={projectId} request={currentRequest} outsource={detail.outsource}
-                  quotations={detail.quotations} selections={detail.selections} approvals={detail.approvals}
-                  orders={detail.orders} costing={detail.costing} vendors={vendors} people={people} profile={profile}
-                  isOrgWide={isOrgWide} onChanged={refreshAll} onVendorCreated={load} />
+              {["outsource", "followup", "grn", "payment"].includes(activeTab) && (
+                <ProcurementHandoffPanel lang={lang} projectId={projectId} />
               )}
               {activeTab === "checklist" && (
                 <PurchaseChecklistPanel lang={lang} projectId={projectId} requestId={requestId} items={checklistItems}
                   results={detail.checklistResults} people={people} profile={profile} onChanged={refreshDetail} />
-              )}
-              {activeTab === "followup" && (
-                <FollowupPanel lang={lang} projectId={projectId} request={currentRequest} followups={detail.followups}
-                  vendors={vendors} people={people} profile={profile} onChanged={refreshDetail} />
-              )}
-              {activeTab === "grn" && (
-                <GrnPanel lang={lang} projectId={projectId} request={currentRequest} receipts={detail.receipts}
-                  orders={detail.orders} people={people} profile={profile} onChanged={refreshAll} />
-              )}
-              {activeTab === "payment" && (
-                <PaymentCoordinationPanel lang={lang} projectId={projectId} request={currentRequest} payments={detail.payments}
-                  isOrgWide={isOrgWide} profile={profile} onChanged={refreshDetail} />
               )}
               {activeTab === "files" && (
                 <AllAttachmentsPanel lang={lang} projectId={projectId} requestId={requestId} attachments={detail.attachments}
@@ -1375,6 +1361,26 @@ function AllAttachmentsPanel({ lang, projectId, requestId, attachments, profile,
       <h2>{t("uploadAttachmentLabel", lang)}</h2>
       <AttachmentList lang={lang} attachments={attachments} isElevated={isElevated} onDelete={handleDelete} confirmDeleteId={confirmDeleteId} />
       <AttachmentUploader lang={lang} categories={REQUEST_ATTACHMENT_CATEGORIES} onUpload={handleUpload} busy={uploadBusy} />
+    </div>
+  );
+}
+
+// Vendor quotations, purchase orders, follow-ups, goods receipt and payments for bought-in items are run by Procurement now
+// (purchase_* tables are written only through the proc_* functions). Earlier records stay visible in Procurement's lists.
+function ProcurementHandoffPanel({ lang, projectId }) {
+  const gu = lang === "gu";
+  return (
+    <div className="card">
+      <h2>{gu ? "ખરીદી હવે ખરીદી વિભાગ દ્વારા" : "Purchasing is handled by Procurement"}</h2>
+      <p className="sub">
+        {gu
+          ? "બહારથી ખરીદવાની દરેક વસ્તુ માટે ખરીદી વિનંતી કરો. તે ઇન્ટિરિયર વડાની મંજૂરી પછી ખરીદી વિભાગને જાય છે, જે ભાવપત્રક, ઓર્ડર અને ડિલિવરી સંભાળે છે."
+          : "Raise a purchase request for anything bought from outside. It goes to the Interior Head for approval, then to Procurement, who handle quotations, the order and delivery."}
+      </p>
+      <div className="btn-row">
+        <Link className="btn btn-primary" to={`/orders/new?project=${projectId}`}>📝 {gu ? "ઓર્ડર બનાવો" : "Create order"}</Link>
+        <Link className="btn btn-outline" to="/purchase-requests">{gu ? "મારી ખરીદી વિનંતીઓ" : "My purchase requests"}</Link>
+      </div>
     </div>
   );
 }

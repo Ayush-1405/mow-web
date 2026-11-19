@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "./Sidebar.jsx";
 import AppHeader from "./AppHeader.jsx";
 import { t } from "../lib/i18n";
@@ -15,6 +16,7 @@ import NotificationPrompt from "./NotificationPrompt.jsx";
 // itself (the page then owns its own single scroll area).
 export default function DeptShell({ lang, items, managementLinks, managementBadge = false, onBackToTasks, onLogout, flush = false, children }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
   return (
     <div className="dept-shell">
       <Sidebar lang={lang} items={items} managementLinks={managementLinks} onBackToTasks={onBackToTasks} open={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -30,6 +32,8 @@ export default function DeptShell({ lang, items, managementLinks, managementBadg
           secondary={[
             { key: "refresh", icon: "🔄", label: t("refresh", lang), iconOnly: true, onClick: () => window.location.reload() },
             { key: "back", icon: "⬅", label: t("backToTasks", lang), keepOnMobile: true, onClick: onBackToTasks },
+            { key: "order", icon: "📝", label: lang === "gu" ? "ઓર્ડર" : "Order", keepOnMobile: true, onClick: () => navigate("/orders/new") },
+            { key: "profile", icon: "👤", label: lang === "gu" ? "મારી પ્રોફાઇલ" : "My Profile", onClick: () => navigate("/profile") },
             { key: "logout", label: t("logout", lang), onClick: onLogout },
           ]}
         />

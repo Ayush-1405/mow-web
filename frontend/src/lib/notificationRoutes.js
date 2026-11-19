@@ -16,6 +16,7 @@ export function routeFor(n) {
     case "FACTORY_JOB": return `/factory-job/${n.entity_id}`;
     // a Chat notification opens the conversation; for a project chat it also carries the task the message was about (task context / filter)
     case "CHAT": return n.task_id ? `/chat?c=${n.entity_id}&task=${n.task_id}` : `/chat?c=${n.entity_id}`;
+    case "PURCHASE_REQUEST": return `/purchase-requests/${n.entity_id}`;
     default: return null;
   }
 }

@@ -3,7 +3,7 @@ import { staffLogin } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
 
-// Login screen: Employee Code + Password -> staff-login Edge Function.
+// Login screen: Employee Code or mobile number + Password -> staff-login Edge Function (resolve_employee_login matches either).
 // On success, hands the returned access/refresh token pair to the shared
 // Supabase client via setSession() so every subsequent .from()/.rpc() call
 // in the app runs as this authenticated user, under RLS. The password
@@ -48,7 +48,7 @@ export default function Login({ lang, onLoggedIn }) {
           <div className="sub">{t("loginTitle", lang)} / સ્ટાફ લોગિન</div>
         </div>
         <form onSubmit={handleSubmit} autoComplete="off">
-          <label htmlFor="employee_code">{t("employeeCode", lang)}</label>
+          <label htmlFor="employee_code">{t("loginIdLabel", lang)}</label>
           <input
             id="employee_code"
             autoComplete="off"

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { staffCreateUser, staffResetPassword } from "../lib/api";
 import { t } from "../lib/i18n";
@@ -16,11 +17,18 @@ const DELETE_REASONS = [
   { code: "other", en: "Other", gu: "અન્ય" },
 ];
 
+// 10 to 13 digits, ignoring spaces, dashes and a leading +. The database applies the same rule (user_profiles_phone_format_check).
+function isValidPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 13;
+}
+
 // Calls staff-create-user (already deployed, already reviewed). All role/
 // department authorization happens server-side against role_creation_rules
 // for the VERIFIED caller — this form does not decide who is allowed to
 // create whom, it just collects the fields the function needs.
 export default function UserCreation({ lang, profile, lookups, showToast }) {
+  const navigate = useNavigate();
   const [locations, setLocations] = useState([]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -231,6 +239,10 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
   }
 
   async function submitEdit(userId) {
+    if (editForm.phone.trim() && !isValidPhone(editForm.phone)) {
+      showToast("error", t("phoneInvalid", lang));
+      return;
+    }
     setRowBusyId(userId);
     try {
       const { error } = await supabase.rpc("staff_update_user_profile", {
@@ -327,13 +339,18 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
       showToast("error", "Please fill in the required fields. / કૃપા કરીને જરૂરી ફીલ્ડ ભરો.");
       return;
     }
+    // The mobile number is also a login id: required for every new user, and unique (checked by staff-create-user).
+    if (!isValidPhone(form.phone)) {
+      showToast("error", t("phoneInvalid", lang));
+      return;
+    }
     setBusy(true);
     setResult(null);
     try {
       const created = await staffCreateUser({
         employee_code: form.employee_code.trim().toUpperCase(),
         full_name: form.full_name.trim(),
-        phone: form.phone.trim() || undefined,
+        phone: form.phone.trim(),
         role_code: form.role_code,
         department_id: form.department_id,
         home_location_id: form.home_location_id,
@@ -391,8 +408,8 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
           </div>
 
           <div className="field">
-            <label>{t("phone", lang)}</label>
-            <input value={form.phone} onChange={(e) => set("phone", e.target.value)} maxLength={30} />
+            <label>{t("phoneLoginRequired", lang)} *</label>
+            <input value={form.phone} onChange={(e) => set("phone", e.target.value)} maxLength={30} inputMode="tel" required />
           </div>
 
           <div className="field">
@@ -480,6 +497,7 @@ export default function UserCreation({ lang, profile, lookups, showToast }) {
               </div>
             ) : (
               <div className="btn-row">
+                <button className="btn btn-outline" onClick={() => navigate(`/profile/${u.id}`)}>👤 {lang === "gu" ? "પ્રોફાઇલ" : "Profile"}</button>
                 <button className="btn btn-outline" onClick={() => startEdit(u)}>{t("edit", lang)}</button>
                 {canChangeRoles && (
                   <button className="btn btn-outline" onClick={() => startRoleEdit(u)}>{t("changeRole", lang)}</button>

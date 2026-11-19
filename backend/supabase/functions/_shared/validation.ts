@@ -6,6 +6,13 @@ export function normalizeEmployeeCode(input: unknown): string | null {
   return v.length > 0 && v.length <= 40 ? v : null;
 }
 
+/** Last 10 digits of a 10-13 digit phone number, or null. Same rule as public.staff_phone_key(). */
+export function phoneKey(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const digits = input.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 13 ? digits.slice(-10) : null;
+}
+
 export function isNonEmptyString(v: unknown, maxLen = 500): v is string {
   return typeof v === "string" && v.trim().length > 0 && v.length <= maxLen;
 }

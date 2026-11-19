@@ -1,7 +1,7 @@
 // Mood of Wood — MVP Pilot — staff-login
 //
-// Public endpoint. Accepts { employee_code, password }. Resolves the
-// employee code to an internal Auth email via the service-role-only
+// Public endpoint. Accepts { employee_code, password }, where employee_code may also be the person's mobile number
+// (resolve_employee_login matches either). Resolves it to an internal Auth email via the service-role-only
 // resolve_employee_login() RPC, then signs in through Supabase Auth.
 // Returns ONLY access_token / refresh_token / expires_in / must_change_password
 // — never the internal email, never a full session/user object.
@@ -13,7 +13,7 @@ import { handlePreflight } from "../_shared/cors.ts";
 import { errorResponse, okResponse } from "../_shared/response.ts";
 import { MSG } from "../_shared/messages.ts";
 import { adminClient, anonClient } from "../_shared/clients.ts";
-import { normalizeEmployeeCode, isNonEmptyString } from "../_shared/validation.ts";
+import { normalizeEmployeeCode, isNonEmptyString, phoneKey } from "../_shared/validation.ts";
 
 const MAX_FAILED_ATTEMPTS = 5;
 const WINDOW_MINUTES = 15;
@@ -61,6 +61,9 @@ Deno.serve(async (req) => {
       return errorResponse(400, MSG.missingFields, origin);
     }
 
+    // Rate-limit key: a phone number counts as one id however it is typed (+91, spaces, leading 0).
+    const attemptKey = /[A-Z]/.test(normalizedCode) || !phoneKey(normalizedCode) ? normalizedCode : `PHONE:${phoneKey(normalizedCode)}`;
+
     const admin = adminClient();
     const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
 
@@ -68,7 +71,7 @@ Deno.serve(async (req) => {
     const { count: failedCount, error: countError } = await admin
       .from("login_attempts")
       .select("id", { count: "exact", head: true })
-      .eq("employee_code", normalizedCode)
+      .eq("employee_code", attemptKey)
       .eq("success", false)
       .gte("attempted_at", windowStart);
 
@@ -85,7 +88,7 @@ Deno.serve(async (req) => {
 
     const recordAttempt = async (success: boolean) => {
       const { error } = await admin.from("login_attempts").insert({
-        employee_code: normalizedCode,
+        employee_code: attemptKey,
         success,
         ip_address: ipAddress,
         user_agent: userAgent,

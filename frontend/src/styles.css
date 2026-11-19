@@ -1091,6 +1091,7 @@ textarea { min-height: 84px; resize: vertical; }
 .function-card-sub { font-size: 10.5px; color: var(--ink-soft); }
 .phase2-badge { background: var(--info-bg); color: var(--brand-dark); margin-top: auto; }
 .live-badge { background: var(--success-bg); color: var(--success); margin-top: auto; }
+.in-progress-badge { background: #fdf1d6; color: #97731c; margin-top: auto; }
 
 /* Tablet portrait (~600px+, e.g. iPad Mini/Air portrait): a comfortable
    3-across grid instead of whatever auto-fill happens to land on. */
@@ -1453,6 +1454,143 @@ textarea { min-height: 84px; resize: vertical; }
     @bottom-center { content: "Mood of Wood — Page " counter(page) " of " counter(pages); font-size: 9px; color: #666; }
   }
 }
+
+/* ---------- Procurement: printable Purchase Request / Purchase Order (components/PurchaseDocument.jsx) ----------
+   The document sits outside #root and only exists on paper: while body.printing-purchase-doc is set, the app is hidden
+   and the document is the whole printout. */
+.purchase-doc { display: none; }
+@media print {
+  body.printing-purchase-doc > #root { display: none !important; }
+  body.printing-purchase-doc .purchase-doc { display: block; color: #111; font: 11pt/1.45 Arial, sans-serif; }
+}
+.purchase-doc-head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 3px solid #4a2c15; padding-bottom: 10px; margin-bottom: 14px; }
+.purchase-doc-brand { font: 800 22pt/1 Georgia, serif; letter-spacing: 2px; color: #4a2c15; }
+.purchase-doc-dept { font-weight: 700; letter-spacing: 1px; margin-top: 4px; color: #7a4a24; }
+.purchase-doc-meta { text-align: right; font-size: 9.5pt; }
+.purchase-doc-title { font-weight: 800; font-size: 13pt; margin-bottom: 4px; }
+.purchase-doc-section { font-size: 11pt; margin: 14px 0 6px; color: #4a2c15; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+.purchase-doc-table { width: 100%; border-collapse: collapse; }
+.purchase-doc-table th, .purchase-doc-table td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; vertical-align: top; }
+.purchase-doc-table th { width: 32%; background: #f6f1ea; font-weight: 600; }
+.purchase-doc-table tr { break-inside: avoid; }
+.purchase-doc-signs { display: flex; gap: 18px; margin-top: 46px; break-inside: avoid; }
+.purchase-doc-signs div { flex: 1; text-align: center; font-size: 9.5pt; }
+.purchase-doc-signs span { display: block; border-top: 1px solid #333; margin-bottom: 4px; }
+.purchase-doc-foot { margin-top: 24px; font-size: 8.5pt; color: #555; border-top: 1px solid #ccc; padding-top: 6px; }
+
+/* ---------- Production Supply Order Form (components/OrderFormPrint.jsx): the paper stationery, printed ----------
+   White page, thin borders, dark-red labels, English + Gujarati. Interior prints on A5, Retail on A4 (the @page size is
+   set at print time by the order page). */
+.order-form { --of-red: #9b1c1c; color: #111; font: 10pt/1.35 Arial, "Noto Sans Gujarati", sans-serif; background: #fff; }
+.order-form .of-head { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--of-red); padding-bottom: 6px; }
+.order-form .of-logo { width: 46px; height: 46px; object-fit: contain; }
+.order-form .of-brand { flex: 1; }
+.order-form .of-company { font: 800 18pt/1 Georgia, serif; letter-spacing: 2px; color: #4a2c15; }
+.order-form .of-title { font-weight: 700; color: var(--of-red); margin-top: 3px; font-size: 10pt; }
+.order-form .of-no { border: 1px solid var(--of-red); padding: 4px 8px; text-align: center; min-width: 120px; }
+.order-form .of-no .of-label { display: block; font-size: 8pt; }
+.order-form .of-number { font-weight: 700; font-size: 11pt; }
+.order-form .of-gu { font-weight: 400; font-size: 0.85em; }
+.order-form .of-label { color: var(--of-red); font-weight: 700; }
+.order-form .of-info { margin: 8px 0; }
+.order-form .of-field { display: flex; gap: 6px; align-items: baseline; padding: 3px 0; }
+.order-form .of-field .of-label { white-space: nowrap; font-size: 9pt; }
+.order-form .of-value { flex: 1; border-bottom: 1px dotted #888; min-height: 1.2em; }
+.order-form .of-section-title { background: var(--of-red); color: #fff; font-weight: 700; padding: 3px 6px; margin-top: 6px; font-size: 9.5pt; }
+.order-form .of-table { width: 100%; border-collapse: collapse; }
+.order-form .of-table th { color: var(--of-red); font-size: 8.5pt; text-align: center; }
+.order-form .of-table th, .order-form .of-table td { border: 1px solid #555; padding: 4px 5px; vertical-align: top; }
+.order-form .of-table td { height: 22px; }
+.order-form .of-table tr { break-inside: avoid; }
+.order-form .of-sn { width: 34px; text-align: center; }
+.order-form .of-code { width: 80px; }
+.order-form .of-qty { width: 95px; }
+.order-form .of-rate { width: 75px; }
+.order-form .of-amt { width: 90px; }
+.order-form .of-num { text-align: right; white-space: nowrap; }
+.order-form .of-total td { font-weight: 700; color: var(--of-red); }
+.order-form .of-total td:first-child { text-align: right; }
+.order-form .of-bottom { display: flex; gap: 8px; margin-top: 8px; break-inside: avoid; }
+.order-form .of-box { flex: 1; border: 1px solid #555; padding: 5px 6px; min-height: 70px; }
+.order-form .of-drawings ol { margin: 4px 0 0 16px; padding: 0; font-size: 9pt; }
+.order-form .of-empty-box { min-height: 52px; }
+.order-form .of-remarks { white-space: pre-wrap; margin-top: 3px; }
+.order-form .of-signs { display: flex; gap: 12px; margin-top: 26px; break-inside: avoid; }
+.order-form .of-signs div { flex: 1; text-align: center; font-size: 8.5pt; color: var(--of-red); font-weight: 700; }
+.order-form .of-line { display: block; border-top: 1px solid #333; padding-top: 2px; margin-bottom: 2px; color: #111; font-weight: 400; min-height: 1.1em; }
+.order-form .of-foot { margin-top: 12px; border-top: 1px solid #ccc; padding-top: 4px; font-size: 7.5pt; color: #555; }
+/* Compact Interior form: everything on one A5 page. */
+.order-form-interior { font-size: 8pt; line-height: 1.25; }
+.order-form-interior .of-company { font-size: 13pt; letter-spacing: 1px; }
+.order-form-interior .of-title { font-size: 8pt; }
+.order-form-interior .of-logo { width: 34px; height: 34px; }
+.order-form-interior .of-no { min-width: 96px; padding: 2px 6px; }
+.order-form-interior .of-number { font-size: 9.5pt; }
+.order-form-interior .of-info { margin: 4px 0; }
+.order-form-interior .of-field { padding: 1px 0; }
+.order-form-interior .of-field .of-label { font-size: 7.5pt; }
+.order-form-interior .of-table th { font-size: 7pt; }
+.order-form-interior .of-table th, .order-form-interior .of-table td { padding: 2px 4px; }
+.order-form-interior .of-table td { height: 18px; }
+.order-form-interior .of-qty { width: 72px; }
+.order-form-interior .of-code { width: 60px; }
+.order-form-interior .of-box { min-height: 48px; padding: 3px 5px; }
+.order-form-interior .of-empty-box { min-height: 34px; }
+.order-form-interior .of-signs { margin-top: 16px; gap: 8px; }
+.order-form-interior .of-signs div { font-size: 7pt; }
+.order-form-interior .of-foot { margin-top: 6px; font-size: 6.5pt; }
+.order-form-retail .of-table td { height: 26px; }
+
+/* Procurement screens */
+.proc-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.proc-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.proc-kpi strong { display: block; font-size: 22px; color: var(--brand-dark); }
+.proc-kpi span { font-size: 12.5px; color: var(--ink-soft, #6b5d4f); }
+.proc-row { border-bottom: 1px solid var(--border); padding: 10px 0; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.proc-row:last-child { border-bottom: 0; }
+.proc-row a { color: inherit; text-decoration: none; min-width: 0; flex: 1 1 240px; }
+.proc-table-wrap { overflow-x: auto; }
+.proc-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.proc-table th, .proc-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; white-space: nowrap; }
+.proc-history li { margin-bottom: 6px; }
+.order-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.order-card { display: block; color: inherit; text-decoration: none; margin: 0; }
+.order-card-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.order-card-title { font-weight: 700; margin: 6px 0; color: var(--brand-dark); }
+.order-card-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 13px; }
+.order-card-grid dt { color: var(--ink-soft, #6b5d4f); }
+.order-card-grid dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.order-items input { margin: 0; }
+
+/* Deadlines: overdue is red, due today/tomorrow amber, due within 3 days soft amber. Urgent orders get a thick edge. */
+.due-tile { border-width: 1px; transition: border-color var(--ease), background var(--ease); }
+.due-tile.has.danger { border-color: var(--danger); background: var(--danger-bg); }
+.due-tile.has.danger strong { color: var(--danger); }
+.due-tile.has.warn { border-color: var(--accent); background: var(--accent-soft); }
+.due-tile.has.warn strong { color: var(--accent-dark); }
+.due-tile.active { outline: 3px solid var(--brand-light); outline-offset: 1px; }
+.order-card { border-left: 4px solid transparent; }
+.order-card.due-overdue { border-left-color: var(--danger); background: linear-gradient(90deg, var(--danger-bg), var(--surface) 55%); }
+.order-card.due-near { border-left-color: var(--accent); }
+.order-card.due-soon { border-left-color: var(--accent-soft); }
+.order-card.is-urgent { box-shadow: inset 0 0 0 2px var(--accent-soft), var(--shadow-sm); }
+.due-chip { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px;
+  background: var(--surface-2); color: var(--ink-soft); }
+.due-chip.due-overdue { background: var(--danger); color: #fff; }
+.due-chip.due-near { background: var(--accent); color: #fff; }
+.due-chip.due-soon { background: var(--accent-soft); color: var(--accent-dark); }
+.link-btn { background: none; border: 0; padding: 0; color: var(--brand); text-decoration: underline; cursor: pointer; font: inherit; width: auto; }
+.deadline-panel { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 14px; margin: 0; }
+.deadline-panel div { min-width: 0; }
+.deadline-panel dt { font-size: 12px; color: var(--ink-soft); }
+.deadline-panel dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.reminder-log { list-style: none; padding: 0; margin: 0; }
+.reminder-log li { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 13.5px; }
+.reminder-log li:last-child { border-bottom: 0; }
+.reminder-log .meta { color: var(--ink-soft); font-size: 12px; }
+.day-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.day-picks label { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; font-weight: 500; cursor: pointer; }
+.day-picks input { width: auto; margin: 0; }
 
 /* =====================================================================
    Today's Tasks -- responsive date / search / filter toolbar

@@ -805,7 +805,10 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     // Department Head to delete ANY task, not just their own creations
     // — this mirrors that exactly (it's only the optimistic UI gate;
     // the RPC re-checks regardless of what this computes).
-    const canDeleteTask = iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership;
+    // A Procurement order task (v3_07) is driven by its order: Accept works here; everything else happens on the order page,
+    // where delivery / GRN checks apply. The database refuses the generic actions on these tasks anyway.
+    const orderId = task.source_module === "procurement" && String(task.system_key || "").startsWith("PROC_ORDER:") ? task.system_key.slice(11) : null;
+    const canDeleteTask = !orderId && (iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership);
     const busy = busyId === task.id;
     // Undefined here means either an unrecognized proof_type_id or one
     // that's since been deactivated (e.g. "voice" — see
@@ -831,12 +834,12 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const myRow = assignees.find((a) => a.user_id === profile.id);
     const isSharedAssignee = !!myRow || isAssignee;
     const canAccept = isSharedAssignee && ["ASSIGNED", "RETURNED", "REOPENED"].includes(statusCode);
-    const canStart = isSharedAssignee && ["ACCEPTED", "REOPENED"].includes(statusCode);
-    const canComplete = isSharedAssignee && statusCode === "IN_PROGRESS";
-    const canHold = isSharedAssignee && statusCode === "IN_PROGRESS";
-    const canResume = isSharedAssignee && statusCode === "ON_HOLD";
-    const canReturn = isSharedAssignee && ["ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD"].includes(statusCode);
-    const canReopen = statusCode === "COMPLETED" ? iAmVerifier : ["VERIFIED", "CLOSED"].includes(statusCode) && (canManage || iCreatedIt || iAmVerifier);
+    const canStart = !orderId && isSharedAssignee && ["ACCEPTED", "REOPENED"].includes(statusCode);
+    const canComplete = !orderId && isSharedAssignee && statusCode === "IN_PROGRESS";
+    const canHold = !orderId && isSharedAssignee && statusCode === "IN_PROGRESS";
+    const canResume = !orderId && isSharedAssignee && statusCode === "ON_HOLD";
+    const canReturn = !orderId && isSharedAssignee && ["ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD"].includes(statusCode);
+    const canReopen = !orderId && (statusCode === "COMPLETED" ? iAmVerifier : ["VERIFIED", "CLOSED"].includes(statusCode) && (canManage || iCreatedIt || iAmVerifier));
 
     return (
       <div className="task-card" id={`task-${task.id}`} key={task.id}>
@@ -941,6 +944,11 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               {t("accept", lang)}
             </button>
           )}
+          {orderId && (
+            <button className="btn btn-primary" onClick={() => navigate(`/purchase-requests/${orderId}`)}>
+              📦 {lang === "gu" ? "ઓર્ડર ખોલો" : "Open order"}{task.reference_number ? ` ${task.reference_number}` : ""}
+            </button>
+          )}
           {canStart && (
             <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_start_task", task.id)}>
               {t("start", lang)}
@@ -970,7 +978,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               {t("returnTask", lang)}
             </button>
           )}
-          {statusCode === "COMPLETED" && iAmVerifier && (
+          {statusCode === "COMPLETED" && iAmVerifier && !orderId && (
             <>
               <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_verify_task", task.id)}>
                 {t("verify", lang)}
@@ -980,7 +988,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               </button>
             </>
           )}
-          {statusCode === "VERIFIED" && (canManage || task.assigned_by === profile.id) && (
+          {statusCode === "VERIFIED" && !orderId && (canManage || task.assigned_by === profile.id) && (
             <button className="btn btn-primary" disabled={busy} onClick={() => runAction("staff_close_task", task.id)}>
               {t("close", lang)}
             </button>
@@ -1002,7 +1010,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
             <ActionMenu
               label={t("moreActions", lang)}
               items={[
-                canManage && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "REOPENED"].includes(statusCode) && {
+                canManage && !orderId && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "REOPENED"].includes(statusCode) && {
                   key: "reassign", label: t("reassign", lang), disabled: busy, onClick: () => setReassignFor(reassignFor === task.id ? null : task.id),
                 },
                 !task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && isSharedAssignee && {

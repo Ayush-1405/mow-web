@@ -29,6 +29,7 @@ import {
   isValidPassword,
   isUuid,
   isUuidArray,
+  phoneKey,
 } from "../_shared/validation.ts";
 
 const INTERNAL_EMAIL_DOMAIN = Deno.env.get("STAFF_INTERNAL_EMAIL_DOMAIN") ?? "staff.moodofwood.internal";
@@ -124,7 +125,8 @@ Deno.serve(async (req) => {
 
   const normalizedCode = normalizeEmployeeCode(payload.employee_code);
   const fullName = isNonEmptyString(payload.full_name, 200) ? (payload.full_name as string).trim() : null;
-  const phone = isOptionalString(payload.phone, 30) ? ((payload.phone as string | undefined)?.trim() || null) : undefined;
+  // An empty phone is "missing" (reported as phoneRequired below), not a malformed request.
+  const phone = payload.phone === "" ? null : isOptionalString(payload.phone, 30) ? ((payload.phone as string | undefined)?.trim() || null) : undefined;
   const roleCode = isNonEmptyString(payload.role_code, 40) ? (payload.role_code as string).trim() : null;
   const departmentId = isUuid(payload.department_id) ? (payload.department_id as string) : null;
   const homeLocationId = isUuid(payload.home_location_id) ? (payload.home_location_id as string) : null;
@@ -290,6 +292,19 @@ Deno.serve(async (req) => {
     return errorResponse(400, MSG.invalidLocation, origin);
   }
 
+  // ---- Mobile number: required, valid, and not anyone else's (it is also a login id) ----
+  if (!phone || !phoneKey(phone)) {
+    return errorResponse(400, MSG.phoneRequired, origin);
+  }
+  const { data: phoneOwner, error: phoneError } = await admin.rpc("staff_phone_in_use", { p_phone: phone });
+  if (phoneError) {
+    console.error("staff-create-user: duplicate phone check failed:", phoneError.message);
+    return errorResponse(500, MSG.serverError, origin);
+  }
+  if (phoneOwner) {
+    return errorResponse(409, MSG.duplicatePhone, origin);
+  }
+
   // ---- employee_code must not already be assigned (case-insensitive) ----
   const { data: existing, error: existingError } = await admin
     .from("user_profiles")
@@ -351,7 +366,8 @@ Deno.serve(async (req) => {
   if (profileInsertError) {
     await cleanupOrphanAuthUser(`user_profiles insert failed: ${profileInsertError.message}`);
     if (profileInsertError.code === "23505") {
-      return errorResponse(409, MSG.duplicateEmployeeCode, origin);
+      const isPhone = /phone/i.test(profileInsertError.message ?? "");
+      return errorResponse(409, isPhone ? MSG.duplicatePhone : MSG.duplicateEmployeeCode, origin);
     }
     return errorResponse(500, MSG.serverError, origin);
   }

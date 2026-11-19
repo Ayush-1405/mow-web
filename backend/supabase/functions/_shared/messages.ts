@@ -38,8 +38,8 @@ export const MSG: Record<string, Bilingual> = {
     gu: "ચાલુ રાખતા પહેલા તમારે તમારો પાસવર્ડ બદલવો પડશે.",
   },
   invalidLogin: {
-    en: "Invalid employee code or password",
-    gu: "કર્મચારી કોડ અથવા પાસવર્ડ ખોટો છે",
+    en: "Invalid employee code / mobile number or password",
+    gu: "કર્મચારી કોડ / મોબાઇલ નંબર અથવા પાસવર્ડ ખોટો છે",
   },
   tooManyAttempts: {
     en: "Too many failed attempts. Please try again after some time.",
@@ -56,6 +56,15 @@ export const MSG: Record<string, Bilingual> = {
   duplicateEmployeeCode: {
     en: "This employee code is already in use.",
     gu: "આ કર્મચારી કોડ પહેલેથી ઉપયોગમાં છે.",
+  },
+  // The mobile number is also a login id, so it must be present, valid and belong to one person only.
+  phoneRequired: {
+    en: "A mobile number (10 to 13 digits) is required. Staff can sign in with it.",
+    gu: "મોબાઇલ નંબર (10 થી 13 અંક) જરૂરી છે. સ્ટાફ તેનાથી લોગિન કરી શકે છે.",
+  },
+  duplicatePhone: {
+    en: "This mobile number is already used by another user.",
+    gu: "આ મોબાઇલ નંબર બીજા યુઝર દ્વારા પહેલેથી ઉપયોગમાં છે.",
   },
   invalidRole: {
     en: "The selected role is not valid.",
