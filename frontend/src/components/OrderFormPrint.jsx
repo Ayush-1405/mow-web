@@ -26,6 +26,7 @@ const L = {
   email: ["Email :", "ઇમેઇલ :"],
   billing: ["Billing Address :", "બિલિંગ સરનામું :"],
   delivery: ["Delivery Address :", "ડિલિવરી સરનામું :"],
+  location: ["Delivery Location :", "ડિલિવરી સ્થળ :"],
 };
 
 const date = (d) => (d ? fmtDate(d) : "");
@@ -89,6 +90,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
           <tbody>
             <tr><th><Label k="issued" /></th><td>{issuedBy}</td><th><Label k="sales" /></th><td>{request.sales_person_name || ""}</td></tr>
             <tr><th><Label k="client" inline /></th><td colSpan={3}>{client}</td></tr>
+            <tr><th><Label k="location" inline /></th><td colSpan={3} className="mowf-addr">{request.delivery_location || ""}</td></tr>
             {cust && (
               <>
                 <tr className="mowf-cust"><th><Label k="mobile" /></th><td className="mowf-addr">{[cust.mobile, cust.alt_mobile].filter(Boolean).join(", ")}</td>
