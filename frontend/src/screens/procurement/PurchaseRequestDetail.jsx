@@ -264,14 +264,14 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
           <div className="proc-table-wrap" style={{ marginTop: 10 }}>
             <table className="proc-table">
               <thead><tr><th>#</th><th>{L(lang, "Item code", "આઇટમ કોડ")}</th><th>{L(lang, "Description", "વર્ણન")}</th><th>{L(lang, "Qty / size", "જથ્થો / માપ")}</th>
-                {req.order_form_type === "RETAIL" && <><th style={{ textAlign: "right" }}>{L(lang, "Rate", "ભાવ")}</th><th style={{ textAlign: "right" }}>{L(lang, "Amount", "રકમ")}</th></>}</tr></thead>
+                {req.order_form_type === "INTERIOR" && <><th style={{ textAlign: "right" }}>{L(lang, "Rate", "ભાવ")}</th><th style={{ textAlign: "right" }}>{L(lang, "Amount", "રકમ")}</th></>}</tr></thead>
               <tbody>
                 {items.map((i) => (
                   <tr key={i.id}><td>{i.line_no}</td><td>{i.item_code || "—"}</td><td style={{ whiteSpace: "normal" }}>{i.description}</td><td>{i.qty_size}</td>
-                    {req.order_form_type === "RETAIL" && <><td style={{ textAlign: "right" }}>{i.rate ?? "—"}</td><td style={{ textAlign: "right" }}>{i.amount ?? "—"}</td></>}</tr>
+                    {req.order_form_type === "INTERIOR" && <><td style={{ textAlign: "right" }}>{i.rate ?? "—"}</td><td style={{ textAlign: "right" }}>{i.amount ?? "—"}</td></>}</tr>
                 ))}
                 {req.order_total != null && (
-                  <tr><td colSpan={req.order_form_type === "RETAIL" ? 5 : 3} style={{ textAlign: "right", fontWeight: 700 }}>{L(lang, "Total", "કુલ")}</td>
+                  <tr><td colSpan={req.order_form_type === "INTERIOR" ? 5 : 3} style={{ textAlign: "right", fontWeight: 700 }}>{L(lang, "Total", "કુલ")}</td>
                     <td style={{ textAlign: "right", fontWeight: 700 }}>Rs {Number(req.order_total).toLocaleString("en-IN")}</td></tr>
                 )}
               </tbody>

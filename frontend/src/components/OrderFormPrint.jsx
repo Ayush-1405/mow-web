@@ -3,9 +3,9 @@ import { addressLines, fmtDate, orderFormTemplate } from "../lib/procurementRule
 import { MOW_LOGO } from "../lib/brand";
 
 // The official Mood of Wood "Production Supply Order Form", drawn to match the company's two printed pads:
-//   INTERIOR - small portrait pad printed in red: info grid, numbered item lines, a large Drawings area, Remarks.
-//   RETAIL   - large landscape pad printed in navy: info grid and a six-column item table (S.N., Item Code, item details,
+//   INTERIOR - the large landscape pad printed in navy: info grid and a six-column item table (S.N., Item Code, item details,
 //              Qty./Size, Rate, Amount) with at least five rows, then Signature.
+//   RETAIL   - the small portrait pad printed in red: info grid, numbered item lines, a large Drawings area, Remarks.
 // Every value comes from the accepted order; an empty field stays blank, as on the paper pad. The labels are the
 // pad's own English + Gujarati wording. Sizes are in `em` so one design serves A5 and A4 (font-size set per paper).
 
@@ -59,10 +59,10 @@ function CompanyBlock({ company }) {
 export default function OrderFormPrint({ request, items = [], context, order, files = [], template, meta, company }) {
   if (!request) return null;
   const tpl = template || orderFormTemplate(request);
-  const retail = tpl === "RETAIL";
+  const large = tpl === "INTERIOR"; // Interior: the large table pad; Retail: the small portrait pad
   const vendor = order?.vendors?.name || request.preferred_vendor_name || "";
   const lines = [...items].sort((a, b) => (a.line_no || 0) - (b.line_no || 0));
-  const minRows = retail ? 5 : 3;
+  const minRows = large ? 5 : 3;
   const rows = [...lines, ...Array.from({ length: Math.max(0, minRows - lines.length) }, () => null)];
   const hasAmounts = lines.some((i) => i.amount !== null && i.amount !== undefined);
   const total = lines.reduce((s, i) => s + (i.amount === null || i.amount === undefined ? 0 : Number(i.amount)), 0);
@@ -72,7 +72,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
   const client = cust?.name || request.client_name || (context?.project_code ? `${context.project_code}${context.customer ? ` — ${context.customer}` : ""}` : "");
 
   return (
-    <div className={`mowf ${retail ? "mowf-retail" : "mowf-interior"}${cust ? " mowf-has-customer" : ""}`}>
+    <div className={`mowf ${large ? "mowf-large" : "mowf-small"}${cust ? " mowf-has-customer" : ""}`}>
       <div className="mowf-frame">
         <header className="mowf-head">
           <div className="mowf-brand">
@@ -110,7 +110,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
 
         <div className="mowf-band"><span className="mowf-label">{L.items[0]}</span><br /><span className="mowf-label mowf-gu">{L.items[1]}</span></div>
 
-        {retail ? (
+        {large ? (
           <table className="mowf-items">
             <colgroup><col className="mowf-c-sn" /><col className="mowf-c-code" /><col /><col className="mowf-c-qty" /><col className="mowf-c-rate" /><col className="mowf-c-amt" /></colgroup>
             <thead>
@@ -156,7 +156,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
           </table>
         )}
 
-        {!retail && (
+        {!large && (
           <section className="mowf-drawings">
             <div className="mowf-drawings-label"><span className="mowf-label">{L.drawings[0]} <span className="mowf-gu">{L.drawings[1]}</span></span></div>
             {drawings.length > 0 && <ol className="mowf-files">{drawings.map((d, n) => <li key={`${d}${n}`}>{d}</li>)}</ol>}
@@ -164,7 +164,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
           </section>
         )}
 
-        {retail && (
+        {large && (
           <table className="mowf-info mowf-after">
             <colgroup><col className="mowf-c-label" /><col /></colgroup>
             <tbody>
@@ -175,7 +175,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
         )}
 
         <footer className="mowf-foot">
-          {!retail && (
+          {!large && (
             <div className="mowf-remarks"><Label k="remarks" /><div className="mowf-remarks-text">{request.remarks || ""}</div></div>
           )}
           <div className="mowf-sign"><Label k="signature" /><span className="mowf-sign-line" /></div>

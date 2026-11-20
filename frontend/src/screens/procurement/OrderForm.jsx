@@ -37,7 +37,7 @@ export default function OrderForm({ lang, profile, lookups }) {
     return d ? (lang === "gu" ? d.name_gu : d.name_en) : "—";
   }, [lookups.departmentById, profile.department_id, lang]);
   const total = orderTotal(items);
-  const retail = header.form_type === "RETAIL";
+  const priced = header.form_type === "INTERIOR"; // Interior form: qty, rate, amount; Retail form: per-line remarks
 
   useEffect(() => {
     if (!isInterior && !header.project_id) return undefined;
@@ -138,8 +138,8 @@ export default function OrderForm({ lang, profile, lookups }) {
         <div className="field">
           <label>{L(lang, "Order form", "ઓર્ડર ફોર્મ")}</label>
           <select value={header.form_type} onChange={setH("form_type")}>
-            <option value="INTERIOR">{L(lang, "Interior (compact)", "ઇન્ટિરિયર (નાનું)")}</option>
-            <option value="RETAIL">{L(lang, "Retail (with rate & amount)", "રિટેલ (ભાવ અને રકમ સાથે)")}</option>
+            <option value="INTERIOR">{L(lang, "Interior (with rate & amount)", "ઇન્ટિરિયર (ભાવ અને રકમ સાથે)")}</option>
+            <option value="RETAIL">{L(lang, "Retail (compact)", "રિટેલ (નાનું)")}</option>
           </select>
         </div>
         <div className="field"><label>{L(lang, "Ordered by", "ઓર્ડર આપનાર")}</label><input value={`${profile.full_name} — ${headName}`} readOnly /></div>
@@ -190,7 +190,7 @@ export default function OrderForm({ lang, profile, lookups }) {
               <thead>
                 <tr>
                   <th>#</th><th>{L(lang, "Item code", "આઇટમ કોડ")}</th><th>{L(lang, "Description", "વર્ણન")} *</th><th>{L(lang, "Qty / size", "જથ્થો / માપ")} *</th>
-                  {retail ? <><th>{L(lang, "Qty (no.)", "જથ્થો (સંખ્યા)")}</th><th>{L(lang, "Rate (Rs)", "ભાવ (રૂ.)")}</th><th style={{ textAlign: "right" }}>{L(lang, "Amount", "રકમ")}</th></>
+                  {priced ? <><th>{L(lang, "Qty (no.)", "જથ્થો (સંખ્યા)")}</th><th>{L(lang, "Rate (Rs)", "ભાવ (રૂ.)")}</th><th style={{ textAlign: "right" }}>{L(lang, "Amount", "રકમ")}</th></>
                     : <th>{L(lang, "Remarks", "નોંધ")}</th>}
                   <th />
                 </tr>
@@ -202,8 +202,8 @@ export default function OrderForm({ lang, profile, lookups }) {
                     <td><input value={it.item_code} onChange={setItem(n, "item_code")} style={{ minWidth: 80 }} aria-label={`Item ${n + 1} code`} /></td>
                     <td><input value={it.description} onChange={setItem(n, "description")} style={{ minWidth: 200 }} aria-label={`Item ${n + 1} description`} /></td>
                     <td><input value={it.qty_size} onChange={setItem(n, "qty_size")} style={{ minWidth: 110 }} placeholder={L(lang, "e.g. 2 nos, 6x3 ft", "દા.ત. 2 નંગ, 6x3 ફૂટ")} aria-label={`Item ${n + 1} quantity or size`} /></td>
-                    {!retail && <td><input value={it.remarks} onChange={setItem(n, "remarks")} style={{ minWidth: 140 }} aria-label={`Item ${n + 1} remarks`} /></td>}
-                    {retail && (
+                    {!priced && <td><input value={it.remarks} onChange={setItem(n, "remarks")} style={{ minWidth: 140 }} aria-label={`Item ${n + 1} remarks`} /></td>}
+                    {priced && (
                       <>
                         <td><input type="number" min="0" step="any" inputMode="decimal" value={it.quantity} onChange={setItem(n, "quantity")} style={{ width: 80 }} aria-label={`Item ${n + 1} quantity`} /></td>
                         <td><input type="number" min="0" step="any" inputMode="decimal" value={it.rate} onChange={setItem(n, "rate")} style={{ width: 100 }} aria-label={`Item ${n + 1} rate`} /></td>
@@ -213,7 +213,7 @@ export default function OrderForm({ lang, profile, lookups }) {
                     <td>{items.length > 1 && <button type="button" className="btn btn-outline" style={{ width: "auto", margin: 0 }} onClick={() => setItems((l) => l.filter((_, i) => i !== n))} aria-label={`Remove line ${n + 1}`}>✕</button>}</td>
                   </tr>
                 ))}
-                {retail && total !== null && (
+                {priced && total !== null && (
                   <tr><td colSpan={6} style={{ textAlign: "right", fontWeight: 700 }}>{L(lang, "Total", "કુલ")}</td><td style={{ textAlign: "right", fontWeight: 700 }}>{money(total)}</td><td /></tr>
                 )}
               </tbody>

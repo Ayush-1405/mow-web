@@ -139,7 +139,7 @@ export default function OrderPrintPreview({ lang, request, items, context, order
       </div>
       {tplChange && (
         <div className="op-confirm">
-          <span>{L(lang, `Print this order on the ${tplChange.template === "RETAIL" ? "Retail (large)" : "Interior (small)"} form. Reason:`, "બીજા ફોર્મ પર છાપવાનું કારણ:")}</span>
+          <span>{L(lang, `Print this order on the ${tplChange.template === "RETAIL" ? "Retail (small, portrait)" : "Interior (large, with rate & amount)"} form. Reason:`, "બીજા ફોર્મ પર છાપવાનું કારણ:")}</span>
           <input value={tplChange.reason} onChange={(e) => setTplChange((t) => ({ ...t, reason: e.target.value }))} style={{ maxWidth: 320, margin: 0 }} />
           <button type="button" className="btn btn-primary" disabled={busy || !tplChange.reason.trim()} onClick={changeTemplate}>{L(lang, "Change form", "ફોર્મ બદલો")}</button>
           <button type="button" className="btn btn-outline" onClick={() => setTplChange(null)}>{L(lang, "Cancel", "રદ")}</button>

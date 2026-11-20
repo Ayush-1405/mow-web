@@ -8,8 +8,8 @@ export const PAPERS = {
   A4L: { w: 297, h: 210, format: "a4", orientation: "landscape", page: "A4 landscape", en: "A4 landscape", gu: "A4 આડું" },
   A5L: { w: 210, h: 148, format: "a5", orientation: "landscape", page: "A5 landscape", en: "A5 landscape", gu: "A5 આડું" },
 };
-// The Interior pad is a small portrait pad; the Retail pad is a large landscape pad.
-export const PAPERS_FOR_TEMPLATE = { INTERIOR: ["A5P", "A4P"], RETAIL: ["A4L", "A5L"] };
+// The Interior form is the large landscape pad (rate and amount); the Retail form is the small portrait pad.
+export const PAPERS_FOR_TEMPLATE = { INTERIOR: ["A4L", "A5L"], RETAIL: ["A5P", "A4P"] };
 
 export function pageCss(paperKey) {
   const p = PAPERS[paperKey];

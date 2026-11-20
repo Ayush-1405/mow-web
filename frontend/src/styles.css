@@ -1484,7 +1484,7 @@ textarea { min-height: 84px; resize: vertical; }
    the paper (A5 / A4) sets the base font-size, so the same layout fills either page. */
 .mowf { --c: #c8202b; --line: #c8202b; color: #111; background: #fff; font-family: Arial, "Noto Sans Gujarati", "Nirmala UI", "Shruti", sans-serif;
   display: flex; flex-direction: column; min-height: var(--form-h, auto); line-height: 1.22; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.mowf-retail { --c: #2c3a57; --line: #3b4763; }
+.mowf-large { --c: #2c3a57; --line: #3b4763; }
 .mowf-frame { flex: 1; display: flex; flex-direction: column; border: 0.12em solid var(--line); min-height: 0; }
 .mowf-label { color: var(--c); font-weight: 700; }
 .mowf-gu { font-family: "Noto Sans Gujarati", "Nirmala UI", "Shruti", Arial, sans-serif; font-weight: 600; font-size: 0.92em; }
@@ -1513,13 +1513,13 @@ textarea { min-height: 84px; resize: vertical; }
 .mowf-items tr > *:last-child, .mowf-lines tr > *:last-child { border-right: 0; }
 .mowf-items tr, .mowf-lines tr { break-inside: avoid; }
 .mowf-c-sn { width: 6%; }
-.mowf-retail .mowf-c-code { width: 13%; }
-.mowf-retail .mowf-c-qty { width: 12%; }
-.mowf-retail .mowf-c-rate { width: 11%; }
-.mowf-retail .mowf-c-amt { width: 13%; }
-.mowf-interior .mowf-c-sn { width: 7%; }
-.mowf-retail .mowf-items td { height: 2.3em; }
-.mowf-retail .mowf-info th, .mowf-retail .mowf-info td { padding: 0.38em 0.6em; }
+.mowf-large .mowf-c-code { width: 13%; }
+.mowf-large .mowf-c-qty { width: 12%; }
+.mowf-large .mowf-c-rate { width: 11%; }
+.mowf-large .mowf-c-amt { width: 13%; }
+.mowf-small .mowf-c-sn { width: 7%; }
+.mowf-large .mowf-items td { height: 2.3em; }
+.mowf-large .mowf-info th, .mowf-large .mowf-info td { padding: 0.38em 0.6em; }
 .mowf-lines td { height: 1.95em; font-size: 1.06em; }
 .mowf-desc { font-weight: 600; }
 .mowf-center { text-align: center; }
@@ -1535,7 +1535,7 @@ textarea { min-height: 84px; resize: vertical; }
 .mowf-remarks { flex: 1; display: flex; gap: 0.6em; align-items: flex-start; }
 .mowf-remarks-text { flex: 1; white-space: pre-wrap; font-size: 1.04em; }
 .mowf-sign { display: flex; align-items: flex-end; gap: 0.6em; }
-.mowf-retail .mowf-foot { flex: 1; align-items: flex-end; }
+.mowf-large .mowf-foot { flex: 1; align-items: flex-end; }
 .mowf-sign-line { display: inline-block; width: 13em; border-bottom: 0.08em solid #333; height: 1.4em; }
 .mowf-meta { margin-top: 0.35em; font-size: 0.78em; color: #666; text-align: center; }
 
@@ -2037,5 +2037,5 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mowf-addr { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .mowf-cust td { font-size: 0.98em; }
 .mowf-has-customer .mowf-info th, .mowf-has-customer .mowf-info td { padding-top: 0.26em; padding-bottom: 0.26em; }
-.mowf-has-customer.mowf-retail .mowf-items td { height: 2em; }
+.mowf-has-customer.mowf-large .mowf-items td { height: 2em; }
 .mowf-has-customer .mowf-lines td { height: 1.8em; }
