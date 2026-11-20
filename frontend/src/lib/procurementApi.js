@@ -314,7 +314,8 @@ export const saveCompanyProfile = (p) => supabase.rpc("staff_set_company_profile
 // Optional Management threshold for Procurement orders; null = no Management approval step.
 export const setApprovalThreshold = (amount) => supabase.rpc("proc_set_approval_limit", { p_approver: "PROCUREMENT_HEAD", p_max_amount: amount });
 
-const bucketFor = (path) => (String(path || "").startsWith("orders/") ? ORDER_BUCKET : "interior-attachments");
+// procurement-orders holds orders/, vendors/ and factory-jobs/ (Factory Job Cards, v3_15); older files are in interior-attachments.
+const bucketFor = (path) => (/^(orders|vendors|factory-jobs)\//.test(String(path || "")) ? ORDER_BUCKET : "interior-attachments");
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp)$/i;
 export const isImageAttachment = (f) => /^image\/(jpeg|png|webp|gif|bmp)$/i.test(f?.file_type || "") || IMAGE_EXT.test(f?.original_file_name || f?.file_name || f?.storage_path || "");
 export const isPdfAttachment = (f) => /pdf/i.test(f?.file_type || "") || /\.pdf$/i.test(f?.original_file_name || f?.file_name || f?.storage_path || "");

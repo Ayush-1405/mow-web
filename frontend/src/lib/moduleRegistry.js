@@ -19,7 +19,8 @@ export const MODULE_ROUTES = {
     "Complaints & Service": "/retail/complaints",
     "Sales Targets": "/retail/targets",
     "Sales Performance": "/retail/performance",
-    "Send to Factory": "/factory-request",
+    "Send to Factory": "/factory-job-cards/new",
+    "Factory Job Cards": "/factory-job-cards",
     "Scan Product QR": "/retail/scan",
     "Add New Product": "/retail/add-product",
     "Product Approvals": "/retail/product-approvals",
@@ -41,11 +42,12 @@ export const MODULE_ROUTES = {
     "Payment Follow-up": "/interior-projects/payments",
     "Project Completion": "/interior-projects/completion",
     "Project Master Report": "/interior-projects/master-report",
-    "Send to Factory": "/factory-request",
+    "Send to Factory": "/factory-job-cards/new",
+    "Factory Job Cards": "/factory-job-cards",
   },
   FACTORY: {
     "AI Factory Inbox": "/factory-inbox",
-    "Send to Factory": "/factory-request",
+    "Send to Factory": "/factory-job-cards/new",
     "Sofa": "/factory/sofa",
     "Modular": "/factory/modular",
     "Metal Fabrication": "/factory/metal-fabrication",
@@ -78,6 +80,11 @@ export const MODULE_ROUTES = {
 // Procurement's 19 cards, each with its honest build status. ACTIVE: everything the card promises exists and has passed the
 // database tests (backend/supabase/tests/procurement_*.sql) and the end-to-end run through the real screens. IN_PROGRESS:
 // it works and is tested, but part of what the card promises is not built yet (noted per card). SETUP_PENDING: nothing yet.
+// Factory Job Cards for the other selling / design departments (v3_15).
+for (const code of ["ECOMMERCE", "FRANCHISE", "B2B_B2G", "RND", "MARKETING"]) {
+  MODULE_ROUTES[code] = { ...(MODULE_ROUTES[code] || {}), "Create Factory Job Card": "/factory-job-cards/new", "Factory Job Cards": "/factory-job-cards" };
+}
+
 export const PROCUREMENT_MODULES = {
   "Purchase Requirements": { status: "ACTIVE", route: "/procurement/requests" },
   "Vendor Comparison": { status: "ACTIVE", route: "/procurement/requests?tab=working" },

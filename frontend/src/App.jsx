@@ -95,6 +95,9 @@ const FactoryTasks = lazy(() => import("./screens/factory/FactoryTasks.jsx"));
 const ChatPage = lazy(() => import("./screens/chat/ChatPage.jsx"));
 const FactoryWorkOverview = lazy(() => import("./screens/factory/FactoryWorkOverview.jsx"));
 const FactoryDashboard = lazy(() => import("./screens/factory/FactoryDashboard.jsx"));
+const FactoryJobCards = lazy(() => import("./screens/factoryjobs/FactoryJobCards.jsx"));
+const FactoryJobCardForm = lazy(() => import("./screens/factoryjobs/FactoryJobCardForm.jsx"));
+const FactoryJobCardDetail = lazy(() => import("./screens/factoryjobs/FactoryJobCardDetail.jsx"));
 const RetailDashboard = lazy(() => import("./screens/retail/RetailDashboard.jsx"));
 const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
@@ -597,7 +600,8 @@ export default function App() {
     // DepartmentDashboard shell's Department Functions grid — decided here,
     // at the route level, so DepartmentDashboard's own hooks are never
     // conditionally skipped for any department.
-    const Body = code === "FACTORY" ? FactoryDashboard : code === "RETAIL" ? RetailDashboard : DepartmentDashboard;
+    // v3_15: the Factory home is the simple Job Cards board; the older Factory tools stay under /factory/advanced.
+    const Body = code === "FACTORY" ? FactoryJobCards : code === "RETAIL" ? RetailDashboard : DepartmentDashboard;
     return (
       <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
         <ProtectedRoute allowed={allowed} lang={lang}>
@@ -788,6 +792,10 @@ export default function App() {
         ["/profile/:userId", <MyProfile key="person" lang={lang} />],
         ["/purchase-requests", <PurchaseRequestList key="list" lang={lang} profile={profile} lookups={lookups} mode="requests" />],
         ["/orders/new", <OrderForm key="order-new" lang={lang} profile={profile} lookups={lookups} />],
+        // Factory Job Cards (v3_15): any department sends and follows them; RLS and the fjc_* functions decide who sees and does what.
+        ["/factory-job-cards", <FactoryJobCards key="fjc-list" lang={lang} profile={profile} lookups={lookups} />],
+        ["/factory-job-cards/new", <FactoryJobCardForm key="fjc-new" lang={lang} profile={profile} lookups={lookups} />],
+        ["/factory-job-cards/:id", <FactoryJobCardDetail key="fjc-detail" lang={lang} profile={profile} lookups={lookups} />],
         ["/orders/:id/edit", <OrderForm key="order-edit" lang={lang} profile={profile} lookups={lookups} />],
         ["/purchase-requests/new", <Navigate key="new" to="/orders/new" replace />],
         ["/purchase-requests/:id/edit", <PurchaseRequestForm key="edit" lang={lang} profile={profile} lookups={lookups} />],
@@ -816,6 +824,7 @@ export default function App() {
       {/* Merged department (v2_93n): Dispatch/Logistics folded into Godown, Inventory & Dispatch — old bookmarks redirect. */}
       <Route path="/dispatch" element={<Navigate to="/inventory" replace />} />
       <Route path="/factory" element={deptPage("FACTORY")} />
+      <Route path="/factory/advanced" element={deptModulePage("FACTORY", <FactoryDashboard lang={lang} profile={profile} />)} />
       <Route path="/factory/inbox" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="inbox" />)} />
       <Route path="/factory/job-cards" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="jobcards" />)} />
       <Route path="/factory/my-work" element={deptModulePage("FACTORY", <FactoryInbox lang={lang} profile={profile} lookups={lookups} mode="mytasks" />)} />

@@ -2055,3 +2055,59 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .vs-card .btn-row .btn, .vs-card .btn-row a.btn { width: auto; margin: 0; padding: 4px 10px; min-height: 32px; font-size: 13px; }
 .vs-group { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; background: var(--surface-2); }
 .vs-warn { color: var(--danger); font-weight: 600; font-size: 13px; }
+
+/* Factory Job Cards (screens/factoryjobs) */
+.fjc-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.fjc-section { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); cursor: pointer; text-align: left; font: inherit; color: inherit; min-width: 0; }
+.fjc-section .n { font-size: 26px; font-weight: 800; line-height: 1.1; }
+.fjc-section .t { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.fjc-section.on { border-color: var(--brand-light); box-shadow: inset 0 0 0 2px var(--brand-light); }
+.fjc-section.danger { border-color: var(--danger); background: var(--danger-bg); }
+.fjc-section.danger .n { color: var(--danger); }
+.fjc-list { display: flex; flex-direction: column; gap: 8px; }
+.fjc-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; align-items: center; width: 100%; text-align: left; font: inherit; color: inherit;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+.fjc-row:hover { border-color: var(--brand-light); }
+.fjc-row.overdue { border-left: 4px solid var(--danger); }
+.fjc-row-main { flex: 1 1 260px; min-width: 0; }
+.fjc-row-top { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.fjc-row-product { font-weight: 600; margin: 2px 0; overflow-wrap: anywhere; }
+.fjc-row-facts { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 16px; margin: 0; font-size: 13px; }
+.fjc-row-facts dt { color: var(--ink-soft); font-size: 11.5px; }
+.fjc-row-facts dd { margin: 0; font-weight: 600; }
+.fjc-row-facts dd.danger, .deadline-panel dd.danger, b.danger { color: var(--danger); }
+@media (max-width: 640px) { .fjc-row-facts { grid-template-columns: repeat(2, auto); } }
+.fjc-bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin: 3px 0; min-width: 60px; }
+.fjc-bar span { display: block; height: 100%; background: var(--success); }
+.fjc-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--surface-2); }
+.fjc-item-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+
+/* Printed Factory Job Card (always light: it is paper) */
+.fjcp { color: #1d1d1d; font-family: Arial, "Noto Sans Gujarati", sans-serif; display: flex; flex-direction: column; gap: 2.5mm; }
+.fjcp-head { display: flex; justify-content: space-between; gap: 4mm; border-bottom: 0.6mm solid #5a3a1f; padding-bottom: 2mm; }
+.fjcp-brand { display: flex; gap: 3mm; align-items: center; }
+.fjcp-logo { height: 16mm; width: auto; }
+.fjcp-company { font-size: 0.78em; line-height: 1.3; }
+.fjcp-company-name { font-weight: 700; font-size: 1.1em; }
+.fjcp-title { text-align: right; }
+.fjcp-title-en { font-weight: 800; font-size: 1.4em; color: #5a3a1f; letter-spacing: .04em; }
+.fjcp-title-gu { font-size: 0.9em; }
+.fjcp-no { font-weight: 800; font-size: 1.25em; margin-top: 1mm; }
+.fjcp table { width: 100%; border-collapse: collapse; font-size: 0.86em; }
+.fjcp th, .fjcp td { border: 0.25mm solid #8a7a6a; padding: 1.2mm 1.6mm; vertical-align: top; text-align: left; }
+.fjcp-info th { background: #f3ece4; width: 18%; font-weight: 700; }
+.fjcp-items thead th { background: #5a3a1f; color: #fff; }
+.fjcp-items td.c { text-align: center; white-space: nowrap; }
+.fjcp-sub { font-size: 0.88em; color: #555; }
+.fjcp-band { background: #5a3a1f; color: #fff; font-weight: 700; padding: 1mm 2mm; font-size: 0.86em; }
+.fjcp-images { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; }
+.fjcp-images figure { margin: 0; border: 0.25mm solid #ccc; padding: 1mm; }
+.fjcp-images img { width: 100%; height: 42mm; object-fit: contain; display: block; }
+.fjcp-images figcaption { font-size: 0.72em; text-align: center; overflow-wrap: anywhere; }
+.fjcp-files { font-size: 0.78em; }
+.fjcp-box { display: inline-block; width: 4mm; height: 4mm; border: 0.3mm solid #333; text-align: center; line-height: 4mm; font-size: 0.9em; }
+.fjcp-sign { display: flex; justify-content: space-between; gap: 10mm; margin-top: 10mm; font-size: 0.86em; }
+.fjcp-sign > div { flex: 1; text-align: center; }
+.fjcp-line { display: block; border-top: 0.3mm solid #333; margin-bottom: 1mm; }

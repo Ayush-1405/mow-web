@@ -831,7 +831,9 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     // A Procurement order task (v3_07) is driven by its order: Accept works here; everything else happens on the order page,
     // where delivery / GRN checks apply. The database refuses the generic actions on these tasks anyway.
     const orderId = task.source_module === "procurement" && String(task.system_key || "").startsWith("PROC_ORDER:") ? task.system_key.slice(11) : null;
-    const canDeleteTask = orderId ? canCancelOrders : (iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership);
+    // A Factory Job Card task (v3_15) follows its card: everything is done on the Job Card page.
+    const jobCardId = String(task.system_key || "").startsWith("FJC:") ? task.system_key.slice(4) : null;
+    const canDeleteTask = jobCardId ? false : orderId ? canCancelOrders : (iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership);
     const busy = busyId === task.id;
     // Undefined here means either an unrecognized proof_type_id or one
     // that's since been deactivated (e.g. "voice" — see
@@ -856,13 +858,15 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const isMulti = assignees.length > 1;
     const myRow = assignees.find((a) => a.user_id === profile.id);
     const isSharedAssignee = !!myRow || isAssignee;
-    const canAccept = isSharedAssignee && ["ASSIGNED", "RETURNED", "REOPENED"].includes(statusCode);
-    const canStart = !orderId && isSharedAssignee && ["ACCEPTED", "REOPENED"].includes(statusCode);
-    const canComplete = !orderId && isSharedAssignee && statusCode === "IN_PROGRESS";
-    const canHold = !orderId && isSharedAssignee && statusCode === "IN_PROGRESS";
-    const canResume = !orderId && isSharedAssignee && statusCode === "ON_HOLD";
-    const canReturn = !orderId && isSharedAssignee && ["ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD"].includes(statusCode);
-    const canReopen = !orderId && (statusCode === "COMPLETED" ? iAmVerifier : ["VERIFIED", "CLOSED"].includes(statusCode) && (canManage || iCreatedIt || iAmVerifier));
+    // Order and Job Card tasks move only through their order / card (the database refuses the generic actions on them).
+    const linked = !!(orderId || jobCardId);
+    const canAccept = !jobCardId && isSharedAssignee && ["ASSIGNED", "RETURNED", "REOPENED"].includes(statusCode);
+    const canStart = !linked && isSharedAssignee && ["ACCEPTED", "REOPENED"].includes(statusCode);
+    const canComplete = !linked && isSharedAssignee && statusCode === "IN_PROGRESS";
+    const canHold = !linked && isSharedAssignee && statusCode === "IN_PROGRESS";
+    const canResume = !linked && isSharedAssignee && statusCode === "ON_HOLD";
+    const canReturn = !linked && isSharedAssignee && ["ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD"].includes(statusCode);
+    const canReopen = !linked && (statusCode === "COMPLETED" ? iAmVerifier : ["VERIFIED", "CLOSED"].includes(statusCode) && (canManage || iCreatedIt || iAmVerifier));
 
     return (
       <div className="task-card" id={`task-${task.id}`} key={task.id}>
@@ -967,6 +971,11 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               {t("accept", lang)}
             </button>
           )}
+          {jobCardId && (
+            <button className="btn btn-primary" onClick={() => navigate(`/factory-job-cards/${jobCardId}`)}>
+              🏭 {lang === "gu" ? "જોબ કાર્ડ ખોલો" : "Open Job Card"}{task.reference_number ? ` ${task.reference_number}` : ""}
+            </button>
+          )}
           {orderId && (
             <button className="btn btn-primary" onClick={() => navigate(`/purchase-requests/${orderId}`)}>
               📦 {lang === "gu" ? "ઓર્ડર ખોલો" : "Open order"}{task.reference_number ? ` ${task.reference_number}` : ""}
@@ -1001,7 +1010,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
               {t("returnTask", lang)}
             </button>
           )}
-          {statusCode === "COMPLETED" && iAmVerifier && !orderId && (
+          {statusCode === "COMPLETED" && iAmVerifier && !linked && (
             <>
               <button className="btn btn-gold" disabled={busy} onClick={() => runAction("staff_verify_task", task.id)}>
                 {t("verify", lang)}
@@ -1033,7 +1042,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
             <ActionMenu
               label={t("moreActions", lang)}
               items={[
-                canManage && !orderId && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "REOPENED"].includes(statusCode) && {
+                canManage && !linked && ["ASSIGNED", "RETURNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "REOPENED"].includes(statusCode) && {
                   key: "reassign", label: t("reassign", lang), disabled: busy, onClick: () => setReassignFor(reassignFor === task.id ? null : task.id),
                 },
                 !task.help_requested && ["ACCEPTED", "IN_PROGRESS"].includes(statusCode) && isSharedAssignee && {
