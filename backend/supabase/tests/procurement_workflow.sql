@@ -39,6 +39,8 @@ begin
     (u_rh, 'ZZRH', 'Test Retail Head', r_head, d_ret, null, false, true);
   -- The test's head is the primary Procurement Head (otherwise a real, longer-serving head on the database is the contact).
   update procurement_settings set primary_head_user_id = u_phead where id;
+  -- (v3_09) there is no built-in threshold any more; this test configures one, as Management would.
+  update procurement_approval_limits set max_amount = 25000 where approver = 'PROCUREMENT_HEAD';
   -- A trigger may already have created each user's Interior profile; make sure both exist with the right role.
   insert into profiles (auth_id, name, role) values (u_e1, 'Test Interior Employee', 'execution')
     on conflict (auth_id) do update set role = excluded.role returning id into ip_e1;

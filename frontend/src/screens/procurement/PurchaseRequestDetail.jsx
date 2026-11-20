@@ -10,7 +10,7 @@ import {
   L, PROC_CATEGORIES, PROC_STATUS, SETUP_MISSING_TEXT, WORK_ORDER_CATEGORIES, fmtDate, isProcurementSetupMissing, priorityLabel, procStatusLabel, procurementRoles,
   validateOrderForm,
 } from "../../lib/procurementRules";
-import { listPurchaseAttachments, getAttachmentUrl } from "../../lib/interiorApi";
+import { listPurchaseAttachments } from "../../lib/interiorApi";
 import { subscribeTable } from "../../lib/realtime";
 import { friendlyError } from "../../lib/friendlyError";
 import { kolkataDateStr } from "../../lib/kolkataTime";
@@ -19,9 +19,10 @@ import { useProcurementContact } from "../../lib/useProcurementContact";
 import PurchaseDocument from "../../components/PurchaseDocument";
 import PurchaseLifecyclePanels from "./PurchaseLifecyclePanels";
 import OrderPrintPreview from "../../components/OrderPrintPreview";
+import AttachmentGallery from "../../components/AttachmentGallery";
 import DeadlinePanel from "./DeadlinePanel";
 import OrderTaskPanel from "./OrderTaskPanel";
-import { amendOrder, canWorkOrder, completeOrder, listOrderItems, markDelivered, openOrderFile, uploadOrderFile } from "../../lib/procurementApi";
+import { amendOrder, canWorkOrder, completeOrder, getCompanyProfile, listOrderItems, markDelivered, openOrderFile, uploadOrderFile } from "../../lib/procurementApi";
 
 // DD-MM-YYYY HH:MM in IST, the format used across Procurement.
 const fmt = (d) => (d ? `${fmtDate(d)} ${new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}` : "—");
@@ -71,6 +72,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   const [showPreview, setShowPreview] = useState(false);
   const [canWork, setCanWork] = useState(false);
   const [placedFiles, setPlacedFiles] = useState([]);
+  const [company, setCompany] = useState(null);
   const [items, setItems] = useState([]);
   const [taskInfo, setTaskInfo] = useState(null);
 
@@ -84,6 +86,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
     ]);
     setItems(it.data || []);
     setCanWork(data.order_form_type || data.print_template ? await canWorkOrder(id) : false);
+    getCompanyProfile().then(({ data: cp }) => setCompany(cp || null));
     setReq(data);
     setCtx(c[id] || null);
     setHistory(h.data || []);
@@ -165,12 +168,6 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
     }
   }
 
-  async function openFile(path) {
-    if (path?.startsWith("orders/")) { openOrderFile(path); return; }
-    const { url } = await getAttachmentUrl(path);
-    if (url) window.open(url, "_blank", "noopener");
-  }
-
   async function addFiles(fileList) {
     const failed = [];
     setBusy(true);
@@ -181,6 +178,8 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   }
 
   const timeline = useMemo(() => history.slice().reverse(), [history]);
+  // The order's own attachments (not the stored copies of printed PDFs), kept stable so the preview loads them once.
+  const orderFiles = useMemo(() => files.filter((f) => !String(f.storage_path || "").includes("/printed/")), [files]);
   const isOrderForm = !!(req?.order_form_type || req?.print_template);
   const mayPrint = (canProcure || canWork) && isOrderForm
     && ["ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED", "ORDER_PLACED", "VENDOR_CONFIRMED", "IN_PRODUCTION", "READY_FOR_DISPATCH", "IN_TRANSIT",
@@ -276,7 +275,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
         {files.length > 0 && (
           <div style={{ marginTop: 10 }}>
             <strong>{L(lang, "Files", "ફાઇલો")}:</strong>{" "}
-            {files.map((f) => <button key={f.id} type="button" className="btn btn-outline" style={{ width: "auto", margin: 4 }} onClick={() => openFile(f.storage_path)}>📎 {f.original_file_name || f.file_name}</button>)}
+            <AttachmentGallery files={orderFiles} lang={lang} />
           </div>
         )}
       </div>
@@ -480,7 +479,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
 
       {showPreview && (
         <OrderPrintPreview lang={lang} request={req} items={items} context={ctx} order={order}
-          files={files.filter((f) => !String(f.storage_path || "").includes("/printed/"))} taskNumber={taskInfo?.task_number}
+          files={orderFiles} company={company} taskNumber={taskInfo?.task_number}
           printedBy={profile.full_name} canChangeTemplate={roles.isProcurementHead || roles.isManagement}
           onClose={() => setShowPreview(false)} onChanged={load} />
       )}

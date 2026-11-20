@@ -225,7 +225,9 @@ export default function OrderForm({ lang, profile, lookups }) {
         <div className="field full"><label>{L(lang, "Remarks", "નોંધ")}</label><textarea rows={2} value={header.remarks} onChange={setH("remarks")} /></div>
         <div className="field full">
           <label>{L(lang, "Drawings / attachments (PDF, images, DWG)", "ડ્રોઇંગ / જોડાણ (PDF, ફોટા, DWG)")}</label>
-          <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dwg,.dxf" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+          <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.dwg,.dxf"
+            onChange={(e) => { const picked = Array.from(e.target.files || []); setFiles((l) => [...l, ...picked]); e.target.value = ""; }} />
+          <SelectedFiles files={files} lang={lang} onRemove={(n) => setFiles((l) => l.filter((_, i) => i !== n))} />
         </div>
         {serverError && <div className="msg error field full">{serverError}</div>}
         <div className="field full btn-row">
@@ -236,6 +238,28 @@ export default function OrderForm({ lang, profile, lookups }) {
       </form>
 
       <ProcurementContactCard lang={lang} profile={profile} />
+    </div>
+  );
+}
+
+// Files chosen but not yet uploaded: photos show as thumbnails, each can be removed before the order is sent.
+function SelectedFiles({ files, lang, onRemove }) {
+  const [previews, setPreviews] = useState([]);
+  useEffect(() => {
+    const urls = files.map((f) => (/^image\/(jpeg|png|webp|gif|bmp)$/i.test(f.type) ? URL.createObjectURL(f) : null));
+    setPreviews(urls);
+    return () => urls.forEach((u) => u && URL.revokeObjectURL(u));
+  }, [files]);
+  if (!files.length) return null;
+  return (
+    <div className="att-grid">
+      {files.map((f, n) => (
+        <div key={`${f.name}-${f.size}-${n}`} className="att-tile" style={{ cursor: "default" }}>
+          {previews[n] ? <img src={previews[n]} alt={f.name} /> : <span className="att-icon">{/pdf/i.test(f.type) ? "📄" : "📐"}</span>}
+          <span className="att-name">{f.name}</span>
+          <button type="button" className="att-remove" onClick={() => onRemove(n)} aria-label={L(lang, `Remove ${f.name}`, `${f.name} દૂર કરો`)}>✕</button>
+        </div>
+      ))}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React from "react";
-import MowLogo from "./MowLogo";
 import { fmtDate, orderFormTemplate } from "../lib/procurementRules";
+import { MOW_LOGO } from "../lib/brand";
 
 // The official Mood of Wood "Production Supply Order Form", drawn to match the company's two printed pads:
 //   INTERIOR - small portrait pad printed in red: info grid, numbered item lines, a large Drawings area, Remarks.
@@ -35,7 +35,23 @@ function Label({ k, inline }) {
   );
 }
 
-export default function OrderFormPrint({ request, items = [], context, order, files = [], template, meta }) {
+
+// The company block under the logo, from Company Information (Management settings). Empty fields print nothing.
+function CompanyBlock({ company }) {
+  if (!company) return null;
+  const place = [company.city, company.state].filter(Boolean).join(", ") + (company.pin_code ? ` - ${company.pin_code}` : "");
+  const contact = [company.phone && `Ph: ${company.phone}`, company.email].filter(Boolean).join(" · ");
+  const lines = [company.address_line, place.trim(), contact, company.gstin && `GSTIN: ${company.gstin}`].filter(Boolean);
+  if (!company.company_name && !lines.length) return null;
+  return (
+    <div className="mowf-company">
+      {company.company_name && <div className="mowf-company-name">{company.company_name}</div>}
+      {lines.map((l) => <div key={l}>{l}</div>)}
+    </div>
+  );
+}
+
+export default function OrderFormPrint({ request, items = [], context, order, files = [], template, meta, company }) {
   if (!request) return null;
   const tpl = template || orderFormTemplate(request);
   const retail = tpl === "RETAIL";
@@ -53,7 +69,10 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
     <div className={`mowf ${retail ? "mowf-retail" : "mowf-interior"}`}>
       <div className="mowf-frame">
         <header className="mowf-head">
-          <MowLogo className="mowf-logo" />
+          <div className="mowf-brand">
+            <img className="mowf-logo" src={MOW_LOGO} alt="Mood of Wood" />
+            <CompanyBlock company={company} />
+          </div>
           <div className="mowf-title">
             <div className="mowf-title-en">{L.formNo[0]} <span className="mowf-no">{request.request_number}</span></div>
             <div className="mowf-gu mowf-title-gu">{L.formNo[1]}</div>
@@ -122,6 +141,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
           <section className="mowf-drawings">
             <div className="mowf-drawings-label"><span className="mowf-label">{L.drawings[0]} <span className="mowf-gu">{L.drawings[1]}</span></span></div>
             {drawings.length > 0 && <ol className="mowf-files">{drawings.map((d, n) => <li key={`${d}${n}`}>{d}</li>)}</ol>}
+            {drawings.length > 0 && <div className="mowf-sub mowf-follow">Photos and drawings follow on the next pages. / ફોટા અને ચિત્રો આગળના પાનાં પર.</div>}
           </section>
         )}
 
@@ -130,7 +150,7 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
             <colgroup><col className="mowf-c-label" /><col /></colgroup>
             <tbody>
               <tr><th><Label k="remarks" inline /></th><td>{request.remarks || ""}</td></tr>
-              <tr><th><Label k="drawings" inline /></th><td>{drawings.length ? drawings.join(", ") : ""}</td></tr>
+              <tr><th><Label k="drawings" inline /></th><td>{drawings.length ? `${drawings.join(", ")} — see the following pages` : ""}</td></tr>
             </tbody>
           </table>
         )}

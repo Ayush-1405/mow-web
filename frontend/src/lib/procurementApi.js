@@ -304,3 +304,27 @@ export async function uploadPrintedPdf(requestId, blob, fileName) {
   const { error } = await supabase.storage.from(ORDER_BUCKET).upload(path, blob, { contentType: "application/pdf" });
   return error ? null : path;
 }
+
+// ---- Company information, approval threshold, attachments (mvp_pilot_company_profile_v3_09.sql) ----
+
+export const getCompanyProfile = () => supabase.from("company_profile").select("*").maybeSingle();
+export const saveCompanyProfile = (p) => supabase.rpc("staff_set_company_profile", { p_profile: p }).single();
+// Optional Management threshold for Procurement orders; null = no Management approval step.
+export const setApprovalThreshold = (amount) => supabase.rpc("proc_set_approval_limit", { p_approver: "PROCUREMENT_HEAD", p_max_amount: amount });
+
+const bucketFor = (path) => (String(path || "").startsWith("orders/") ? ORDER_BUCKET : "interior-attachments");
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp)$/i;
+export const isImageAttachment = (f) => /^image\/(jpeg|png|webp|gif|bmp)$/i.test(f?.file_type || "") || IMAGE_EXT.test(f?.original_file_name || f?.file_name || f?.storage_path || "");
+export const isPdfAttachment = (f) => /pdf/i.test(f?.file_type || "") || /\.pdf$/i.test(f?.original_file_name || f?.file_name || f?.storage_path || "");
+
+// Short-lived signed link (RLS decides who may get one) -- for showing thumbnails and opening the full file.
+export async function attachmentUrl(path, seconds = 3600) {
+  const { data, error } = await supabase.storage.from(bucketFor(path)).createSignedUrl(path, seconds);
+  return error ? null : data?.signedUrl || null;
+}
+// The file itself (for putting it inside the PDF), downloaded with the user's own permissions.
+export async function downloadAttachment(path) {
+  const { data, error } = await supabase.storage.from(bucketFor(path)).download(path);
+  if (error) throw new Error(error.message || "Download failed");
+  return data;
+}

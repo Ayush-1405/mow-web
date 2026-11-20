@@ -144,6 +144,7 @@ const PurchaseRequestForm = lazy(() => import("./screens/procurement/PurchaseReq
 const PurchaseRequestDetail = lazy(() => import("./screens/procurement/PurchaseRequestDetail.jsx"));
 const ProcurementVendors = lazy(() => import("./screens/procurement/ProcurementVendors.jsx"));
 const ProcurementReminders = lazy(() => import("./screens/procurement/ProcurementReminders.jsx"));
+const CompanySettings = lazy(() => import("./screens/CompanySettings.jsx"));
 const ProcurementRejections = lazy(() => import("./screens/procurement/ProcurementRejections.jsx"));
 
 // Lightweight loading skeleton shown only while a lazy chunk is actually
@@ -497,6 +498,7 @@ export default function App() {
     return [
       { route: "/reports", icon: "📄", name_en: t("reportsNav", "en"), name_gu: t("reportsNav", "gu") },
       { route: "/analytics", icon: "📈", name_en: t("analyticsNav", "en"), name_gu: t("analyticsNav", "gu") },
+      { route: "/company-settings", icon: "🏢", name_en: "Company & settings", name_gu: "કંપની અને સેટિંગ" },
     ];
   }, [access]);
   const myDepartmentRoute = useMemo(() => {
@@ -649,6 +651,13 @@ export default function App() {
         <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
           <ProtectedRoute allowed={controlTowerAllowed} lang={lang}>
             <Analytics lang={lang} lookups={lookups} departments={lookups.departments} />
+          </ProtectedRoute>
+        </DeptShell>
+      } />
+      <Route path="/company-settings" element={
+        <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
+          <ProtectedRoute allowed={controlTowerAllowed} lang={lang}>
+            <CompanySettings lang={lang} />
           </ProtectedRoute>
         </DeptShell>
       } />
