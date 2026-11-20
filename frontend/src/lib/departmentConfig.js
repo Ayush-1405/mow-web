@@ -175,7 +175,6 @@ export const DEPARTMENT_FUNCTION_CARDS = {
     ["Site Execution", "સાઇટ એક્ઝિક્યુશન"],
     ["Daily Updates", "દૈનિક અપડેટ"],
     ["Material Requirements", "સામગ્રી જરૂરિયાત"],
-    ["Purchase Management", "ખરીદી વ્યવસ્થાપન"],
     ["Client Communication", "ક્લાયન્ટ કમ્યુનિકેશન"],
     ["Payment Follow-up", "ચુકવણી ફોલો-અપ"],
     ["Project Completion", "પ્રોજેક્ટ પૂર્ણતા"],
