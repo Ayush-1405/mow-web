@@ -4,6 +4,8 @@ import { BrowserRouter } from "react-router-dom";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
+import AppErrorBoundary from "./components/AppErrorBoundary.jsx";
+import { installGlobalReporters } from "./lib/errorReporter";
 import "./styles.css";
 import "./factory.css";
 import "./chat.css";
@@ -17,12 +19,15 @@ const updateSW = registerSW({
   onOfflineReady() {},
 });
 window.__mowApplyUpdate = () => updateSW(true);
+installGlobalReporters();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     {/* Route changes run as a React transition: the current screen stays up until the next screen's chunk is ready, instead of flashing a skeleton */}
     <BrowserRouter future={{ v7_startTransition: true }}>
-      <App />
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
       <InstallPrompt />
     </BrowserRouter>
   </React.StrictMode>,

@@ -2,7 +2,10 @@
 // act on. Readable business messages raised deliberately by our own RPCs
 // (e.g. "You are not authorized to accept Factory Requests") are passed
 // through untouched; only technical strings are replaced. The original is
-// always logged to the console for debugging.
+// always logged to the console for debugging, and technical failures (not
+// network / sign-in problems) are recorded for the app doctor (v3_16).
+import { reportProblem } from "./errorReporter";
+
 const TECHNICAL = [
   [/Failed to fetch|NetworkError|Load failed|network request failed/i, "Can't reach the server. Check your internet connection and try again."],
   [/JWT|token.*expired|not authenticated|Invalid Refresh Token/i, "Your session has expired. Please sign in again."],
@@ -21,6 +24,7 @@ export function friendlyError(message) {
   for (const [re, friendly] of TECHNICAL) {
     if (re.test(text)) {
       console.error("[friendlyError] original:", text);
+      reportProblem("rpc", text);
       return friendly;
     }
   }

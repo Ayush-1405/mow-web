@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
+    // Which deployed build a problem report came from (Vercel's commit; "local" on a developer machine).
+    define: { __APP_BUILD__: JSON.stringify((env.VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7)) },
     plugins: [
       react(),
       VitePWA({
