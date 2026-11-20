@@ -53,9 +53,15 @@ export default function OrderTaskPanel({ lang, req, roles, profile, busy, run, o
         </button>
       )}
       {info.can_accept && (
-        <button type="button" className="btn btn-gold" style={{ width: "auto", marginTop: 10 }} disabled={busy} onClick={() => run(() => acceptOrderTask(req.id))}>
-          {L(lang, "Accept task", "કાર્ય સ્વીકારો")}
-        </button>
+        <div style={{ marginTop: 10 }}>
+          <button type="button" className="btn btn-gold" style={{ width: "auto", margin: 0 }} disabled={busy} onClick={() => run(() => acceptOrderTask(req.id))}>
+            {L(lang, "Accept order", "ઓર્ડર સ્વીકારો")}
+          </button>
+          {req.proc_status === "PENDING_DEPT_APPROVAL" && (
+            <div className="sub" style={{ marginTop: 4 }}>{L(lang, "No Department Head approval needed — accepting assigns it to you and unlocks printing.",
+              "વિભાગ વડાની મંજૂરી જરૂરી નથી — સ્વીકારતાં તે તમને સોંપાશે અને પ્રિન્ટ ખુલશે.")}</div>
+          )}
+        </div>
       )}
 
       {roles.isProcurement && info.accepted_by && !taskDone && !CLOSED.includes(req.proc_status) && (

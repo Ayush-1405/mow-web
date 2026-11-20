@@ -52,10 +52,11 @@ begin
   v_log := public.zz_chk(v_log, 'T1  one Cross-Department Bridge: Interior requester -> Procurement',
     (select count(*) from bridges where task_id = v_task.id) = 1
     and (select from_person_id = u_e and from_department_id = d_int and to_department_id = d_proc and acceptance_status = 'PENDING' from bridges where task_id = v_task.id));
-  perform public.zz_as(u_p1); set local role authenticated;
-  begin perform public.staff_accept_task(v_task.id); v_log := public.zz_chk(v_log, 'T1  nobody can accept before the Department Head approves', false);
-  exception when others then v_log := public.zz_chk(v_log, 'T1  nobody can accept before the Department Head approves', sqlerrm ilike '%not with Procurement%'); end;
-  reset role;
+  -- (v3_11) Procurement sees the order at once and may take it without the Department Head (tested in direct_accept.sql);
+  -- here it is left for the Head, to cover that path too.
+  v_log := public.zz_chk(v_log, 'T1  Procurement sees the new order at once (open, in every member''s My Tasks)',
+    (select count(*) from staff_task_assignees where task_id = v_task.id and is_active and user_id in (u_ph, u_p1, u_p2)) = 3
+    and (select stage from public.proc_order_task_info(array[v_id])) = 'OPEN');
 
   ---------------------------------------------------------------- TEST 2: approved -> every Procurement member sees it
   perform public.zz_as(u_h); set local role authenticated; perform public.proc_dept_decision(v_id, 'APPROVE', null); reset role;

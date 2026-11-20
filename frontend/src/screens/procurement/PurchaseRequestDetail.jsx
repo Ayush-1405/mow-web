@@ -110,7 +110,10 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   // Same rule as proc_is_procurement_authorized(): a Procurement Department Head or Supervisor.
   const roles = useMemo(() => procurementRoles(profile, lookups.departments), [profile, lookups.departments]);
   const { canProcure, isManagement } = roles;
-  const canDeptDecide = req?.proc_status === "PENDING_DEPT_APPROVAL" && !isRequester && (perms.isDepartmentHead || perms.hasGlobalOversight);
+  // Only the requesting department's own Head (or Management) decides -- the database checks the same; other Heads, e.g.
+  // the Procurement Head, no longer see an approval card they cannot use.
+  const canDeptDecide = req?.proc_status === "PENDING_DEPT_APPROVAL" && !isRequester
+    && (perms.hasGlobalOversight || (perms.isDepartmentHead && profile.department_id === req?.requesting_department_id));
   const isWorkOrder = WORK_ORDER_CATEGORIES.includes(req?.procurement_category);
   const limitProc = limits.find((x) => x.approver === "PROCUREMENT_HEAD")?.max_amount;
   const pendingApproval = approvals.find((x) => !x.decision);
