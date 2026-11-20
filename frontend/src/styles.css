@@ -2039,3 +2039,19 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mowf-has-customer .mowf-info th, .mowf-has-customer .mowf-info td { padding-top: 0.26em; padding-bottom: 0.26em; }
 .mowf-has-customer.mowf-large .mowf-items td { height: 2em; }
 .mowf-has-customer .mowf-lines td { height: 1.8em; }
+
+/* Vendor master and vendor selection (screens/procurement/ProcurementVendors.jsx, VendorSelection.jsx). */
+.vendor-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.vendor-chip { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-dark); font-weight: 600; }
+.vendor-chip.brand { background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--border); }
+.vendor-profile { margin-top: 8px; padding: 10px; background: var(--surface-2); border-radius: var(--radius-sm); }
+.vs-line { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; }
+.vs-line.done { border-color: var(--success); }
+.vs-tier { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+.vs-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.vs-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.vs-card.chosen { border-color: var(--success); box-shadow: inset 0 0 0 1px var(--success); background: var(--success-bg); }
+.vs-card .vs-reasons { margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--ink-soft); }
+.vs-card .btn-row .btn, .vs-card .btn-row a.btn { width: auto; margin: 0; padding: 4px 10px; min-height: 32px; font-size: 13px; }
+.vs-group { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; background: var(--surface-2); }
+.vs-warn { color: var(--danger); font-weight: 600; font-size: 13px; }

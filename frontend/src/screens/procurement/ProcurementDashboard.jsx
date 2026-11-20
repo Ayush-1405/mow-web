@@ -134,7 +134,7 @@ export default function ProcurementDashboard({ lang, profile, lookups }) {
         <div className="dept-header-text"><h1>{L(lang, "Procurement", "ખરીદી વિભાગ")}</h1></div>
         <div className="btn-row" style={{ marginLeft: "auto" }}>
           {(roles.isProcurement || roles.isManagement) && <Link className="btn btn-outline" style={{ width: "auto" }} to="/procurement/reminders">⏰ {L(lang, "Reminders", "રિમાઇન્ડર")}</Link>}
-          <Link className="btn btn-outline" style={{ width: "auto" }} to="/procurement/vendors">🏢 {L(lang, "Vendors", "વેન્ડરો")}</Link>
+          <Link className="btn btn-outline" style={{ width: "auto" }} to="/procurement/vendors">🏢 {L(lang, "Vendor master", "વેન્ડર માસ્ટર")}</Link>
           <Link className="btn btn-primary" style={{ width: "auto" }} to="/orders/new">📝 {L(lang, "New order", "નવો ઓર્ડર")}</Link>
         </div>
       </div>

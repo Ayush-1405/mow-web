@@ -22,7 +22,8 @@ import OrderPrintPreview from "../../components/OrderPrintPreview";
 import AttachmentGallery from "../../components/AttachmentGallery";
 import DeadlinePanel from "./DeadlinePanel";
 import OrderTaskPanel from "./OrderTaskPanel";
-import { amendOrder, canWorkOrder, completeOrder, getCompanyProfile, listOrderItems, markDelivered, openOrderFile, uploadOrderFile } from "../../lib/procurementApi";
+import VendorSelection from "./VendorSelection";
+import { amendOrder, canWorkOrder, completeOrder, getCompanyProfile, listOrderAllocations, listOrderItems, markDelivered, openOrderFile, uploadOrderFile } from "../../lib/procurementApi";
 
 // DD-MM-YYYY HH:MM in IST, the format used across Procurement.
 const fmt = (d) => (d ? `${fmtDate(d)} ${new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}` : "—");
@@ -75,6 +76,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   const [company, setCompany] = useState(null);
   const [items, setItems] = useState([]);
   const [taskInfo, setTaskInfo] = useState(null);
+  const [allocations, setAllocations] = useState([]);
 
   const load = useCallback(async () => {
     const { data, error } = await getPurchaseRequest(id);
@@ -85,6 +87,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
       listPurchaseAttachments(id), data.order_form_type ? listOrderItems(id) : Promise.resolve({ data: [] }),
     ]);
     setItems(it.data || []);
+    if (o.data) listOrderAllocations(id).then(({ data: al }) => setAllocations(al || []));
     setCanWork(data.order_form_type || data.print_template ? await canWorkOrder(id) : false);
     getCompanyProfile().then(({ data: cp }) => setCompany(cp || null));
     setReq(data);
@@ -359,7 +362,12 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
         </div>
       )}
 
-      {(canProcure || (isOrderForm && canWork)) && status === "DOCUMENT_GENERATED" && (
+      {isOrderForm && items.length > 0 && (canProcure || canWork) && status === "DOCUMENT_GENERATED" && (
+        <VendorSelection lang={lang} req={req} items={items} isWorkOrder={isWorkOrder}
+          onPlaced={(warn) => { if (warn) setActionError(warn); load(); }} />
+      )}
+
+      {(canProcure || (isOrderForm && canWork)) && status === "DOCUMENT_GENERATED" && !(isOrderForm && items.length > 0) && (
         <form className="card form-grid" onSubmit={submitOrder} noValidate>
           <h2 className="field full">{L(lang, "Step 2 — CONFIRM ORDER PLACED", "પગલું 2 — ઓર્ડર મૂક્યાની પુષ્ટિ કરો")}</h2>
           {isOrderForm && <div className="sub field full">{L(lang, "After sending the printed form to the vendor: vendor, the vendor's PO / reference number and the expected delivery date are required.",
@@ -436,6 +444,23 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
             <Info label={L(lang, "Remarks", "નોંધ")} value={order.remarks} full />
             {order.scope_of_work && <Info label={L(lang, "Scope of work", "કામનો વ્યાપ")} value={order.scope_of_work} full />}
           </div>
+          {allocations.length > 0 && (
+            <div className="proc-table-wrap" style={{ marginTop: 8 }}>
+              <table className="proc-table">
+                <thead><tr><th>#</th><th>{L(lang, "Item", "આઇટમ")}</th><th>{L(lang, "Vendor", "વેન્ડર")}</th><th>PO / {L(lang, "Ref", "સંદર્ભ")}</th><th>{L(lang, "Rate", "ભાવ")}</th><th>{L(lang, "Amount", "રકમ")}</th><th>{L(lang, "Expected", "અપેક્ષિત")}</th></tr></thead>
+                <tbody>{items.map((i) => {
+                  const a = allocations.find((x) => x.item_id === i.id);
+                  if (!a) return null;
+                  return (
+                    <tr key={i.id}><td>{i.line_no}</td><td style={{ whiteSpace: "normal" }}>{i.description}</td>
+                      <td>{a.vendors?.name}{a.vendors?.mobile && <span className="sub"> · {a.vendors.mobile}</span>}</td><td>{a.vendor_po_reference}</td>
+                      <td>{a.rate != null ? Number(a.rate).toLocaleString("en-IN") : "—"}</td><td>{a.amount != null ? Number(a.amount).toLocaleString("en-IN") : "—"}</td>
+                      <td>{fmtDate(a.expected_delivery_date)}</td></tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          )}
           {canProcure && (
             <button className="btn btn-outline" style={{ width: "auto", marginTop: 8 }} disabled={busy} onClick={() => print("PURCHASE_ORDER")}>🖨️ {L(lang, "Print purchase order", "ખરીદી ઓર્ડર છાપો")}</button>
           )}

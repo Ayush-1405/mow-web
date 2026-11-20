@@ -333,3 +333,38 @@ export async function downloadAttachment(path) {
 
 // Customers to pick from: Retail customers the user may see and customers on orders the user may see (v3_10).
 export const searchCustomers = (q) => supabase.rpc("proc_search_customers", { p_query: q });
+
+// ---- Vendor master, recommendations, per-line vendor allocation (mvp_pilot_vendor_recommendation_v3_12.sql) ----
+
+export const listCategories = () => supabase.from("procurement_categories").select("*").order("sort_order").order("name_en");
+export const saveCategory = (code, name, keywords, active) => supabase.rpc("proc_save_category", { p_code: code, p_name: name, p_keywords: keywords, p_active: active });
+export const saveVendorMaster = (id, p) => supabase.rpc("proc_save_vendor_master", { p_vendor_id: id || null, p }).single();
+// level: HIGHLY_PREFERRED | PREFERRED | REGULAR | TEMPORARILY_BLOCKED | BLACKLISTED
+export const setVendorRating = (id, level, reason) => supabase.rpc("proc_set_vendor_rating", { p_vendor_id: id, p_level: level, p_reason: reason || null }).single();
+export const recommendVendors = (requestId) => supabase.rpc("proc_recommend_vendors", { p_request_id: requestId });
+// { [vendorId]: { total_orders, total_value, on_time, delayed, on_time_pct, quality_rejections, departments, ... } }
+export async function vendorPerformance(ids) {
+  if (!ids.length) return {};
+  const { data, error } = await supabase.rpc("proc_vendor_performance", { p_vendor_ids: ids });
+  if (error) return {};
+  return Object.fromEntries((data || []).map((r) => [r.vendor_id, r]));
+}
+export const vendorHistory = (vendorId) => supabase.from("purchase_vendor_allocations")
+  .select("id, purchase_request_id, vendor_po_reference, quotation_reference, rate, amount, expected_delivery_date, created_at, purchase_requests(request_number, proc_status), purchase_request_items(description, qty_size, item_code)")
+  .eq("vendor_id", vendorId).order("created_at", { ascending: false }).limit(50);
+export const getVendorNotes = (id) => supabase.from("vendor_internal_notes").select("remarks").eq("vendor_id", id).maybeSingle();
+export const listVendorDocuments = (id) => supabase.from("vendor_documents").select("*").eq("vendor_id", id).order("uploaded_at", { ascending: false });
+export async function uploadVendorDocument(vendorId, file, description) {
+  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
+  const path = `vendors/${vendorId}/${crypto.randomUUID()}-${safe}`;
+  const { error: upErr } = await supabase.storage.from(ORDER_BUCKET).upload(path, file, { contentType: file.type || undefined });
+  if (upErr) return { error: upErr };
+  return supabase.rpc("proc_add_vendor_document", { p_vendor_id: vendorId, p_storage_path: path, p_file_name: file.name, p_file_type: file.type || null, p_description: description || null });
+}
+export async function openVendorDocument(path) {
+  const { data } = await supabase.storage.from(ORDER_BUCKET).createSignedUrl(path, 600);
+  if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
+}
+export const listOrderAllocations = (requestId) => supabase.from("purchase_vendor_allocations")
+  .select("id, item_id, vendor_id, vendor_po_reference, quotation_reference, rate, amount, expected_delivery_date, vendors(name, mobile)").eq("purchase_request_id", requestId);
+export const placeOrderWithVendors = (id, allocations, details) => supabase.rpc("proc_place_order_with_vendors", { p_request_id: id, p_allocations: allocations, p_details: details }).single();

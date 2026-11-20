@@ -287,6 +287,8 @@ export const TASK_FILTERS = [
   { key: "unassigned", en: "Unassigned", gu: "સોંપાયા વગર", test: (r, t) => !!t?.task_id && !t.accepted_by && ["OPEN", "ON_HOLD"].includes(t.stage) },
   { key: "mine", en: "My accepted tasks", gu: "મારા કાર્ય", test: (r, t, me) => t?.assigned_to === me && !!t.accepted_by && !["COMPLETED", "REJECTED", "CANCELLED"].includes(t.stage) },
   { key: "progress", en: "In progress", gu: "ચાલુ", test: (r, t) => ["ACCEPTED", "IN_PROGRESS"].includes(t?.stage) },
+  // The order form is printed but no vendor has been chosen and the order is not yet placed.
+  { key: "select", en: "Vendor selection pending", gu: "વેન્ડર પસંદગી બાકી", test: (r) => r.proc_status === "DOCUMENT_GENERATED" },
   { key: "vendor", en: "Waiting for vendor", gu: "વેન્ડરની રાહ", test: (r, t) => t?.stage === "WAITING_FOR_VENDOR" },
   { key: "placed", en: "Order placed", gu: "ઓર્ડર મૂકાયા", test: (r, t) => ["ORDER_PLACED", "IN_TRANSIT", "PARTIALLY_RECEIVED", "WAITING_FOR_GRN"].includes(t?.stage) },
   { key: "pending", en: "Completion pending", gu: "પૂર્ણતા બાકી", test: (r, t) => t?.stage === "COMPLETION_PENDING" },
@@ -344,4 +346,32 @@ export function addressLines(a) {
   if (!a) return [];
   const place = [a.city, a.state].filter((x) => !blank(x)).join(", ") + (blank(a.pin) ? "" : ` - ${a.pin}`);
   return [a.line1, a.line2, place].filter((x) => !blank(x));
+}
+
+// ---- Vendor levels (v3_12): preference set by Management / the Procurement Head ----
+export const VENDOR_LEVELS = [
+  { code: "HIGHLY_PREFERRED", en: "Highly preferred", gu: "ખૂબ પસંદગીનો", tone: "COMPLETED" },
+  { code: "PREFERRED", en: "Preferred", gu: "પસંદગીનો", tone: "ACCEPTED" },
+  { code: "REGULAR", en: "Regular", gu: "સામાન્ય", tone: "ASSIGNED" },
+  { code: "TEMPORARILY_BLOCKED", en: "Temporarily blocked", gu: "હાલ પૂરતો અવરોધિત", tone: "ON_HOLD" },
+  { code: "BLACKLISTED", en: "Blacklisted", gu: "બ્લેકલિસ્ટ", tone: "RETURNED" },
+];
+// The vendor's current level from its record.
+export function vendorLevel(v) {
+  if (!v) return "REGULAR";
+  if (v.blacklisted || v.approved_status === "Blacklisted" || v.approved_status === "Blocked") return "BLACKLISTED";
+  if (v.approved_status === "Temporarily Blocked") return "TEMPORARILY_BLOCKED";
+  return v.preference || "REGULAR";
+}
+// May the vendor be chosen for a normal purchase? (Same rule as proc_vendor_selectable.)
+export function vendorSelectable(v) {
+  return !!v && v.is_active !== false && !["BLACKLISTED", "TEMPORARILY_BLOCKED"].includes(vendorLevel(v));
+}
+export const TIER_LABELS = { 1: ["Preferred vendors", "પસંદગીના વેન્ડર"], 2: ["Regular approved vendors", "મંજૂર વેન્ડર"], 3: ["Other matching vendors", "અન્ય મેળ ખાતા વેન્ડર"] };
+
+// Contact links from the vendor's saved numbers only (no number -> no link).
+export function whatsappHref(phone) {
+  let d = String(phone || "").replace(/\D/g, "");
+  if (d.length === 10) d = `91${d}`;
+  return d.length >= 11 ? `https://wa.me/${d}` : null;
 }
