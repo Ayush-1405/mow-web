@@ -7,7 +7,7 @@ import {
   requestAmountApproval, submitPurchaseRequest,
 } from "../../lib/procurementApi";
 import {
-  L, PROC_CATEGORIES, PROC_STATUS, SETUP_MISSING_TEXT, WORK_ORDER_CATEGORIES, fmtDate, isProcurementSetupMissing, priorityLabel, procStatusLabel, procurementRoles,
+  L, PROC_CATEGORIES, PROC_STATUS, SETUP_MISSING_TEXT, WORK_ORDER_CATEGORIES, addressLines, fmtDate, isProcurementSetupMissing, priorityLabel, procStatusLabel, procurementRoles,
   validateOrderForm,
 } from "../../lib/procurementRules";
 import { listPurchaseAttachments } from "../../lib/interiorApi";
@@ -236,6 +236,15 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
         <h2>{L(lang, "Request details", "વિનંતીની વિગતો")}</h2>
         <div className="form-grid">
           <Info label={L(lang, "Department", "વિભાગ")} value={ctx?.department_name} />
+          {req.customer?.name && (
+            <>
+              <Info label={L(lang, "Customer", "ગ્રાહક")} value={[req.customer.name, req.customer.mobile, req.customer.alt_mobile, req.customer.email].filter(Boolean).join(" · ")} />
+              {req.customer.gstin && <Info label={L(lang, "Customer GST No.", "ગ્રાહક GST નંબર")} value={req.customer.gstin} />}
+              <Info label={L(lang, "Billing address", "બિલિંગ સરનામું")} value={addressLines(req.customer.billing).join(", ")} full />
+              <Info label={L(lang, "Delivery address", "ડિલિવરી સરનામું")} full value={[addressLines(req.customer.delivery).join(", "),
+                [req.customer.delivery?.contact_person, req.customer.delivery?.contact_phone].filter(Boolean).join(", ")].filter(Boolean).join(" · Contact: ")} />
+            </>
+          )}
           <Info label={L(lang, "Requested by", "વિનંતી કરનાર")} value={`${ctx?.requester_name || "—"} · ${fmt(req.created_at)}`} />
           {req.project_id && <Info label={L(lang, "Project", "પ્રોજેક્ટ")} value={ctx?.project_code ? `${ctx.project_code} — ${ctx.customer || ""}` : "—"} />}
           <Info label={L(lang, "Category", "પ્રકાર")} value={`${req.material_category || "—"} · ${category ? (lang === "gu" ? category.gu : category.en) : "—"}`} />

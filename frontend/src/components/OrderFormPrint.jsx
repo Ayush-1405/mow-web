@@ -1,5 +1,5 @@
 import React from "react";
-import { fmtDate, orderFormTemplate } from "../lib/procurementRules";
+import { addressLines, fmtDate, orderFormTemplate } from "../lib/procurementRules";
 import { MOW_LOGO } from "../lib/brand";
 
 // The official Mood of Wood "Production Supply Order Form", drawn to match the company's two printed pads:
@@ -22,6 +22,10 @@ const L = {
   drawings: ["Drawings :", "ચિત્ર :"],
   remarks: ["Remarks :", "ટિપ્પણીઓ :"],
   signature: ["Signature :", "સહી :"],
+  mobile: ["Mobile No. :", "મોબાઇલ નંબર :"],
+  email: ["Email :", "ઇમેઇલ :"],
+  billing: ["Billing Address :", "બિલિંગ સરનામું :"],
+  delivery: ["Delivery Address :", "ડિલિવરી સરનામું :"],
 };
 
 const date = (d) => (d ? fmtDate(d) : "");
@@ -63,10 +67,11 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
   const total = lines.reduce((s, i) => s + (i.amount === null || i.amount === undefined ? 0 : Number(i.amount)), 0);
   const drawings = files.map((f) => f.original_file_name || f.file_name).filter(Boolean);
   const issuedBy = context?.requester_name || "";
-  const client = request.client_name || (context?.project_code ? `${context.project_code}${context.customer ? ` — ${context.customer}` : ""}` : "");
+  const cust = request.customer?.name ? request.customer : null;
+  const client = cust?.name || request.client_name || (context?.project_code ? `${context.project_code}${context.customer ? ` — ${context.customer}` : ""}` : "");
 
   return (
-    <div className={`mowf ${retail ? "mowf-retail" : "mowf-interior"}`}>
+    <div className={`mowf ${retail ? "mowf-retail" : "mowf-interior"}${cust ? " mowf-has-customer" : ""}`}>
       <div className="mowf-frame">
         <header className="mowf-head">
           <div className="mowf-brand">
@@ -84,6 +89,18 @@ export default function OrderFormPrint({ request, items = [], context, order, fi
           <tbody>
             <tr><th><Label k="issued" /></th><td>{issuedBy}</td><th><Label k="sales" /></th><td>{request.sales_person_name || ""}</td></tr>
             <tr><th><Label k="client" inline /></th><td colSpan={3}>{client}</td></tr>
+            {cust && (
+              <>
+                <tr className="mowf-cust"><th><Label k="mobile" /></th><td className="mowf-addr">{[cust.mobile, cust.alt_mobile].filter(Boolean).join(", ")}</td>
+                  <th><Label k="email" /></th><td className="mowf-addr">{cust.email || ""}</td></tr>
+                <tr className="mowf-cust"><th><Label k="billing" /></th><td colSpan={3} className="mowf-addr">
+                  {addressLines(cust.billing).join(", ")}{cust.gstin && <> · <b>GSTIN:</b> {cust.gstin}</>}</td></tr>
+                <tr className="mowf-cust"><th><Label k="delivery" /></th><td colSpan={3} className="mowf-addr">
+                  {addressLines(cust.delivery).join(", ")}
+                  {(cust.delivery?.contact_person || cust.delivery?.contact_phone) && <> · <b>Contact:</b> {[cust.delivery.contact_person, cust.delivery.contact_phone].filter(Boolean).join(", ")}</>}
+                </td></tr>
+              </>
+            )}
             <tr><th><Label k="issueDate" /></th><td>{date(order?.order_date || request.created_at)}</td><th><Label k="vendor" /></th><td>{vendor}</td></tr>
             <tr><th><Label k="doneDate" /></th><td>{date(request.required_by_date)}</td><th><Label k="delivered" /></th><td>{date(request.delivered_to_client_at || request.delivery_date)}</td></tr>
           </tbody>

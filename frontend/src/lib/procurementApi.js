@@ -12,7 +12,7 @@ const REQUEST_COLUMNS =
   + "dept_decided_by, dept_decided_at, dept_decision_remarks, sent_to_procurement_at, proc_decided_by, proc_decided_at, proc_decision_remarks, "
   + "document_version, document_generated_at, order_confirmed_by, order_confirmed_at, "
   + "order_form_type, client_name, sales_person_name, preferred_vendor_name, delivery_date, delivered_to_client_at, order_total, urgency_reason, "
-  + "proc_assigned_to, overdue_since, print_template";
+  + "proc_assigned_to, overdue_since, print_template, customer, retail_customer_id";
 
 export function listPurchaseRequests({ statuses, departmentId, limit = 300 } = {}) {
   let q = supabase.from("purchase_requests").select(REQUEST_COLUMNS).neq("proc_status", "LEGACY");
@@ -208,7 +208,7 @@ export function listOrderItems(requestId) {
 
 export function getOrder(requestId) {
   return supabase.from("purchase_requests")
-    .select("id, request_number, proc_status, order_form_type, project_id, client_name, sales_person_name, preferred_vendor_name, required_by_date, delivery_date, delivery_location, remarks, priority, is_emergency, emergency_reason, urgency_reason, requester_user_id, created_at")
+    .select("id, request_number, proc_status, order_form_type, project_id, client_name, sales_person_name, preferred_vendor_name, required_by_date, delivery_date, delivery_location, remarks, priority, is_emergency, emergency_reason, urgency_reason, requester_user_id, created_at, customer, retail_customer_id")
     .eq("id", requestId).maybeSingle();
 }
 
@@ -216,6 +216,8 @@ const orderHeader = (h) => ({
   form_type: h.form_type, project_id: h.project_id || null, client_name: h.client_name, sales_person_name: h.sales_person_name, vendor_name: h.vendor_name,
   required_completion_date: h.required_completion_date, delivery_date: h.delivery_date || null, delivery_location: h.delivery_location, remarks: h.remarks,
   priority: h.priority, procurement_category: h.procurement_category, urgency_reason: h.urgency_reason || null,
+  // Absent = leave the order's customer unchanged; { name: "" } clears it (proc_apply_order_customer).
+  ...(h.customer !== undefined ? { customer: h.customer } : {}),
 });
 const orderItems = (items) => items.map((i) => ({ item_code: i.item_code, description: i.description, qty_size: i.qty_size, quantity: i.quantity, rate: i.rate, remarks: i.remarks }));
 
@@ -328,3 +330,6 @@ export async function downloadAttachment(path) {
   if (error) throw new Error(error.message || "Download failed");
   return data;
 }
+
+// Customers to pick from: Retail customers the user may see and customers on orders the user may see (v3_10).
+export const searchCustomers = (q) => supabase.rpc("proc_search_customers", { p_query: q });

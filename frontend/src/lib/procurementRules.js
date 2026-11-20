@@ -298,3 +298,50 @@ export const TASK_FILTERS = [
 export function orderFormTemplate(request) {
   return request?.print_template || request?.order_form_type || "RETAIL";
 }
+
+// ---- Customer details on order forms (v3_10). The database re-checks everything (proc_apply_order_customer). ----
+const EMPTY_ADDRESS = { line1: "", line2: "", city: "", state: "", pin: "" };
+export function emptyCustomer() {
+  return { name: "", mobile: "", alt_mobile: "", email: "", gstin: "", retail_customer_id: null,
+    billing: { ...EMPTY_ADDRESS }, delivery: { ...EMPTY_ADDRESS, contact_person: "", contact_phone: "" }, delivery_same_as_billing: false };
+}
+// A stored / searched customer (missing keys allowed) as a full editable object.
+export function toCustomerForm(c) {
+  const e = emptyCustomer();
+  if (!c) return e;
+  return { ...e, ...c, retail_customer_id: c.retail_customer_id || null, billing: { ...e.billing, ...(c.billing || {}) },
+    delivery: { ...e.delivery, ...(c.delivery || {}) }, delivery_same_as_billing: !!c.delivery_same_as_billing };
+}
+const mobileOk = (v) => {
+  let d = String(v || "").replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("91")) d = d.slice(2); else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  return /^[6-9]\d{9}$/.test(d);
+};
+const blank = (v) => !String(v ?? "").trim();
+// Errors keyed by field path ("mobile", "billing.pin", ...).
+export function validateCustomer(c) {
+  const e = {};
+  if (!c) return e;
+  const any = ["mobile", "alt_mobile", "email", "gstin"].some((k) => !blank(c[k])) || Object.values(c.billing || {}).some((v) => !blank(v));
+  if (blank(c.name) && any) e.name = "required";
+  if (!blank(c.mobile) && !mobileOk(c.mobile)) e.mobile = "mobile";
+  if (!blank(c.alt_mobile) && !mobileOk(c.alt_mobile)) e.alt_mobile = "mobile";
+  if (!blank(c.email) && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(c.email).trim())) e.email = "email";
+  if (!blank(c.gstin) && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/.test(String(c.gstin).trim().toUpperCase())) e.gstin = "gst";
+  if (!blank(c.billing?.pin) && !/^[1-9]\d{5}$/.test(String(c.billing.pin).trim())) e["billing.pin"] = "pin";
+  if (!c.delivery_same_as_billing && !blank(c.delivery?.pin) && !/^[1-9]\d{5}$/.test(String(c.delivery.pin).trim())) e["delivery.pin"] = "pin";
+  if (!blank(c.delivery?.contact_phone) && !mobileOk(c.delivery.contact_phone)) e["delivery.contact_phone"] = "mobile";
+  return e;
+}
+// The delivery address with "same as billing" applied (the contact person / number stay the delivery's own).
+export function withDeliveryCopied(c) {
+  if (!c?.delivery_same_as_billing) return c;
+  const { line1, line2, city, state, pin } = c.billing;
+  return { ...c, delivery: { ...c.delivery, line1, line2, city, state, pin } };
+}
+// "line1, line2, city, state - pin" for screens and the printed form.
+export function addressLines(a) {
+  if (!a) return [];
+  const place = [a.city, a.state].filter((x) => !blank(x)).join(", ") + (blank(a.pin) ? "" : ` - ${a.pin}`);
+  return [a.line1, a.line2, place].filter((x) => !blank(x));
+}

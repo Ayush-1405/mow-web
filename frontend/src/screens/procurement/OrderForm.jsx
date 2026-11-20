@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { createOrder, getOrder, listOrderItems, submitPurchaseRequest, updateOrder, uploadOrderFile } from "../../lib/procurementApi";
-import { L, ORDER_PRIORITIES, SETUP_MISSING_TEXT, daysLeft, defaultOrderForm, fmtDate, isProcurementSetupMissing, itemAmount, orderTotal, remainingText, todayIST, validateOrder } from "../../lib/procurementRules";
+import { L, ORDER_PRIORITIES, SETUP_MISSING_TEXT, daysLeft, defaultOrderForm, emptyCustomer, fmtDate, isProcurementSetupMissing, itemAmount, orderTotal, remainingText, toCustomerForm, todayIST, validateCustomer, validateOrder, withDeliveryCopied } from "../../lib/procurementRules";
+import CustomerDetailsFields from "./CustomerDetailsFields";
 import { friendlyError } from "../../lib/friendlyError";
 import { kolkataDateStr } from "../../lib/kolkataTime";
 import ProcurementContactCard from "../../components/ProcurementContactCard";
@@ -23,11 +24,14 @@ export default function OrderForm({ lang, profile, lookups }) {
     required_completion_date: "", delivery_date: "", delivery_location: "", remarks: "", priority: "NORMAL", urgency_reason: "",
   });
   const [createdAt, setCreatedAt] = useState(null);
+  const [customer, setCustomer] = useState(emptyCustomer());
+  const [hadCustomer, setHadCustomer] = useState(false);
   const [wasEmergency, setWasEmergency] = useState(false);
   const [items, setItems] = useState([{ ...BLANK_ITEM }, { ...BLANK_ITEM }, { ...BLANK_ITEM }]);
   const [files, setFiles] = useState([]);
   const [projects, setProjects] = useState([]);
   const [errors, setErrors] = useState({});
+  const [customerErrors, setCustomerErrors] = useState({});
   const [serverError, setServerError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!editId);
@@ -61,6 +65,8 @@ export default function OrderForm({ lang, profile, lookups }) {
           urgency_reason: d.urgency_reason || d.emergency_reason || "",
         });
         setCreatedAt(d.created_at || null);
+        setCustomer(d.customer ? { ...toCustomerForm(d.customer), retail_customer_id: d.retail_customer_id || null } : { ...emptyCustomer(), name: d.client_name || "" });
+        setHadCustomer(!!d.customer);
         setWasEmergency(!!d.is_emergency);
         setItems([...(it.data || []).map((x) => ({ item_code: x.item_code || "", description: x.description || "", qty_size: x.qty_size || "", quantity: x.quantity ?? "", rate: x.rate ?? "", remarks: x.line_remarks || "" })), { ...BLANK_ITEM }]);
       }
@@ -74,6 +80,7 @@ export default function OrderForm({ lang, profile, lookups }) {
     const p = projects.find((x) => x.id === header.project_id);
     if (!p || editId) return;
     setHeader((h) => ({ ...h, client_name: h.client_name || p.customer || "", delivery_location: h.delivery_location || p.location || "" }));
+    setCustomer((c) => (c.name ? c : { ...c, name: p.customer || "" }));
   }, [header.project_id, projects, editId]);
 
   const setH = (k) => (e) => { const v = e.target.type === "checkbox" ? e.target.checked : e.target.value; setHeader((h) => ({ ...h, [k]: v })); setErrors((x) => ({ ...x, [k]: undefined })); };
@@ -82,18 +89,24 @@ export default function OrderForm({ lang, profile, lookups }) {
   async function save(submit) {
     const { errors: found, items: filled } = validateOrder(header, items);
     if (header.required_completion_date && header.required_completion_date < kolkataDateStr()) found.required_completion_date = "past";
-    if (isInterior && !header.project_id && !header.client_name.trim()) found.client_name = "required";
+    if (isInterior && !header.project_id && !customer.name.trim()) found.client_name = "required";
+    const custErrors = validateCustomer(customer);
+    setCustomerErrors(custErrors);
+    if (Object.keys(custErrors).length) found.customer = "invalid";
     setErrors(found);
     if (Object.keys(found).length) return;
     setSaving(true);
     setServerError(null);
     let id = editId;
     let res;
+    const named = customer.name.trim();
+    const payload = { ...header, client_name: named || header.client_name,
+      customer: named ? withDeliveryCopied(customer) : (hadCustomer ? { name: "" } : undefined) };
     if (editId) {
-      res = await updateOrder(editId, header, filled);
+      res = await updateOrder(editId, payload, filled);
       if (!res.error && submit) res = await submitPurchaseRequest(editId);
     } else {
-      res = await createOrder(header, filled, { submit });
+      res = await createOrder(payload, filled, { submit });
       id = res.data?.id;
     }
     if (res.error) {
@@ -152,7 +165,8 @@ export default function OrderForm({ lang, profile, lookups }) {
             </select>
           </div>
         )}
-        <div className="field"><label>{L(lang, "Client name", "ગ્રાહકનું નામ")}{isInterior && " *"}</label><input value={header.client_name} onChange={setH("client_name")} />{errText("client_name")}</div>
+        <CustomerDetailsFields lang={lang} value={customer} onChange={(c) => { setCustomer(c); setCustomerErrors({}); setErrors((x) => ({ ...x, customer: undefined, client_name: undefined })); }}
+          errors={{ ...customerErrors, ...(errors.client_name ? { name: "required" } : {}) }} nameRequired={isInterior && !header.project_id} />
         <div className="field"><label>{L(lang, "Sales person", "સેલ્સ પર્સન")}</label><input value={header.sales_person_name} onChange={setH("sales_person_name")} /></div>
         <div className="field"><label>{L(lang, "Vendor (if known)", "વેન્ડર (જો ખબર હોય)")}</label><input value={header.vendor_name} onChange={setH("vendor_name")} /></div>
         <div className="field">

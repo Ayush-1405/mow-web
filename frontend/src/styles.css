@@ -2023,3 +2023,19 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .op-att img { width: 100%; height: 120px; object-fit: contain; background: var(--surface-2); display: block; }
 .op-att-icon { height: 120px; display: grid; place-items: center; font-size: 40px; background: var(--surface-2); }
 .op-att-cap { font-size: 12px; margin-top: 4px; overflow-wrap: anywhere; }
+
+/* Customer details on the order form (screens/procurement/CustomerDetailsFields.jsx). */
+.customer-box { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--surface-2); }
+.customer-search { position: relative; margin-bottom: 8px; }
+.customer-results { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px; list-style: none; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow); max-height: 280px; overflow: auto; }
+.customer-results li button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px; border-radius: 6px; cursor: pointer; font: inherit; color: inherit; margin: 0; }
+.customer-results li button:hover { background: var(--accent-soft); }
+.customer-addr { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px 2px; margin: 8px 0 0; min-width: 0; }
+.customer-addr legend { font-weight: 700; font-size: 13.5px; padding: 0 4px; color: var(--brand-dark); }
+/* Printed form: customer rows wrap long addresses instead of cutting them. */
+.mowf-addr { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.mowf-cust td { font-size: 0.98em; }
+.mowf-has-customer .mowf-info th, .mowf-has-customer .mowf-info td { padding-top: 0.26em; padding-bottom: 0.26em; }
+.mowf-has-customer.mowf-retail .mowf-items td { height: 2em; }
+.mowf-has-customer .mowf-lines td { height: 1.8em; }

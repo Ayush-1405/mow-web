@@ -214,3 +214,33 @@ test("Order Placed for an order form needs only vendor, PO / reference, order da
   assert.equal(validateOrderForm({ ...f, expected_delivery_date: "2026-11-01" }, { orderForm: true }).expected_delivery_date, "beforeOrder");
   assert.ok(Object.keys(validateOrderForm(f)).length > 0, "other requests still need every field");
 });
+
+// ---- Customer details (v3_10) ----
+import { addressLines, emptyCustomer, toCustomerForm, validateCustomer, withDeliveryCopied } from "../src/lib/procurementRules.js";
+
+test("customer checks: mobile, alternate mobile, PIN, email, optional GST", () => {
+  const c = { ...emptyCustomer(), name: "Mrs. Patel", mobile: "+91 98765 43210", alt_mobile: "09123456789", email: "a@b.in",
+    billing: { line1: "12 Shanti Nagar", line2: "", city: "Rajkot", state: "Gujarat", pin: "360005" } };
+  assert.deepEqual(validateCustomer(c), {});
+  assert.equal(validateCustomer({ ...c, mobile: "12345" }).mobile, "mobile");
+  assert.equal(validateCustomer({ ...c, billing: { ...c.billing, pin: "0360" } })["billing.pin"], "pin");
+  assert.equal(validateCustomer({ ...c, gstin: "ABC" }).gstin, "gst");
+  assert.deepEqual(validateCustomer({ ...c, gstin: "24abcde1234f1z5" }), {}, "GST accepted in any case, and optional");
+  assert.equal(validateCustomer({ ...c, name: "" }).name, "required", "details without a name");
+  assert.deepEqual(validateCustomer(emptyCustomer()), {}, "no customer at all is fine");
+});
+
+test("same as billing copies the address but keeps the delivery contact", () => {
+  const c = { ...emptyCustomer(), name: "X", delivery_same_as_billing: true,
+    billing: { line1: "A", line2: "B", city: "Rajkot", state: "Gujarat", pin: "360001" },
+    delivery: { line1: "old", line2: "", city: "", state: "", pin: "", contact_person: "Ramesh", contact_phone: "9988776655" } };
+  const d = withDeliveryCopied(c).delivery;
+  assert.equal(d.line1, "A"); assert.equal(d.pin, "360001"); assert.equal(d.contact_person, "Ramesh");
+  assert.equal(withDeliveryCopied({ ...c, delivery_same_as_billing: false }).delivery.line1, "old", "independent when unticked");
+});
+
+test("a stored customer reopens as a full form; addresses print as lines", () => {
+  const f = toCustomerForm({ name: "Shah", mobile: "+91 9811122233", billing: { line1: "4 Race Course", city: "Rajkot", pin: "360001" } });
+  assert.equal(f.billing.state, ""); assert.equal(f.delivery.contact_person, ""); assert.equal(f.billing.line1, "4 Race Course");
+  assert.deepEqual(addressLines({ line1: "4 Race Course", line2: "", city: "Rajkot", state: "Gujarat", pin: "360001" }), ["4 Race Course", "Rajkot, Gujarat - 360001"]);
+});
