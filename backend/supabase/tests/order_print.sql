@@ -110,12 +110,15 @@ begin
   perform public.zz_as(u_ph); set local role authenticated;
   begin perform public.proc_set_print_template(v_id, 'RETAIL', ''); v_log := public.zz_chk(v_log, 'a template change needs a reason', false);
   exception when others then v_log := public.zz_chk(v_log, 'a template change needs a reason', sqlerrm ilike '%reason%'); end;
-  perform public.proc_set_print_template(v_id, 'RETAIL', 'Vendor needs the rate sheet');
+  -- v3_14: an Interior department order always prints on the Interior PO form (the override for other departments is in
+  -- form_by_department.sql).
+  begin perform public.proc_set_print_template(v_id, 'RETAIL', 'Vendor needs the rate sheet');
+        v_log := public.zz_chk(v_log, 'an Interior order cannot be switched to the Retail form', false);
+  exception when others then v_log := public.zz_chk(v_log, 'an Interior order cannot be switched to the Retail form', sqlerrm ilike '%always use the Interior PO form%'); end;
   v_res := public.proc_record_order_print(v_id, 'PRINT');
   reset role;
-  v_log := public.zz_chk(v_log, 'the Procurement Head switches the form; the next print uses it and history says why',
-    v_res->>'template' = 'RETAIL' and (select print_template from purchase_requests where id = v_id) = 'RETAIL'
-    and (select count(*) from purchase_request_status_history where purchase_request_id = v_id and remarks = 'Order form changed from Interior to Retail: Vendor needs the rate sheet') = 1);
+  v_log := public.zz_chk(v_log, 'the next print still uses the Interior form',
+    v_res->>'template' = 'INTERIOR' and (select print_template from purchase_requests where id = v_id) is null);
 
   ---------------------------------------------------------------- 16-17. Order Placed by the employee, minimal fields
   perform public.zz_as(u_p1); set local role authenticated;

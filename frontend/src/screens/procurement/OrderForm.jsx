@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { createOrder, getOrder, listOrderItems, submitPurchaseRequest, updateOrder, uploadOrderFile } from "../../lib/procurementApi";
-import { L, ORDER_PRIORITIES, SETUP_MISSING_TEXT, daysLeft, defaultOrderForm, fmtDate, isProcurementSetupMissing, itemAmount, orderTotal, remainingText, todayIST, validateOrder } from "../../lib/procurementRules";
+import { L, ORDER_PRIORITIES, SETUP_MISSING_TEXT, daysLeft, defaultOrderForm, fixedOrderForm, fmtDate, isProcurementSetupMissing, itemAmount, orderTotal, remainingText, todayIST, validateOrder } from "../../lib/procurementRules";
 import { friendlyError } from "../../lib/friendlyError";
 import { kolkataDateStr } from "../../lib/kolkataTime";
 import ProcurementContactCard from "../../components/ProcurementContactCard";
@@ -18,6 +18,7 @@ export default function OrderForm({ lang, profile, lookups }) {
   const [params] = useSearchParams();
   const department = lookups.departmentById?.[profile.department_id];
   const isInterior = department?.code === "INTERIOR";
+  const fixedForm = fixedOrderForm(department?.code);
   const [header, setHeader] = useState({
     form_type: defaultOrderForm(department?.code), project_id: params.get("project") || "", client_name: "", sales_person_name: "", vendor_name: "",
     required_completion_date: "", delivery_date: "", delivery_location: "", remarks: "", priority: "NORMAL", urgency_reason: "",
@@ -54,7 +55,7 @@ export default function OrderForm({ lang, profile, lookups }) {
       const d = o.data;
       if (d) {
         setHeader({
-          form_type: d.order_form_type || "RETAIL", project_id: d.project_id || "", client_name: d.client_name || "", sales_person_name: d.sales_person_name || "",
+          form_type: fixedForm || d.order_form_type || "RETAIL", project_id: d.project_id || "", client_name: d.client_name || "", sales_person_name: d.sales_person_name || "",
           vendor_name: d.preferred_vendor_name || "", required_completion_date: d.required_by_date || "", delivery_date: d.delivery_date || "",
           delivery_location: d.delivery_location || "", remarks: d.remarks || "",
           priority: d.is_emergency ? "EMERGENCY" : (ORDER_PRIORITIES.some((x) => x.code === d.priority) ? d.priority : "NORMAL"),
@@ -137,10 +138,14 @@ export default function OrderForm({ lang, profile, lookups }) {
       <form className="card form-grid" onSubmit={(e) => { e.preventDefault(); save(true); }} noValidate>
         <div className="field">
           <label>{L(lang, "Order form", "ઓર્ડર ફોર્મ")}</label>
-          <select value={header.form_type} onChange={setH("form_type")}>
-            <option value="INTERIOR">{L(lang, "Interior (with rate & amount)", "ઇન્ટિરિયર (ભાવ અને રકમ સાથે)")}</option>
-            <option value="RETAIL">{L(lang, "Retail (compact)", "રિટેલ (નાનું)")}</option>
-          </select>
+          {fixedForm ? (
+            <input readOnly value={fixedForm === "INTERIOR" ? L(lang, "Interior PO form (with rate & amount)", "ઇન્ટિરિયર PO ફોર્મ (ભાવ અને રકમ સાથે)") : L(lang, "Retail PO form", "રિટેલ PO ફોર્મ")} />
+          ) : (
+            <select value={header.form_type} onChange={setH("form_type")}>
+              <option value="INTERIOR">{L(lang, "Interior (with rate & amount)", "ઇન્ટિરિયર (ભાવ અને રકમ સાથે)")}</option>
+              <option value="RETAIL">{L(lang, "Retail (compact)", "રિટેલ (નાનું)")}</option>
+            </select>
+          )}
         </div>
         <div className="field"><label>{L(lang, "Ordered by", "ઓર્ડર આપનાર")}</label><input value={`${profile.full_name} — ${headName}`} readOnly /></div>
         <div className="field"><label>{L(lang, "Order creation date (automatic)", "ઓર્ડર તારીખ (આપોઆપ)")}</label><input value={fmtDate(createdAt || todayIST())} readOnly /></div>

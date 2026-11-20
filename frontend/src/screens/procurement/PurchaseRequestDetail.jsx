@@ -7,7 +7,7 @@ import {
   requestAmountApproval, submitPurchaseRequest,
 } from "../../lib/procurementApi";
 import {
-  L, PROC_CATEGORIES, PROC_STATUS, SETUP_MISSING_TEXT, WORK_ORDER_CATEGORIES, addressLines, fmtDate, isProcurementSetupMissing, priorityLabel, procStatusLabel, procurementRoles,
+  L, PROC_CATEGORIES, PROC_STATUS, fixedOrderForm, SETUP_MISSING_TEXT, WORK_ORDER_CATEGORIES, addressLines, fmtDate, isProcurementSetupMissing, priorityLabel, procStatusLabel, procurementRoles,
   validateOrderForm,
 } from "../../lib/procurementRules";
 import { listPurchaseAttachments } from "../../lib/interiorApi";
@@ -517,7 +517,8 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
       {showPreview && (
         <OrderPrintPreview lang={lang} request={req} items={items} context={ctx} order={order}
           files={orderFiles} company={company} taskNumber={taskInfo?.task_number}
-          printedBy={profile.full_name} canChangeTemplate={roles.isProcurementHead || roles.isManagement}
+          printedBy={profile.full_name} canChangeTemplate={(roles.isProcurementHead || roles.isManagement)
+            && !fixedOrderForm(lookups.departments.find((d) => d.id === req.requesting_department_id)?.code)}
           onClose={() => setShowPreview(false)} onChanged={load} />
       )}
       {printType && !req.order_form_type && createPortal(

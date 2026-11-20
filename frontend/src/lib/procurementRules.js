@@ -151,9 +151,13 @@ export function telHref(phone) {
 
 // ---- Production Supply Order Forms ----
 
-// Interior uses the compact form; every other department the large form with rate and amount. Either can be chosen.
+// The Interior department always uses the Interior PO form and Retail always the Retail PO form (fixed in the database,
+// v3_14); other departments start on Retail and may choose.
+export function fixedOrderForm(departmentCode) {
+  return departmentCode === "INTERIOR" || departmentCode === "RETAIL" ? departmentCode : null;
+}
 export function defaultOrderForm(departmentCode) {
-  return departmentCode === "INTERIOR" ? "INTERIOR" : "RETAIL";
+  return fixedOrderForm(departmentCode) || "RETAIL";
 }
 
 const num = (v) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));

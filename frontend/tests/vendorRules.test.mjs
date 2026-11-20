@@ -33,3 +33,12 @@ test("vendor selection pending filter matches printed orders without a vendor", 
   assert.equal(f.test({ proc_status: "ORDER_PLACED" }), false);
   assert.deepEqual(Object.keys(TIER_LABELS), ["1", "2", "3"]);
 });
+
+test("Interior and Retail orders have a fixed PO form; other departments choose", async () => {
+  const { fixedOrderForm, defaultOrderForm } = await import("../src/lib/procurementRules.js");
+  assert.equal(fixedOrderForm("INTERIOR"), "INTERIOR");
+  assert.equal(fixedOrderForm("RETAIL"), "RETAIL");
+  assert.equal(fixedOrderForm("MARKETING"), null);
+  assert.equal(defaultOrderForm("MARKETING"), "RETAIL");
+  assert.equal(defaultOrderForm("INTERIOR"), "INTERIOR");
+});
