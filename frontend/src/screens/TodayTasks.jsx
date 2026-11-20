@@ -20,6 +20,7 @@ import VoiceRecorder from "./VoiceRecorder.jsx";
 import { DateNavigator, QuickDateChips, TaskSearchBar, FilterButton, FilterFields, ActiveFilterChips, MobileFilterSheet } from "./TaskFilterBar.jsx";
 import { activeFilterList } from "../lib/taskFilters";
 import { useBreakpoint } from "../lib/useBreakpoint";
+import { procurementRoles } from "../lib/procurementRules";
 
 const CLOSED_STATUS_CODES = new Set(["COMPLETED", "VERIFIED", "CLOSED"]);
 const DATE_FILTER_STORAGE_KEY = "todayTasks.dateFilter.v1";
@@ -119,6 +120,9 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
   const [detailsFor, setDetailsFor] = useState(null);
   const [reassignFor, setReassignFor] = useState(null);
   const [deleteConfirmFor, setDeleteConfirmFor] = useState(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  // Management and Procurement Heads / Supervisors may delete (cancel) an order task -- the same rule as proc_cancel_request.
+  const canCancelOrders = useMemo(() => { const r = procurementRoles(profile, lookups.departments); return r.isManagement || r.canProcure; }, [profile, lookups.departments]);
   const [assignedItems, setAssignedItems] = useState([]);
   const [unreadByTask, setUnreadByTask] = useState({});
   const [interiorProfilesById, setInteriorProfilesById] = useState({});
@@ -623,6 +627,25 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     }
   }
 
+  // An order task follows its order, so deleting it cancels the order (reason required); the order's sync then removes the
+  // task and its bridge. Only possible before the order is placed with a vendor -- the database refuses it after that.
+  async function handleDeleteOrder(taskId, orderId) {
+    if (!deleteReason.trim()) { showToast("error", lang === "gu" ? "કારણ લખો" : "Give the reason for deleting this order"); return; }
+    setBusyId(taskId);
+    try {
+      const { error } = await supabase.rpc("proc_cancel_request", { p_request_id: orderId, p_reason: deleteReason.trim() });
+      if (error) throw error;
+      setDeleteConfirmFor(null);
+      setDeleteReason("");
+      showToast("success", lang === "gu" ? "ઓર્ડર રદ કરી કાર્ય કાઢી નાખ્યું" : "Order cancelled and task deleted");
+      await load();
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleDelete(taskId) {
     setBusyId(taskId);
     try {
@@ -808,7 +831,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     // A Procurement order task (v3_07) is driven by its order: Accept works here; everything else happens on the order page,
     // where delivery / GRN checks apply. The database refuses the generic actions on these tasks anyway.
     const orderId = task.source_module === "procurement" && String(task.system_key || "").startsWith("PROC_ORDER:") ? task.system_key.slice(11) : null;
-    const canDeleteTask = !orderId && (iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership);
+    const canDeleteTask = orderId ? canCancelOrders : (iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership);
     const busy = busyId === task.id;
     // Undefined here means either an unrecognized proof_type_id or one
     // that's since been deactivated (e.g. "voice" — see
@@ -1031,13 +1054,30 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
                     else navigate(`/chat?c=${data}`);
                   },
                 },
-                canDeleteTask && { key: "delete", label: t("deleteTask", lang), danger: true, disabled: busy, onClick: () => setDeleteConfirmFor(deleteConfirmFor === task.id ? null : task.id) },
+                canDeleteTask && { key: "delete", label: orderId ? (lang === "gu" ? "ઓર્ડર કાઢી નાખો" : "Delete order") : t("deleteTask", lang), danger: true, disabled: busy, onClick: () => setDeleteConfirmFor(deleteConfirmFor === task.id ? null : task.id) },
               ].filter(Boolean)}
             />
           </div>
         </div>
 
-        {deleteConfirmFor === task.id && (
+        {deleteConfirmFor === task.id && orderId && (
+          <div className="msg error" style={{ marginTop: 10 }}>
+            {lang === "gu"
+              ? `આ ઓર્ડર ${task.reference_number || ""} રદ થશે અને કાર્ય બધાની યાદીમાંથી દૂર થશે. વિનંતી કરનાર અને વિભાગના વડાને જાણ થશે. ઇતિહાસ સચવાય છે.`
+              : `This cancels order ${task.reference_number || ""} and removes the task for everyone. The requester and their Department Head are notified. The history is kept.`}
+            <textarea rows={2} style={{ marginTop: 8 }} value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder={lang === "gu" ? "કારણ (જરૂરી)" : "Reason (required)"} />
+            <div className="btn-row">
+              <button className="btn btn-primary" disabled={busy || !deleteReason.trim()} onClick={() => handleDeleteOrder(task.id, orderId)}>
+                {t("confirmDelete", lang)}
+              </button>
+              <button className="btn btn-outline" onClick={() => { setDeleteConfirmFor(null); setDeleteReason(""); }}>
+                {t("cancel", lang)}
+              </button>
+            </div>
+          </div>
+        )}
+        {deleteConfirmFor === task.id && !orderId && (
           <div className="msg error" style={{ marginTop: 10 }}>
             {t("confirmDeleteTask", lang)}
             <div className="btn-row">
