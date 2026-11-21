@@ -20,11 +20,12 @@ function reply(body: unknown, status: number, origin: string | null): Response {
 }
 const fail = (status: number, code: string, error: string, origin: string | null) => reply({ ok: false, error, code }, status, origin);
 
-async function health(userId: string, origin: string | null): Promise<Response> {
+async function health(userId: string, token: string, origin: string | null): Promise<Response> {
   const rt = await aiRuntime(true);
   if (rt && !rt.ai_enabled) return fail(423, "ai_stopped", `Mood AI is stopped${rt.stop_reason ? `: ${rt.stop_reason}` : ""}`, origin);
   const admin = adminClient();
-  const { data: models, error } = await admin.from("mai_models").select("provider, model, label").eq("enabled", true);
+  // read as the signed-in monitor (row-level security allows Owner / Management); the server role has no direct read
+  const { data: models, error } = await userScopedClient(token).from("mai_models").select("provider, model, label").eq("enabled", true);
   if (error) return fail(500, "server_error", "Could not read the connected models.", origin);
   const results = await Promise.all((models ?? []).map(async (m: { provider: Provider; model: string; label: string }) => {
     try {
@@ -53,13 +54,13 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
   let body: { action?: string } & ChatInput;
   try { body = await req.json(); } catch { return fail(400, "bad_request", "Invalid request.", origin); }
   if (body.action === "chat") {
-    const r = await chat(user.id, body);
+    const r = await chat(user.id, body, token);
     return reply(r.body, r.status, origin);
   }
   if (body.action === "health") {
     const { data: allowed } = await userScopedClient(token).rpc("mai_can_monitor");
     if (!allowed) return fail(403, "not_allowed", "Only the Owner and Management can run the model health check.", origin);
-    return await health(user.id, origin);
+    return await health(user.id, token, origin);
   }
   return fail(400, "bad_request", "Unknown action.", origin);
 }
