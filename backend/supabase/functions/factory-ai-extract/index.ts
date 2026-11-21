@@ -22,7 +22,7 @@
 // Secrets: ANTHROPIC_API_KEY (required), FACTORY_AI_MODEL (optional, default
 // claude-opus-5). SUPABASE_* are injected automatically.
 
-import Anthropic from "npm:@anthropic-ai/sdk";
+import { aiClient, aiConfigured, aiFailureReason, aiModel, AiError, type AiBlock } from "../_shared/ai.ts";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { handlePreflight } from "../_shared/cors.ts";
@@ -33,7 +33,7 @@ import { isUuid } from "../_shared/validation.ts";
 
 const BUCKET = "factory-ai-attachments";
 const PROMPT_VERSION = "factory-intake-v1";
-const MODEL = Deno.env.get("FACTORY_AI_MODEL") ?? "claude-opus-5";
+const MODEL = aiModel(Deno.env.get("FACTORY_AI_MODEL") ?? "claude-opus-5");
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_FILES = 5;
 const MAX_SHEET_ROWS = 400; // per sheet -- structured rows only, never a whole huge workbook
@@ -244,8 +244,7 @@ Deno.serve(async (req) => {
 
   await admin.from("factory_ai_requests").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", requestId);
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return await fail("AI service is not configured yet (ANTHROPIC_API_KEY missing)");
+  if (!aiConfigured()) return await fail("AI service is not configured yet (no AI key set)");
 
   try {
     const { data: atts, error: attErr } = await admin
@@ -282,7 +281,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const content: Anthropic.ContentBlockParam[] = [];
+    const content: AiBlock[] = [];
     const textParts: string[] = [];
     const ctxLines = [
       `Sender's work title: ${visible.work_title}`,
@@ -324,7 +323,7 @@ Deno.serve(async (req) => {
     if (text.length > MAX_TEXT_CHARS) text = text.slice(0, MAX_TEXT_CHARS) + "\n[truncated]";
     content.push({ type: "text", text });
 
-    const client = new Anthropic({ apiKey });
+    const client = aiClient({ timeoutMs: 110_000, maxRetries: 0 });
     let parsed: unknown = null;
     let lastReason = "";
     let usage: { input_tokens: number; output_tokens: number } | null = null;
@@ -367,9 +366,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("factory-ai-extract failed:", e instanceof Error ? e.message : e);
     let reason = "AI extraction failed";
-    if (e instanceof Anthropic.RateLimitError) reason = "AI service is busy -- please retry shortly";
-    else if (e instanceof Anthropic.AuthenticationError) reason = "AI service credentials are invalid";
-    else if (e instanceof Anthropic.APIError) reason = `AI service error (${e.status})`;
+    if (e instanceof AiError || (e instanceof Error && e.name === "AbortError")) reason = aiFailureReason(e);
     return await fail(reason);
   }
 });

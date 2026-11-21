@@ -8,6 +8,7 @@ import { getDepartmentCards } from "../../lib/departmentConfig";
 import { getModuleRoute } from "../../lib/moduleRegistry";
 import { subscribeTable } from "../../lib/realtime";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
+import PerformanceStrip from "../../components/PerformanceStrip.jsx";
 
 // Who gets the team-wide KPI/Needs-Attention/Control-Tower tracking view,
 // vs. just their own My Today + the function-card grid to reach their own
@@ -231,6 +232,8 @@ export default function InteriorHeadDashboard({ lang, staffProfile }) {
           <div className="sub">{t("interiorLiveDataNote", lang)}</div>
         </div>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       {(myTasks.length > 0 || mySnags.length > 0) && (
         <div className="card">

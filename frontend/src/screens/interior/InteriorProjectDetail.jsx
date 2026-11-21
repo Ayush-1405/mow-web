@@ -8,7 +8,6 @@ import InteriorWorkingDrawings from "./InteriorWorkingDrawings.jsx";
 import InteriorSiteExecution from "./InteriorSiteExecution.jsx";
 import InteriorDailyUpdates from "./InteriorDailyUpdates.jsx";
 import InteriorMaterials from "./InteriorMaterials.jsx";
-import InteriorPurchaseManagement from "./InteriorPurchaseManagement.jsx";
 import InteriorTimeline from "./InteriorTimeline.jsx";
 import InteriorClientComm from "./InteriorClientComm.jsx";
 import InteriorPayments from "./InteriorPayments.jsx";
@@ -32,9 +31,8 @@ const STAGES = [
 // staffProfile, lookups) — every tab reuses the EXISTING screen component
 // unchanged except for the one new lockedProjectId prop (see each
 // screen's own lockedProjectId handling), so this page adds zero
-// duplicate business logic. purchaseManagement's own Board sub-view stays
-// org-wide/cross-project by design (md/MOOD-OF-WOOD-SYSTEM.md §6) even
-// though the tab itself opens locked to this project.
+// duplicate business logic. Purchase Management has no tab here: Interior
+// purchasing goes through Central Procurement (order forms).
 const TABS = [
   { key: "overview", labelKey: "tabOverview", render: null },
   { key: "quotation", labelKey: "tabQuotation", render: (pid, c) => <InteriorAttachments lang={c.lang} stage="Quotation" titleKey="interiorAttachmentsTitle" lockedProjectId={pid} /> },
@@ -46,7 +44,6 @@ const TABS = [
   { key: "siteExecution", labelKey: "tabSiteExecution", render: (pid, c) => <InteriorSiteExecution lang={c.lang} lockedProjectId={pid} /> },
   { key: "dailyUpdates", labelKey: "tabDailyUpdates", render: (pid, c) => <InteriorDailyUpdates lang={c.lang} lockedProjectId={pid} /> },
   { key: "materials", labelKey: "tabMaterials", render: (pid, c) => <InteriorMaterials lang={c.lang} filterSource={null} lockedProjectId={pid} /> },
-  { key: "purchaseManagement", labelKey: "tabPurchaseManagement", render: (pid, c) => <InteriorPurchaseManagement lang={c.lang} staffProfile={c.staffProfile} lockedProjectId={pid} /> },
   { key: "clientComm", labelKey: "tabClientComm", render: (pid, c) => <InteriorClientComm lang={c.lang} lockedProjectId={pid} /> },
   { key: "payments", labelKey: "tabPayments", render: (pid, c) => <InteriorPayments lang={c.lang} lookups={c.lookups} lockedProjectId={pid} /> },
   { key: "tasks", labelKey: "tabTasks", render: (pid, c) => <InteriorTasks lang={c.lang} lockedProjectId={pid} /> },

@@ -18,9 +18,9 @@
 // { ok: false, reason } — the frontend then just shows empty name/category fields for the worker to type instead
 // of a suggestion. The placeholder product row is untouched either way.
 //
-// Secrets: ANTHROPIC_API_KEY (required), RETAIL_STOCK_AI_MODEL (optional, default claude-opus-5).
+// Secrets: GEMINI_API_KEY (or ANTHROPIC_API_KEY); GEMINI_MODEL / RETAIL_STOCK_AI_MODEL optional -- see _shared/ai.ts.
 
-import Anthropic from "npm:@anthropic-ai/sdk";
+import { aiClient, aiConfigured, aiFailureReason, aiModel, AiError } from "../_shared/ai.ts";
 import { handlePreflight } from "../_shared/cors.ts";
 import { errorResponse, okResponse } from "../_shared/response.ts";
 import { MSG } from "../_shared/messages.ts";
@@ -28,7 +28,7 @@ import { adminClient, extractBearerToken, userScopedClient, verifyCaller } from 
 import { isUuid } from "../_shared/validation.ts";
 
 const BUCKET = "staff-attachments";
-const MODEL = Deno.env.get("RETAIL_STOCK_AI_MODEL") ?? "claude-opus-5";
+const MODEL = aiModel(Deno.env.get("RETAIL_STOCK_AI_MODEL") ?? "claude-opus-5");
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
 const CLASSIFICATION_SCHEMA = {
@@ -110,8 +110,7 @@ Deno.serve(async (req) => {
   if (!profile?.is_active) return errorResponse(403, MSG.accountInactive, origin);
   if (profile.must_change_password) return errorResponse(403, MSG.mustChangePassword, origin);
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return okResponse({ ok: false, reason: "AI service is not configured yet" }, origin, 200);
+  if (!aiConfigured()) return okResponse({ ok: false, reason: "AI service is not configured yet" }, origin, 200);
 
   try {
     const { data: att, error: attErr } = await admin
@@ -138,7 +137,7 @@ Deno.serve(async (req) => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     if (bytes.length > MAX_FILE_BYTES) return okResponse({ ok: false, reason: "Photo is larger than 15 MB" }, origin, 200);
 
-    const client = new Anthropic({ apiKey });
+    const client = aiClient({ timeoutMs: 110_000, maxRetries: 1 });
     const resp = await client.messages.create({
       model: MODEL,
       max_tokens: 1024,
@@ -174,9 +173,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("retail-stock-ai-classify failed:", e instanceof Error ? e.message : e);
     let reason = "AI classification failed";
-    if (e instanceof Anthropic.RateLimitError) reason = "AI service is busy — please retry shortly";
-    else if (e instanceof Anthropic.AuthenticationError) reason = "AI service credentials are invalid";
-    else if (e instanceof Anthropic.APIError) reason = `AI service error (${e.status})`;
+    if (e instanceof AiError || (e instanceof Error && e.name === "AbortError")) reason = aiFailureReason(e);
     return okResponse({ ok: false, reason }, origin, 200);
   }
 });

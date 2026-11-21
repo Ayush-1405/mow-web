@@ -126,11 +126,11 @@ async function captionPng(text, widthPt) {
 const plain = (s) => String(s).replace(/[^\x20-\x7e]/g, "-");
 
 // sheet/paper: the form, as for makeOrderFormPdf. attachments: the ok results of prepareAttachments, in order.
-export async function makeCompletePdf({ sheet, paper, attachments, requestNumber }) {
+export async function makeCompletePdf({ sheet, paper, attachments, requestNumber, title = "Production Supply Order Form" }) {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const formBlob = await makeOrderFormPdf(sheet, paper);
   const doc = await PDFDocument.create();
-  doc.setTitle(`${requestNumber} - Production Supply Order Form`);
+  doc.setTitle(`${requestNumber} - ${title}`);
   doc.setCreator("Mood of Wood Staff Pilot");
   const formDoc = await PDFDocument.load(new Uint8Array(await formBlob.arrayBuffer()));
   (await doc.copyPages(formDoc, formDoc.getPageIndices())).forEach((p) => doc.addPage(p));

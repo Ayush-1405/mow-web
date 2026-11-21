@@ -4,6 +4,7 @@ import { t } from "../../lib/i18n";
 import { loadDashboardCounts, loadImportantWork } from "../../lib/retailApi";
 import { subscribeTable } from "../../lib/realtime";
 import WalkinModal from "./WalkinModal.jsx";
+import PerformanceStrip from "../../components/PerformanceStrip.jsx";
 
 // The four prominent, always-visible actions (Part 1 of the product-registration/QR spec): large touch-friendly
 // buttons near the top of the dashboard, never buried behind a menu — a plain salesperson's most common actions.
@@ -91,6 +92,8 @@ export default function RetailDashboard({ lang, profile, lookups, department }) 
         </div>
         <button type="button" className="btn btn-outline" style={{ width: "auto", marginTop: 0 }} onClick={load}>{t("refresh", lang)}</button>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       {/* Prominent, always-visible actions — never buried behind a menu. Large touch targets (56px), a fixed
           2-column grid on a phone (never a horizontal scroll), English + Gujarati labels. */}

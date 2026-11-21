@@ -9,6 +9,7 @@ import { subscribeTable } from "../../lib/realtime";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 import { friendlyError } from "../../lib/friendlyError";
 import ProcurementContactCard from "../../components/ProcurementContactCard";
+import PerformanceStrip from "../../components/PerformanceStrip.jsx";
 
 // The Procurement team's day in one screen. Every order is also a Procurement task (the same record in My Tasks and Bridges):
 // the deadline tiles say what is late or due now, the task filters follow the work from "open" to "completed". Counts come
@@ -138,6 +139,8 @@ export default function ProcurementDashboard({ lang, profile, lookups }) {
           <Link className="btn btn-primary" style={{ width: "auto" }} to="/orders/new">📝 {L(lang, "New order", "નવો ઓર્ડર")}</Link>
         </div>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       <ReminderHealth lang={lang} data={reminders} />
       {actionMsg && (

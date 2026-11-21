@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { t } from "../../lib/i18n";
 import { listGodownQueue } from "../../lib/retailApi";
+import PerformanceStrip from "../../components/PerformanceStrip.jsx";
 
 // Godown, Inventory & Dispatch's real home screen (v2_93q rebuild): five large, icon-first, bilingual actions —
 // per the pilot's own instruction that Godown workers "just work", not read a 40-card grid. Head/Supervisor/
@@ -33,6 +34,8 @@ export default function GodownDashboard({ lang, profile }) {
         <div className="dept-header-icon" aria-hidden="true">📦</div>
         <div className="dept-header-text"><h1>{t("godownHomeTitle", lang)}</h1></div>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       <div className="card" style={{ display: "grid", gap: 14 }}>
         {tiles.map((tile) => (
