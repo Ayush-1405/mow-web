@@ -5,7 +5,7 @@
 // pick links; every page still checks access itself). History, the daily limit and the stop switch are enforced in the
 // database (mai_chat_begin), and both sides of the conversation are stored by this function only.
 
-import { aiClient, aiFailureReason, aiRuntime } from "../_shared/ai.ts";
+import { AiError, aiClient, aiFailureReason, aiRuntime, providerHasKey, type Provider } from "../_shared/ai.ts";
 import { adminClient } from "../_shared/clients.ts";
 import { pageAt, pagesFor } from "../_shared/appMap.ts";
 
@@ -100,13 +100,34 @@ export async function chat(userId: string, input: ChatInput) {
   if (turns.length && turns[turns.length - 1].role === "user") turns.pop();
   turns.push({ role: "user", content: message });
 
-  const provider = rt?.chat_provider ?? "anthropic";
+  // Not tied to one company: the chosen chat model first; if that provider fails (bad key, outage, busy, timeout) the
+  // other connected provider answers. The emergency stop / budget ("stopped") is never bypassed.
+  const primary: Provider = rt?.chat_provider ?? "anthropic";
+  const routes: { provider: Provider; model: string }[] = [
+    { provider: primary, model: rt?.chat_model ?? "claude-opus-5-5" },
+    primary === "anthropic"
+      ? { provider: "gemini" as Provider, model: rt?.document_provider === "gemini" ? rt.document_model : "gemini-3.5-flash" }
+      : { provider: "anthropic" as Provider, model: "claude-opus-5-5" },
+  ].filter((x) => providerHasKey(x.provider));
+  const provider = routes[0]?.provider ?? primary;
   try {
-    const r = await aiClient({ provider, feature: "mood-ai-chat", userId, timeoutMs: 90_000, maxRetries: 1 }).messages.create({
-      model: rt?.chat_model ?? "claude-opus-5-5", max_tokens: 1500, system,
-      output_config: { effort: rt?.chat_effort ?? "low", format: { type: "json_schema", schema: SCHEMA } },
-      messages: turns,
-    });
+    let r: Awaited<ReturnType<ReturnType<typeof aiClient>["messages"]["create"]>> | null = null;
+    let lastErr: unknown = new AiError("auth", 503, "The AI service is not configured yet");
+    for (const route of routes) {
+      try {
+        r = await aiClient({ provider: route.provider, feature: "mood-ai-chat", userId, timeoutMs: 60_000, maxRetries: 1 }).messages.create({
+          model: route.model, max_tokens: 1500, system,
+          output_config: { effort: rt?.chat_effort ?? "low", format: { type: "json_schema", schema: SCHEMA } },
+          messages: turns,
+        });
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (e instanceof AiError && e.kind === "stopped") throw e;
+        console.error(`mood-ai chat: ${route.provider} failed (${aiFailureReason(e)}), trying the next provider`);
+      }
+    }
+    if (!r) throw lastErr;
     const raw = r.content.map((b) => b.text).join("");
     let parsed: { reply?: string; links?: { path: string; label: string }[] } = {};
     try { parsed = JSON.parse(raw); } catch { parsed = { reply: raw, links: [] }; }
@@ -124,7 +145,9 @@ export async function chat(userId: string, input: ChatInput) {
       used_today: begun.used_today, daily_limit: begun.daily_limit,
     } };
   } catch (e) {
-    const reason = aiFailureReason(e);
+    const why = aiFailureReason(e);
+    const reason = e instanceof AiError && e.kind === "stopped" ? why
+      : `Mood AI couldn't reach any of its AI services just now (${why}). Please try again in a little while.`;
     await admin.rpc("mai_chat_finish", { p_user: userId, p_thread: threadId, p_ok: false, p_text: reason, p_links: [], p_provider: provider,
       p_model: rt?.chat_model ?? null, p_in: 0, p_out: 0, p_ms: null });
     return { status: 502, body: { ok: false, code: "ai_failed", error: reason, thread_id: threadId } };
