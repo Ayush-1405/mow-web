@@ -187,7 +187,7 @@ export async function chat(userId: string, input: ChatInput, token: string) {
         const effort = rt?.chat_effort ?? "low";
         r = await aiClient({ provider: route.provider, feature: dev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: dev ? 120_000 : 80_000, maxRetries: 0 }).messages.create({
           model: route.model, max_tokens: dev ? 4000 : 1500, system,
-          output_config: { effort: !dev && route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema: dev ? DEV_SCHEMA : SCHEMA } },
+          output_config: { effort: route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema: dev ? DEV_SCHEMA : SCHEMA } },
           messages: turns,
         });
         break;
