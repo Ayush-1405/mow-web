@@ -38,6 +38,15 @@ export default function MoodAiChat({ lang, departments, management }) {
   const [listening, setListening] = useState(false);
   const [voiceLang, setVoiceLang] = useState(() => { try { return localStorage.getItem("mai_voice_lang") || (lang === "gu" ? "gu-IN" : "en-IN"); } catch { return "en-IN"; } });
   const recRef = useRef(null);
+  const [waitSec, setWaitSec] = useState(0);
+
+  // seconds counter while Mood AI is thinking (the AI services can take a while)
+  useEffect(() => {
+    if (!busy) { setWaitSec(0); return undefined; }
+    const started = Date.now();
+    const t = setInterval(() => setWaitSec(Math.round((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [busy]);
   const listRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -199,7 +208,12 @@ export default function MoodAiChat({ lang, departments, management }) {
                   )}
                 </div>
               ))}
-              {busy && <div className="mai-msg assistant"><div className="mai-bubble mai-typing"><span /><span /><span /></div></div>}
+              {busy && (
+                <div className="mai-msg assistant">
+                  <div className="mai-bubble mai-typing"><span /><span /><span /></div>
+                  {waitSec >= 3 && <div className="mai-meta">{devMode ? L(lang, "Writing the developer request…", "ડેવલપર વિનંતી લખાય છે…") : L(lang, "Thinking…", "વિચારે છે…")} {waitSec} s</div>}
+                </div>
+              )}
             </div>
           )}
 
