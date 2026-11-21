@@ -59,7 +59,10 @@ export default function LaptopServerPanel({ lang, canOwner }) {
                   ["Disk D:", m.disks?.D ? `${m.disks.D.free_gb} GB free` : "—"], ["Disk C:", m.disks?.C ? `${m.disks.C.free_gb} GB free` : "—"],
                   [L(lang, "Power", "પાવર"), m.on_ac === false ? `${L(lang, "battery", "બેટરી")} ${m.battery_pct ?? ""}%` : L(lang, "charger", "ચાર્જર")],
                   [L(lang, "Worker running for", "વર્કર ચાલુ"), m.worker_uptime_min !== undefined ? `${Math.round(m.worker_uptime_min)} min` : "—"],
-                  [L(lang, "Jobs running", "ચાલુ કામ"), w.running]]
+                  [L(lang, "Jobs running", "ચાલુ કામ"), w.running],
+                  [L(lang, "Local models (Ollama)", "લોકલ મૉડેલ"), m.ollama?.up
+                    ? `${[m.ollama.chat_model, m.ollama.embed_model].filter(Boolean).join(" + ")}${m.ollama.loaded?.length ? ` · ${L(lang, "loaded", "લોડ")}: ${m.ollama.loaded.map((x) => x.name).join(", ")}` : ""}`
+                    : L(lang, "off", "બંધ")]]
                   .map(([k, v]) => <div key={k} className="perf-metric"><span className="n" style={{ fontSize: 15 }}>{v}</span><span className="t">{k}</span></div>)}
               </div>
             )}
@@ -80,6 +83,8 @@ export default function LaptopServerPanel({ lang, canOwner }) {
       })}
       <div className="btn-row" style={{ marginTop: 10 }}>
         <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => act(() => rpc("mai_enqueue_job", { p_type: "SELFTEST", p_payload: { note: "from Control Center" }, p_dedupe: null }))}>{L(lang, "Send a test job", "ટેસ્ટ કામ મોકલો")}</button>
+        <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => act(() => rpc("mai_enqueue_job", { p_type: "LOCAL_GENERATE", p_payload: { prompt: "In two short sentences, say what a carpenter checks before fitting a wardrobe shutter.", max_tokens: 120 }, p_dedupe: null }))}>{L(lang, "Test local chat model", "લોકલ ચેટ મૉડેલ ટેસ્ટ")}</button>
+        <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => act(() => rpc("mai_enqueue_job", { p_type: "LOCAL_EMBED", p_payload: { texts: ["teak wood wardrobe with soft-close hinges", "factory dispatch delayed by polishing"] }, p_dedupe: null }))}>{L(lang, "Test local search model", "લોકલ સર્ચ મૉડેલ ટેસ્ટ")}</button>
         {canOwner && <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => { const n = window.prompt(L(lang, "Name for this laptop worker:", "લેપટોપ વર્કરનું નામ:"), "Ayush laptop"); if (n && n.trim()) act(async () => setToken((await rpc("mai_worker_register", { p_name: n.trim() })).token)); }}>{L(lang, "Register a laptop worker", "લેપટોપ વર્કર નોંધો")}</button>}
       </div>
       {(p.recent || []).length > 0 && (
@@ -89,7 +94,7 @@ export default function LaptopServerPanel({ lang, canOwner }) {
             <div key={j.id} className="perf-mini-row">
               <span className="sub">{when(j.created_at)}</span><span>{j.job_type}</span>
               <span className={`badge ${j.status === "DONE" ? "COMPLETED" : j.status === "FAILED" ? "RETURNED" : j.status === "RUNNING" ? "IN_PROGRESS" : "ASSIGNED"}`}>{j.status}</span>
-              <span className="sub">{j.error || (j.status === "DONE" && j.result?.db_round_trip_ms !== undefined ? `${j.result.hostname} · DB ${j.result.db_round_trip_ms} ms · CPU ${j.result.metrics?.cpu_pct}%` : "")}{j.attempts > 1 ? ` · ${j.attempts} attempts` : ""}</span>
+              <span className="sub">{j.error || (j.status === "DONE" ? jobSummary(j) : "")}{j.attempts > 1 ? ` · ${j.attempts} attempts` : ""}</span>
               {["QUEUED", "RUNNING"].includes(j.status) && <button type="button" className="btn btn-outline btn-sm" onClick={() => act(() => rpc("mai_cancel_job", { p_job: j.id }))}>{L(lang, "Cancel", "રદ")}</button>}
             </div>
           ))}
@@ -97,6 +102,14 @@ export default function LaptopServerPanel({ lang, canOwner }) {
       )}
     </div>
   );
+}
+
+function jobSummary(j) {
+  const r = j.result || {};
+  if (j.job_type === "SELFTEST" && r.db_round_trip_ms !== undefined) return `${r.hostname} · DB ${r.db_round_trip_ms} ms · CPU ${r.metrics?.cpu_pct}%`;
+  if (j.job_type === "LOCAL_GENERATE") return `${r.model} · ${(r.ms / 1000).toFixed(1)} s · ${r.tokens_per_s ?? "—"} tok/s — “${String(r.text || "").slice(0, 160)}”`;
+  if (j.job_type === "LOCAL_EMBED") return `${r.model} · ${r.count} × ${r.dimensions} · ${r.ms} ms`;
+  return "";
 }
 
 function LimitsEditor({ lang, w, onSave }) {

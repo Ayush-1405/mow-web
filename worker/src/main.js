@@ -11,6 +11,7 @@ import { makeApi, NotAuthorized } from "./api.js";
 import { readMetrics } from "./metrics.js";
 import { backoffMs, decide } from "./policy.js";
 import { PermanentError, runJob } from "./jobs.js";
+import { startOllama, stopOllama } from "./ollamaProcess.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
@@ -43,6 +44,7 @@ function loadEnv() {
   }
   for (const k of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "MOOD_AI_WORKER_TOKEN"]) if (!env[k]) throw new Error(`${k} is missing in worker/.env`);
   if (!/^https:\/\//.test(env.SUPABASE_URL)) throw new Error("SUPABASE_URL must be https");
+  for (const k of ["OLLAMA_EMBED_MODEL", "OLLAMA_CHAT_MODEL"]) if (env[k]) process.env[k] = env[k]; // optional model overrides
   return env;
 }
 
@@ -61,6 +63,8 @@ async function main() {
 
   log("INFO", `Mood AI worker ${VERSION} starting on ${os.hostname()} (Node ${process.version}), priority below normal`);
   pruneLogs();
+  const ollama = await startOllama(log, LOG_DIR);
+  process.on("exit", () => stopOllama(ollama));
 
   while (!stopping) {
     let wait = HEARTBEAT_MS;
@@ -109,6 +113,7 @@ async function main() {
     }
     await new Promise((r) => { const t = setTimeout(r, wait); const check = setInterval(() => { if (stopping) { clearTimeout(t); clearInterval(check); r(); } }, 500); setTimeout(() => clearInterval(check), wait + 50); });
   }
+  stopOllama(ollama);
   log("INFO", "Mood AI worker stopped");
 }
 
