@@ -31,7 +31,7 @@ async function health(userId: string, token: string, origin: string | null): Pro
     try {
       const r = await aiClient({ provider: m.provider, feature: "health-check", userId, timeoutMs: 60_000, maxRetries: 0 }).messages.create({
         model: m.model, max_tokens: 400, system: "You are a connectivity check. Reply with the single word OK.",
-        output_config: { effort: "low" }, messages: [{ role: "user", content: "Health check: reply OK." }],
+        output_config: { effort: m.provider === "gemini" ? "minimal" : "low" }, messages: [{ role: "user", content: "Health check: reply OK." }],
       });
       const text = r.content.map((b) => b.text).join("").trim();
       await admin.rpc("mai_model_health", { p_provider: m.provider, p_model: m.model, p_ok: true, p_latency_ms: r.latency_ms, p_error: null });
