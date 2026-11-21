@@ -19,14 +19,14 @@ case "${1:-list}" in
     db -c "select ref, status, risk, title, to_char(updated_at at time zone 'Asia/Kolkata', 'DD Mon HH24:MI') as updated
            from mai_dev_requests where status in ('SUBMITTED', 'IN_PROGRESS', 'NEEDS_INFO', 'READY_FOR_REVIEW') order by submitted_at" ;;
   show)
-    db -tA -v ref="$2" -c "select format(E'%s  %s  (status %s, risk %s)\nGoal: %s\nDone when: %s\nQuestions: %s\nBranch: %s\n\n%s',
+    db -tA -v ref="$2" <<< "select format(E'%s  %s  (status %s, risk %s)\nGoal: %s\nDone when: %s\nQuestions: %s\nBranch: %s\n\n%s',
              ref, title, status, risk, goal, acceptance, questions, coalesce(branch, '-'), prompt) from mai_dev_requests where ref = :'ref'"
-    db -tA -v ref="$2" -c "select to_char(e.at at time zone 'Asia/Kolkata', 'DD Mon HH24:MI') || '  ' || coalesce(u.full_name, 'Developer') || '  ' || coalesce(e.status, '') || '  ' || e.note
+    db -tA -v ref="$2" <<< "select to_char(e.at at time zone 'Asia/Kolkata', 'DD Mon HH24:MI') || '  ' || coalesce(u.full_name, 'Developer') || '  ' || coalesce(e.status, '') || '  ' || e.note
            from mai_dev_events e join mai_dev_requests r on r.id = e.request_id left join user_profiles u on u.id = e.actor where r.ref = :'ref' order by e.id" ;;
   report)
     db -q -v ref="$2" -v st="$3" -v note="$4" -v br="${5:-}" -v cm="${6:-}" \
-      -c "select public.mai_dev_report(:'ref', :'st', :'note', nullif(:'br', ''), nullif(:'cm', ''))" && echo "reported $2 $3 (Owner notified)" ;;
+      <<< "select public.mai_dev_report(:'ref', :'st', :'note', nullif(:'br', ''), nullif(:'cm', ''))" && echo "reported $2 $3 (Owner notified)" ;;
   phase)
-    db -q -v ph="$2" -v sm="$3" -c "select public.mai_phase_report(:'ph', :'sm')" && echo "phase report sent" ;;
+    db -q -v ph="$2" -v sm="$3" <<< "select public.mai_phase_report(:'ph', :'sm')" && echo "phase report sent" ;;
   *) echo "usage: $0 list | show REF | report REF STATUS note [branch] [commit] | phase NAME summary"; exit 1 ;;
 esac
