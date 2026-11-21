@@ -6,8 +6,8 @@ export interface AppPage { path: string; name: string; dept: string | null; abou
 
 export const APP_PAGES: AppPage[] = [
   // everyone
-  { path: "/", name: "My tasks (home)", dept: null, about: "Your tasks: assigned to you, created by you, due and overdue; open a task to update it, add photos, voice notes or chat." },
-  { path: "/tasks", name: "Tasks", dept: null, about: "Create and follow tasks across departments, with assignees, due dates, priority and status." },
+  { path: "/", name: "Home (task menu)", dept: null, about: "The home screen. Its menu (left side on computer, bottom bar on phone) has: Today's Tasks (your tasks: assigned to you, created by you, due and overdue; open one to update it, add photos, voice notes or chat), 📝 Assign Task (THIS is where you create a new task: title, assignee, department, due date, priority), Bridge, Notifications, and for Management also Create User, Dashboard and Audit Log." },
+  { path: "/tasks", name: "Today's tasks list", dept: null, about: "List of tasks with filters (my tasks, created by me, department, overdue, by date). To CREATE a task use 📝 Assign Task in the home menu, not this page." },
   { path: "/ai-tasks", name: "AI task draft", dept: null, about: "Type or speak a task in any language; AI drafts it (title, assignee, due date) and you check it before saving." },
   { path: "/bridges", name: "Department bridges", dept: null, about: "Hand work from one department to another and track it until the other side accepts and completes it." },
   { path: "/chat", name: "Team chat", dept: null, about: "Chat with colleagues and groups." },
