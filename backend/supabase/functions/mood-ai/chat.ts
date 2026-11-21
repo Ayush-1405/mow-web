@@ -7,7 +7,7 @@
 
 import { AiError, aiClient, aiFailureReason, aiRuntime, providerHasKey, type Provider } from "../_shared/ai.ts";
 import { adminClient } from "../_shared/clients.ts";
-import { pageAt, pagesFor } from "../_shared/appMap.ts";
+import { APP_PAGES, pageAt, pagesFor } from "../_shared/appMap.ts";
 
 export interface ChatInput {
   thread_id?: string | null;
@@ -15,6 +15,7 @@ export interface ChatInput {
   page?: { path?: string; title?: string };
   departments?: string[];
   management?: boolean;
+  mode?: "chat" | "dev";
 }
 
 const SCHEMA = {
@@ -29,6 +30,48 @@ const SCHEMA = {
   required: ["reply", "links"],
   additionalProperties: false,
 };
+
+// "Developer request" mode (Owner / backup only): turn a wish into a precise prompt for the developer (Claude Code).
+// Saved as a DRAFT; nothing is built until the Owner submits it with the authenticator app.
+const DEV_SCHEMA = {
+  type: "object",
+  properties: {
+    reply: { type: "string", description: "Short message to the Owner in their language: what you understood, the risk, and any question." },
+    title: { type: "string", description: "Short title of the change, in English, max 80 characters." },
+    goal: { type: "string", description: "One or two sentences, in English: what should be true when it is done, and why." },
+    details: { type: "string", description: "In English: what to build or change, who uses it, which screens and data, edge cases." },
+    acceptance: { type: "array", items: { type: "string" }, description: "3-8 concrete checks that prove it works, in English." },
+    areas: { type: "array", items: { type: "string" }, description: "Likely app areas affected (e.g. Factory job cards, Retail orders, database, notifications)." },
+    risk: { type: "string", enum: ["LOW", "MEDIUM", "HIGH"], description: "HIGH if it touches money, permissions, deleting data, or many users." },
+    questions: { type: "array", items: { type: "string" }, description: "Open questions the Owner should answer before building (empty if none)." },
+    prompt: { type: "string", description: "The complete instruction for the developer, in English, ready to use: context, task, constraints, acceptance checks, open questions." },
+  },
+  required: ["reply", "title", "goal", "details", "acceptance", "areas", "risk", "questions", "prompt"],
+  additionalProperties: false,
+};
+
+function devPrompt(name: string, today: string, pages: string) {
+  return `You are Mood AI's request writer for the Mood of Wood staff app. The Owner (${name}) describes a change they want in the app,
+in any language (English, Hindi, Hinglish, Gujarati). Turn it into a precise request for the developer (Claude Code), who will build it
+on a branch, test it, and ask the Owner before anything goes live. Today is ${today}.
+
+The app: React 18 + Vite web app (PWA, no app store) on Vercel; Supabase Postgres with row-level security, SECURITY DEFINER functions
+for writes, Deno edge functions for AI; English and Gujarati screens; departments: Retail, Interior projects, Factory, Godown/inventory/
+dispatch, Procurement, Marketing, E-commerce, Franchise, B2B, R&D, HR, Accounts, Customer service, Management Control Tower.
+
+Rules for the prompt you write (always include them in "prompt"):
+- Work on a branch; never change production data or the live database without the Owner's explicit approval; back up first; no destructive SQL.
+- Keep row-level security; never expose service keys; respect existing roles and department access.
+- Write tests and run them; report honestly what passed and failed.
+- Ask the Owner (through Mood AI) when something important is unclear instead of guessing.
+Do not invent existing features; if you are not sure the app already has something, write "check whether ..." in the prompt.
+If the wish is too vague to build, still write the best draft and put the missing points in "questions".
+The reply to the Owner: in their language, 1-4 sentences: what you understood, the risk level, the questions if any, and that they
+can submit it from the card below (submitting needs their authenticator app).
+
+Known screens (path - name: purpose):
+${pages}`;
+}
 
 function systemPrompt(p: { name: string; role: string; dept: string; pagePath: string; pageName: string; pageAbout: string; pages: string; today: string }) {
   return `You are Mood AI, the assistant inside the staff app of Mood of Wood, an Indian furniture and interiors company
@@ -81,6 +124,11 @@ export async function chat(userId: string, input: ChatInput) {
   const message = String(input.message ?? "").trim();
   const pagePath = String(input.page?.path ?? "/").slice(0, 200);
 
+  const dev = input.mode === "dev";
+  if (dev) {
+    const { data: own } = await admin.from("mai_owners").select("user_id").eq("user_id", userId).eq("is_active", true).maybeSingle();
+    if (!own) return { status: 403, body: { ok: false, code: "not_allowed", error: "Only the Owner or the backup approver can ask for app changes." } };
+  }
   const { data: begun, error: beginErr } = await admin.rpc("mai_chat_begin", {
     p_user: userId, p_thread: input.thread_id || null, p_text: message, p_page: pagePath,
   });
@@ -100,7 +148,7 @@ export async function chat(userId: string, input: ChatInput) {
   const rt = await aiRuntime();
   const today = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
 
-  const system = systemPrompt({
+  const system = dev ? devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")) : systemPrompt({
     name: (prof as any)?.full_name ?? "a staff member", role: (prof as any)?.roles?.name_en ?? "staff", dept: (prof as any)?.departments?.name_en ?? "unknown",
     pagePath, pageName: here?.name ?? String(input.page?.title ?? "").slice(0, 80) ?? "a page", pageAbout: here?.about ?? "",
     pages: allowedPages.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n"), today,
@@ -132,9 +180,9 @@ export async function chat(userId: string, input: ChatInput) {
       try {
         // chat must feel quick: one try per provider, 40 s each; Gemini Flash at "minimal" thinking when chat effort is low
         const effort = rt?.chat_effort ?? "low";
-        r = await aiClient({ provider: route.provider, feature: "mood-ai-chat", userId, timeoutMs: 40_000, maxRetries: 0 }).messages.create({
-          model: route.model, max_tokens: 1500, system,
-          output_config: { effort: route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema: SCHEMA } },
+        r = await aiClient({ provider: route.provider, feature: dev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: dev ? 75_000 : 40_000, maxRetries: 0 }).messages.create({
+          model: route.model, max_tokens: dev ? 4000 : 1500, system,
+          output_config: { effort: !dev && route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema: dev ? DEV_SCHEMA : SCHEMA } },
           messages: turns,
         });
         break;
@@ -146,19 +194,31 @@ export async function chat(userId: string, input: ChatInput) {
     }
     if (!r) throw lastErr;
     const raw = r.content.map((b) => b.text).join("");
-    let parsed: { reply?: string; links?: { path: string; label: string }[] } = {};
+    // deno-lint-ignore no-explicit-any
+    let parsed: any = {};
     try { parsed = JSON.parse(raw); } catch { parsed = { reply: raw, links: [] }; }
-    const reply = String(parsed.reply ?? "").trim() || (r.stop_reason === "refusal" ? "Sorry, I can't help with that." : "Sorry, I couldn't write an answer. Please try again.");
-    const okPaths = new Set(allowedPages.map((p) => p.path));
-    const links = (Array.isArray(parsed.links) ? parsed.links : [])
-      .filter((l) => l && typeof l.path === "string" && okPaths.has(l.path))
-      .slice(0, 3).map((l) => ({ path: l.path, label: String(l.label || allowedPages.find((p) => p.path === l.path)?.name || l.path).slice(0, 60) }));
+    let reply = String(parsed.reply ?? "").trim() || (r.stop_reason === "refusal" ? "Sorry, I can't help with that." : "Sorry, I couldn't write an answer. Please try again.");
+    let links: { path: string; label: string }[];
+    let devRequest: unknown = null;
+    if (dev) {
+      if (!parsed.prompt || !parsed.title) throw new Error("The developer request came back incomplete");
+      const { data: d, error: dErr } = await admin.rpc("mai_dev_draft_internal", { p_user: userId, p_thread: threadId, p_raw: message, p: parsed, p_model: r.model });
+      if (dErr || !d) throw new Error("Could not save the developer request");
+      devRequest = { ...d, goal: parsed.goal, acceptance: parsed.acceptance, questions: parsed.questions };
+      reply = `${reply}\n\n[${d.ref}] ${d.title} (risk ${d.risk}). Saved as a draft: nothing is built until you submit it.`;
+      links = [{ path: "/mood-ai", label: "Developer requests" }];
+    } else {
+      const okPaths = new Set(allowedPages.map((p) => p.path));
+      links = (Array.isArray(parsed.links) ? parsed.links : [])
+        .filter((l: { path?: unknown }) => l && typeof l.path === "string" && okPaths.has(l.path as string))
+        .slice(0, 3).map((l: { path: string; label?: string }) => ({ path: l.path, label: String(l.label || allowedPages.find((p) => p.path === l.path)?.name || l.path).slice(0, 60) }));
+    }
     const { data: fin } = await admin.rpc("mai_chat_finish", {
       p_user: userId, p_thread: threadId, p_ok: true, p_text: reply, p_links: links, p_provider: r.provider, p_model: r.model,
       p_in: r.usage.input_tokens, p_out: r.usage.output_tokens, p_ms: r.latency_ms,
     });
     return { status: 200, body: {
-      ok: true, thread_id: threadId, reply, links, model: r.model, latency_ms: r.latency_ms, cost_usd: fin?.cost_usd ?? null,
+      ok: true, thread_id: threadId, reply, links, dev_request: devRequest, model: r.model, latency_ms: r.latency_ms, cost_usd: fin?.cost_usd ?? null,
       used_today: begun.used_today, daily_limit: begun.daily_limit,
     } };
   } catch (e) {

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { chatHideThread, chatSend, chatStatus, chatThread, chatThreads } from "../lib/moodAiApi";
+import { chatHideThread, chatSend, chatStatus, chatThread, chatThreads, devCancel, devSubmit, withOwnerVerification } from "../lib/moodAiApi";
 
 // Mood AI floating chat (Phase C). Sits outside the page routes, so it stays open while you move between pages.
 // It answers and explains, in English, Hindi, Hinglish or Gujarati; it has no tools yet and changes nothing.
@@ -19,6 +19,10 @@ const SUGGESTIONS = [
   "Help me write a polite payment reminder to a client.",
 ];
 
+// Voice input: the browser's own speech recognition (Chrome / Edge / Android). Hidden where the browser has none.
+const Speech = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+const VOICE_LANGS = [["en-IN", "English"], ["hi-IN", "हिन्दी"], ["gu-IN", "ગુજરાતી"]];
+
 export default function MoodAiChat({ lang, departments, management }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -30,6 +34,10 @@ export default function MoodAiChat({ lang, departments, management }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [devMode, setDevMode] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [voiceLang, setVoiceLang] = useState(() => { try { return localStorage.getItem("mai_voice_lang") || (lang === "gu" ? "gu-IN" : "en-IN"); } catch { return "en-IN"; } });
+  const recRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -62,12 +70,12 @@ export default function MoodAiChat({ lang, departments, management }) {
     setMessages((m) => [...m, { id: `local-${Date.now()}`, role: "user", content: msg }]);
     const r = await chatSend({
       thread_id: threadId, message: msg, page: { path: location.pathname, title: document.title },
-      departments, management,
+      departments, management, mode: devMode ? "dev" : "chat",
     });
     setBusy(false);
     if (r.thread_id && r.thread_id !== threadId) { setThreadId(r.thread_id); saveThread(r.thread_id); }
     if (r.ok) {
-      setMessages((m) => [...m, { id: `local-${Date.now()}-a`, role: "assistant", content: r.reply, links: r.links, cost_usd: r.cost_usd, latency_ms: r.latency_ms, model: r.model }]);
+      setMessages((m) => [...m, { id: `local-${Date.now()}-a`, role: "assistant", content: r.reply, links: r.links, cost_usd: r.cost_usd, latency_ms: r.latency_ms, model: r.model, dev: r.dev_request }]);
       setStatus((s) => (s ? { ...s, used_today: r.used_today, daily_limit: r.daily_limit } : s));
     } else {
       setError(r.error || L(lang, "Mood AI could not answer. Please try again.", "Mood AI જવાબ આપી શક્યું નહીં."));
@@ -75,6 +83,34 @@ export default function MoodAiChat({ lang, departments, management }) {
       else setMessages((m) => m.slice(0, -1)); // not stored by the server (limit / stopped / not allowed): take it back
       if (r.code !== "ai_failed") setText(msg);
       refreshStatus();
+    }
+  }
+
+  function toggleVoice() {
+    if (!Speech) return;
+    if (listening) { recRef.current?.stop(); return; }
+    const rec = new Speech();
+    rec.lang = voiceLang; rec.interimResults = true; rec.continuous = false;
+    const before = text ? `${text.trim()} ` : "";
+    rec.onresult = (e) => { let t = ""; for (const res of e.results) t += res[0].transcript; setText(before + t); };
+    rec.onerror = (e) => { if (e.error !== "aborted" && e.error !== "no-speech") setError(L(lang, "Voice input didn't work. Check the microphone permission.", "અવાજ ઇનપુટ ચાલ્યું નહીં.")); };
+    rec.onend = () => { setListening(false); inputRef.current?.focus(); };
+    recRef.current = rec; setError(""); setListening(true);
+    try { rec.start(); } catch { setListening(false); }
+  }
+
+  async function devAction(msgId, dev, kind) {
+    setError("");
+    try {
+      if (kind === "submit") {
+        await withOwnerVerification(() => devSubmit(dev.id), async () => window.prompt(L(lang, "Enter the 6-digit code from your authenticator app to approve this request:", "ઓથેન્ટિકેટર કોડ (6 અંક):")));
+      } else {
+        if (!window.confirm(L(lang, `Cancel ${dev.ref}?`, `${dev.ref} રદ કરવું?`))) return;
+        await devCancel(dev.id);
+      }
+      setMessages((m) => m.map((x) => (x.id === msgId ? { ...x, dev: { ...x.dev, status: kind === "submit" ? "SUBMITTED" : "CANCELLED" } } : x)));
+    } catch (e) {
+      setError(e?.message || L(lang, "That didn't work.", "થયું નહીં."));
     }
   }
 
@@ -145,6 +181,19 @@ export default function MoodAiChat({ lang, departments, management }) {
                       {m.links.map((l) => <button type="button" key={l.path} className="mai-chip link" onClick={() => navigate(l.path)}>↗ {l.label}</button>)}
                     </div>
                   )}
+                  {m.role === "assistant" && m.dev && (
+                    <div className="mai-dev-card">
+                      <div><b>{m.dev.ref}</b> · {m.dev.title} · <span className={`mai-risk ${m.dev.risk}`}>{m.dev.risk}</span></div>
+                      {m.dev.goal && <div className="sub">{m.dev.goal}</div>}
+                      {(m.dev.questions || []).length > 0 && <ul>{m.dev.questions.map((q) => <li key={q}>{q}</li>)}</ul>}
+                      {m.dev.status === "DRAFT" ? (
+                        <div className="btn-row">
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => devAction(m.id, m.dev, "submit")}>{L(lang, "Approve & send to developer", "મંજૂર કરી ડેવલપરને મોકલો")}</button>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => devAction(m.id, m.dev, "cancel")}>{L(lang, "Cancel", "રદ")}</button>
+                        </div>
+                      ) : <div className="sub">{m.dev.status === "SUBMITTED" ? L(lang, "Sent to the developer. You'll be notified at each step.", "ડેવલપરને મોકલ્યું. દરેક પગલે સૂચના મળશે.") : m.dev.status}</div>}
+                    </div>
+                  )}
                   {m.role === "assistant" && status?.can_see_cost && m.cost_usd != null && (
                     <div className="mai-meta">${Number(m.cost_usd).toFixed(4)}{m.latency_ms ? ` · ${(m.latency_ms / 1000).toFixed(1)} s` : ""}{m.model ? ` · ${m.model}` : ""}</div>
                   )}
@@ -160,13 +209,32 @@ export default function MoodAiChat({ lang, departments, management }) {
               {blocked ? (
                 <div className="mai-chat-note">{!status.ai_enabled ? L(lang, "Mood AI is stopped by the Owner right now.", "Mood AI હાલ બંધ છે.") : L(lang, "Mood AI chat is not switched on for you yet.", "Mood AI ચેટ હજુ તમારા માટે ચાલુ નથી.")}</div>
               ) : (
+                <>
+                {status?.is_owner && (
+                  <div className="mai-mode">
+                    <button type="button" className={!devMode ? "on" : ""} onClick={() => setDevMode(false)}>💬 {L(lang, "Ask", "પૂછો")}</button>
+                    <button type="button" className={devMode ? "on" : ""} onClick={() => setDevMode(true)}>🛠 {L(lang, "Developer request", "ડેવલપર વિનંતી")}</button>
+                  </div>
+                )}
                 <form className="mai-chat-form" onSubmit={(e) => { e.preventDefault(); send(); }}>
+                  {Speech && (
+                    <button type="button" className={`mai-mic ${listening ? "on" : ""}`} onClick={toggleVoice} disabled={busy || limitReached}
+                      title={L(lang, "Speak", "બોલો")} aria-label={listening ? "Stop voice input" : "Voice input"}>{listening ? "■" : "🎤"}</button>
+                  )}
                   <textarea ref={inputRef} rows={1} value={text} maxLength={2000} disabled={busy || limitReached}
-                    placeholder={limitReached ? L(lang, "Today's limit is used up", "આજની મર્યાદા પૂરી") : L(lang, "Ask Mood AI…", "Mood AI ને પૂછો…")}
+                    placeholder={limitReached ? L(lang, "Today's limit is used up", "આજની મર્યાદા પૂરી") : listening ? L(lang, "Listening…", "સાંભળું છું…")
+                      : devMode ? L(lang, "Describe the change you want in the app…", "એપમાં શું બદલવું છે તે લખો…") : L(lang, "Ask Mood AI…", "Mood AI ને પૂછો…")}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} />
                   <button type="submit" className="btn btn-primary" disabled={busy || !text.trim() || limitReached}>{busy ? "…" : "➤"}</button>
                 </form>
+                {Speech && (
+                  <select className="mai-voice-lang" value={voiceLang} aria-label="Voice language"
+                    onChange={(e) => { setVoiceLang(e.target.value); try { localStorage.setItem("mai_voice_lang", e.target.value); } catch { /* ignore */ } }}>
+                    {VOICE_LANGS.map(([v, n]) => <option key={v} value={v}>🎤 {n}</option>)}
+                  </select>
+                )}
+                </>
               )}
               {status && !blocked && <div className="mai-chat-count">{status.used_today}/{status.daily_limit} {L(lang, "today", "આજે")}</div>}
             </footer>

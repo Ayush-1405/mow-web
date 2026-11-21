@@ -2261,3 +2261,24 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
   .mai-chat-head { padding-top: calc(12px + var(--safe-top)); }
 }
 @media print { .mai-fab, .mai-chat { display: none !important; } }
+/* Mood AI chat: developer mode, request card, voice */
+.mai-mode { display: flex; gap: 6px; margin-bottom: 6px; }
+.mai-mode button { flex: 1; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 8px; font-size: 12.5px; cursor: pointer; }
+.mai-mode button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.mai-mic { width: 40px; min-width: 40px; height: 40px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); cursor: pointer; font-size: 16px; }
+.mai-mic.on { background: var(--danger); border-color: var(--danger); color: #fff; animation: mai-pulse 1.2s infinite; }
+@keyframes mai-pulse { 50% { opacity: .65; } }
+@media (prefers-reduced-motion: reduce) { .mai-mic.on { animation: none; } }
+.mai-voice-lang { margin-top: 4px; font-size: 11.5px; border: 0; background: transparent; color: var(--ink-soft); }
+.mai-dev-card { margin-top: 6px; padding: 10px 12px; border: 1px solid var(--brand); border-radius: 12px; background: var(--surface); font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.mai-dev-card ul { margin: 0; padding-left: 18px; }
+.mai-risk { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--success-bg); color: var(--success); }
+.mai-risk.MEDIUM { background: var(--accent-soft); color: var(--accent-dark); }
+.mai-risk.HIGH { background: var(--danger-bg); color: var(--danger); }
+.mai-dev-row { border-top: 1px solid var(--border); }
+.mai-dev-head { width: 100%; background: none; border: 0; text-align: left; cursor: pointer; color: inherit; font: inherit; padding: 8px 0; }
+.mai-dev-body { padding: 0 0 12px; font-size: 13.5px; }
+.mai-dev-body ul { margin: 4px 0 8px; padding-left: 18px; }
+.mai-dev-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-height: 320px; overflow: auto; }
+.mai-dev-events { list-style: none; padding-left: 0; }
+.mai-dev-events li { padding: 3px 0; border-bottom: 1px dashed var(--border); }
