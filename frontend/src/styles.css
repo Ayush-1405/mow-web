@@ -2254,11 +2254,48 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mai-thread.on .mai-thread-open { border-color: var(--brand); }
 .mai-thread-open small { color: var(--ink-soft); font-size: 11px; }
 .mai-thread-hide { border: 0; background: transparent; color: var(--ink-soft); cursor: pointer; padding: 0 8px; }
+/* shared refinements */
+.mai-fab { touch-action: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.mai-chat-meta-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
+.mai-chat-meta-row .mai-chat-count, .mai-chat-meta-row .mai-voice-lang { margin: 0; }
+.mai-chat-form textarea { line-height: 1.4; overflow-y: auto; }
+.mai-chat-sub { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mai-chat-head > div:first-child { min-width: 0; }
+.mai-dev-card .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.mai-dev-card .btn-row .btn { width: auto; flex: 1 1 auto; }
+
+/* tablets / landscape phones: keep the floating window inside the screen */
+@media (max-height: 640px) and (min-width: 561px) {
+  .mai-chat { height: calc(var(--app-height, 100dvh) - 24px); bottom: 12px; }
+}
+
+/* phones: full screen, pinned to the TOP and sized to the visible area, so the on-screen keyboard never covers the message box */
 @media (max-width: 560px) {
-  .mai-fab { padding: 12px 14px; bottom: calc(76px + var(--safe-bottom)); }
+  .mai-fab { width: 54px; height: 54px; padding: 0; justify-content: center; right: calc(14px + var(--safe-right)); bottom: calc(80px + var(--safe-bottom)); }
+  .mai-fab-icon { font-size: 22px; }
   .mai-fab-text { display: none; }
-  .mai-chat { right: 0; bottom: 0; width: 100vw; height: var(--app-height, 100dvh); border-radius: 0; border: 0; }
-  .mai-chat-head { padding-top: calc(12px + var(--safe-top)); }
+  .mai-chat {
+    top: 0; left: 0; right: 0; bottom: auto; width: 100%; max-width: none;
+    height: var(--app-height, 100dvh); border-radius: 0; border: 0; box-shadow: none;
+  }
+  .mai-chat-head { padding: calc(10px + var(--safe-top)) calc(10px + var(--safe-right)) 10px calc(14px + var(--safe-left)); align-items: center; }
+  .mai-chat-head b { font-size: 16px; }
+  .mai-chat-sub { -webkit-line-clamp: 1; }
+  .mai-chat-actions { gap: 6px; }
+  .mai-chat-actions button { width: 40px; height: 40px; font-size: 16px; border-radius: 12px; }
+  .mai-chat-list { padding: 12px calc(12px + var(--safe-right)) 12px calc(12px + var(--safe-left)); }
+  .mai-msg { max-width: 92%; }
+  .mai-bubble { font-size: 15px; }
+  .mai-chip { padding: 9px 13px; font-size: 14px; }
+  .mai-chat-empty .mai-chip { width: 100%; }
+  .mai-chat-foot { padding: 8px calc(10px + var(--safe-right)) calc(8px + var(--safe-bottom)) calc(10px + var(--safe-left)); }
+  .mai-mode button { padding: 8px 8px; font-size: 13.5px; }
+  .mai-chat-form { gap: 6px; }
+  .mai-chat-form textarea { font-size: 16px; min-height: 44px; padding: 10px 12px; } /* 16px: iPhone does not zoom the page */
+  .mai-chat-form .btn, .mai-mic { width: 44px; min-width: 44px; height: 44px; }
+  .mai-voice-lang { font-size: 13px; padding: 4px 0; }
+  .mai-thread-open { padding: 12px; font-size: 14.5px; }
+  .mai-thread-hide { padding: 0 12px; font-size: 16px; }
 }
 @media print { .mai-fab, .mai-chat { display: none !important; } }
 /* Mood AI chat: developer mode, request card, voice */
@@ -2282,3 +2319,6 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mai-dev-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-height: 320px; overflow: auto; }
 .mai-dev-events { list-style: none; padding-left: 0; }
 .mai-dev-events li { padding: 3px 0; border-bottom: 1px dashed var(--border); }
+.mai-chat-form textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mai-chat-meta-row .mai-voice-lang { width: auto; max-width: 60%; flex: 0 0 auto; min-height: 0; }
+.mai-chat-meta-row .mai-chat-count { white-space: nowrap; flex: 0 0 auto; }

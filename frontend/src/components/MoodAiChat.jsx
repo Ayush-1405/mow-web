@@ -21,6 +21,10 @@ const SUGGESTIONS = [
 
 // Voice input: the browser's own speech recognition (Chrome / Edge / Android). Hidden where the browser has none.
 const Speech = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+const isTouch = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+const isPhone = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(max-width: 560px)").matches;
+const FAB_KEY = "mai_fab_bottom";
+const readFab = () => { try { const v = Number(localStorage.getItem(FAB_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; } };
 const VOICE_LANGS = [["en-IN", "English"], ["hi-IN", "हिन्दी"], ["gu-IN", "ગુજરાતી"]];
 
 export default function MoodAiChat({ lang, departments, management }) {
@@ -39,6 +43,7 @@ export default function MoodAiChat({ lang, departments, management }) {
   const [voiceLang, setVoiceLang] = useState(() => { try { return localStorage.getItem("mai_voice_lang") || (lang === "gu" ? "gu-IN" : "en-IN"); } catch { return "en-IN"; } });
   const recRef = useRef(null);
   const [waitSec, setWaitSec] = useState(0);
+  const [fabBottom, setFabBottom] = useState(readFab);
 
   // seconds counter while Mood AI is thinking (the AI services can take a while)
   useEffect(() => {
@@ -59,11 +64,35 @@ export default function MoodAiChat({ lang, departments, management }) {
     if (!open) return;
     refreshStatus();
     if (threadId && !messages.length) chatThread(threadId).then(setMessages).catch(() => { setThreadId(null); saveThread(null); });
-    setTimeout(() => inputRef.current?.focus(), 50);
+    if (!isTouch()) setTimeout(() => inputRef.current?.focus(), 50); // on phones, don't throw the keyboard up on open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }); }, [messages, busy]);
+
+  // phone: full-screen chat -> the page behind must not scroll, and the phone's Back button closes the chat (not the page)
+  useEffect(() => {
+    if (!open || !isPhone()) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    let closedByBack = false;
+    window.history.pushState({ ...(window.history.state || {}), maiChat: true }, "");
+    const onPop = () => { closedByBack = true; setOpen(false); };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("popstate", onPop);
+      if (!closedByBack && window.history.state?.maiChat) window.history.back();
+    };
+  }, [open]);
+
+  // the message box grows with the text (up to 5 lines)
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
+  }, [text, open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -134,13 +163,44 @@ export default function MoodAiChat({ lang, departments, management }) {
 
   if (hidden) return null;
 
+  function fabPointerDown(e) {
+    const btn = e.currentTarget;
+    const startY = e.clientY;
+    const startBottom = window.innerHeight - btn.getBoundingClientRect().bottom;
+    let moved = false;
+    const onMove = (ev) => {
+      const dy = ev.clientY - startY;
+      if (!moved && Math.abs(dy) < 8) return;
+      moved = true;
+      const b = Math.min(Math.max(startBottom - dy, 12), window.innerHeight - 120);
+      btn.style.bottom = `${b}px`;
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (moved) {
+        const b = parseInt(btn.style.bottom, 10);
+        setFabBottom(b);
+        try { localStorage.setItem(FAB_KEY, String(b)); } catch { /* ignore */ }
+        btn.dataset.dragged = "1";
+        setTimeout(() => { delete btn.dataset.dragged; }, 0);
+      }
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
+
   const blocked = status && (!status.allowed || !status.ai_enabled);
   const limitReached = status && status.used_today >= status.daily_limit;
 
   return (
     <>
       {!open && (
-        <button type="button" className="mai-fab" onClick={() => setOpen(true)} aria-label="Open Mood AI">
+        <button type="button" className="mai-fab" style={fabBottom ? { bottom: `${fabBottom}px` } : undefined}
+          onPointerDown={fabPointerDown} onClick={(e) => { if (!e.currentTarget.dataset.dragged) setOpen(true); }}
+          aria-label="Open Mood AI" title={L(lang, "Mood AI (drag to move)", "Mood AI (ખસેડવા ખેંચો)")}>
           <span className="mai-fab-icon" aria-hidden="true">✦</span><span className="mai-fab-text">Mood AI</span>
         </button>
       )}
@@ -187,7 +247,7 @@ export default function MoodAiChat({ lang, departments, management }) {
                   <div className="mai-bubble">{m.content}</div>
                   {m.role === "assistant" && (m.links || []).length > 0 && (
                     <div className="mai-links">
-                      {m.links.map((l) => <button type="button" key={l.path} className="mai-chip link" onClick={() => navigate(l.path)}>↗ {l.label}</button>)}
+                      {m.links.map((l) => <button type="button" key={l.path} className="mai-chip link" onClick={() => { navigate(l.path); if (isPhone()) setOpen(false); }}>↗ {l.label}</button>)}
                     </div>
                   )}
                   {m.role === "assistant" && m.dev && (
@@ -237,20 +297,25 @@ export default function MoodAiChat({ lang, departments, management }) {
                   )}
                   <textarea ref={inputRef} rows={1} value={text} maxLength={2000} disabled={busy || limitReached}
                     placeholder={limitReached ? L(lang, "Today's limit is used up", "આજની મર્યાદા પૂરી") : listening ? L(lang, "Listening…", "સાંભળું છું…")
-                      : devMode ? L(lang, "Describe the change you want in the app…", "એપમાં શું બદલવું છે તે લખો…") : L(lang, "Ask Mood AI…", "Mood AI ને પૂછો…")}
+                      : devMode ? L(lang, "Describe the app change…", "એપમાં શું બદલવું છે…") : L(lang, "Ask Mood AI…", "Mood AI ને પૂછો…")}
                     onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} />
+                    enterKeyHint="send"
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !isTouch()) { e.preventDefault(); send(); } }} />
                   <button type="submit" className="btn btn-primary" disabled={busy || !text.trim() || limitReached}>{busy ? "…" : "➤"}</button>
                 </form>
-                {Speech && (
-                  <select className="mai-voice-lang" value={voiceLang} aria-label="Voice language"
-                    onChange={(e) => { setVoiceLang(e.target.value); try { localStorage.setItem("mai_voice_lang", e.target.value); } catch { /* ignore */ } }}>
-                    {VOICE_LANGS.map(([v, n]) => <option key={v} value={v}>🎤 {n}</option>)}
-                  </select>
-                )}
                 </>
               )}
-              {status && !blocked && <div className="mai-chat-count">{status.used_today}/{status.daily_limit} {L(lang, "today", "આજે")}</div>}
+              {(Speech || (status && !blocked)) && (
+                <div className="mai-chat-meta-row">
+                  {Speech && !blocked ? (
+                    <select className="mai-voice-lang" value={voiceLang} aria-label="Voice language"
+                      onChange={(e) => { setVoiceLang(e.target.value); try { localStorage.setItem("mai_voice_lang", e.target.value); } catch { /* ignore */ } }}>
+                      {VOICE_LANGS.map(([v, n]) => <option key={v} value={v}>🎤 {n}</option>)}
+                    </select>
+                  ) : <span />}
+                  {status && !blocked && <span className="mai-chat-count">{status.used_today}/{status.daily_limit} {L(lang, "today", "આજે")}</span>}
+                </div>
+              )}
             </footer>
           )}
         </section>
