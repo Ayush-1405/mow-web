@@ -2187,3 +2187,12 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .perf-versions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 13px; }
 .perf-versions a.on { font-weight: 800; }
 .perf-note { line-height: 1.55; }
+
+/* ---------------- v3_19 Mood AI Control Center ---------------- */
+.mai-status { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-left: 5px solid var(--success); }
+.mai-status.off { border-left-color: var(--danger); background: var(--danger-bg); }
+.mai-status.on b { color: var(--success); }
+.mai-status.off b { color: var(--danger); }
+.mai-toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.mai-toggle input { width: auto; margin: 0; }
+.mai-verify img { display: block; margin: 8px 0; }

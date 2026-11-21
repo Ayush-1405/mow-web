@@ -107,7 +107,7 @@ async function writeEmployeeReview(token: string, reportId: string, origin: stri
 
   let reply_: Awaited<ReturnType<ReturnType<typeof aiClient>["messages"]["create"]>>;
   try {
-    reply_ = await aiClient({ timeoutMs: AI_TIMEOUT_MS, maxRetries: 0 }).messages.create({
+    reply_ = await aiClient({ timeoutMs: AI_TIMEOUT_MS, maxRetries: 0, feature: "perf-ai-review" }).messages.create({
       model: MODEL, max_tokens: 4000, system, output_config: { effort: "low", format: { type: "json_schema", schema: REVIEW_SCHEMA } },
       messages: [{ role: "user", content: user }],
     });
@@ -158,7 +158,7 @@ async function writeCompanySummary(token: string, companyId: string, origin: str
 - In "departments" write one short summary per department_id that appears in metrics.departments, using that exact department_id.`;
   let reply_: Awaited<ReturnType<ReturnType<typeof aiClient>["messages"]["create"]>>;
   try {
-    reply_ = await aiClient({ timeoutMs: AI_TIMEOUT_MS, maxRetries: 0 }).messages.create({
+    reply_ = await aiClient({ timeoutMs: AI_TIMEOUT_MS, maxRetries: 0, feature: "perf-ai-review" }).messages.create({
       model: MODEL, max_tokens: 5000, system, output_config: { effort: "low", format: { type: "json_schema", schema: COMPANY_SCHEMA } },
       messages: [{ role: "user", content: `Write the summary for ${input.month}. Facts (JSON):\n${JSON.stringify(input.metrics)}` }],
     });

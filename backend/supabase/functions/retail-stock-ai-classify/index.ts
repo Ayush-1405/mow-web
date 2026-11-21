@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     if (bytes.length > MAX_FILE_BYTES) return okResponse({ ok: false, reason: "Photo is larger than 15 MB" }, origin, 200);
 
-    const client = aiClient({ timeoutMs: 110_000, maxRetries: 1 });
+    const client = aiClient({ timeoutMs: 110_000, maxRetries: 1, feature: "retail-stock-ai-classify", userId: user.id });
     const resp = await client.messages.create({
       model: MODEL,
       max_tokens: 1024,

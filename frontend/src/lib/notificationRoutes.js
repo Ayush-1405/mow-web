@@ -23,6 +23,7 @@ export function routeFor(n) {
     case "PERF_TEAM": return "/performance/team";
     case "PERF_CONTROL": return "/performance/control";
     case "PERF_COMPANY": return "/performance/control?tab=company";
+    case "MOOD_AI": return "/mood-ai";
     default: return null;
   }
 }
