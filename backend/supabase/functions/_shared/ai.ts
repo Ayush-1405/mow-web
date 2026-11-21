@@ -43,7 +43,7 @@ export class AiError extends Error {
 
 const GEMINI_KEY = () => Deno.env.get("GEMINI_API_KEY") ?? "";
 const CLAUDE_KEY = () => Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-const providerHasKey = (p: Provider) => (p === "gemini" ? !!GEMINI_KEY() : !!CLAUDE_KEY());
+export const providerHasKey = (p: Provider) => (p === "gemini" ? !!GEMINI_KEY() : !!CLAUDE_KEY());
 
 // The provider a function uses when it does not ask for one: Gemini when its key is set (documents / photos), else Claude.
 export const aiProvider = (): Provider | null => (GEMINI_KEY() ? "gemini" : CLAUDE_KEY() ? "anthropic" : null);
