@@ -6,7 +6,7 @@
 // database (mai_chat_begin), and both sides of the conversation are stored by this function only.
 
 import { AiError, aiClient, aiFailureReason, aiRuntime, providerHasKey, type Provider } from "../_shared/ai.ts";
-import { adminClient } from "../_shared/clients.ts";
+import { adminClient, userScopedClient } from "../_shared/clients.ts";
 import { APP_PAGES, pageAt, pagesFor } from "../_shared/appMap.ts";
 
 export interface ChatInput {
@@ -119,15 +119,16 @@ Pages this person can open (path - name: what it is for):
 ${p.pages}`;
 }
 
-export async function chat(userId: string, input: ChatInput) {
+export async function chat(userId: string, input: ChatInput, token: string) {
   const admin = adminClient();
   const message = String(input.message ?? "").trim();
   const pagePath = String(input.page?.path ?? "/").slice(0, 200);
 
   const dev = input.mode === "dev";
   if (dev) {
-    const { data: own } = await admin.from("mai_owners").select("user_id").eq("user_id", userId).eq("is_active", true).maybeSingle();
-    if (!own) return { status: 403, body: { ok: false, code: "not_allowed", error: "Only the Owner or the backup approver can ask for app changes." } };
+    // Owner / backup check as the signed-in person (mai_chat_status.is_owner); the database checks again when saving
+    const { data: st } = await userScopedClient(token).rpc("mai_chat_status");
+    if (!st?.is_owner) return { status: 403, body: { ok: false, code: "not_allowed", error: "Only the Owner or the backup approver can ask for app changes." } };
   }
   const { data: begun, error: beginErr } = await admin.rpc("mai_chat_begin", {
     p_user: userId, p_thread: input.thread_id || null, p_text: message, p_page: pagePath,
