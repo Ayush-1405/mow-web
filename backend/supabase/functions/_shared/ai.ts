@@ -22,7 +22,7 @@ export interface AiRequest {
   max_tokens: number;
   system: string;
   thinking?: unknown;
-  output_config?: { effort?: "low" | "medium" | "high"; format?: { type: "json_schema"; schema: Record<string, unknown> } };
+  output_config?: { effort?: "minimal" | "low" | "medium" | "high"; format?: { type: "json_schema"; schema: Record<string, unknown> } };
   messages: { role: "user" | "assistant"; content: AiBlock[] | string }[];
 }
 
@@ -125,28 +125,36 @@ async function geminiCreate(req: AiRequest, model: string, timeoutMs: number): P
     const parts = blocks.map((b) => (b.type === "text" ? { text: b.text } : { inlineData: { mimeType: b.source.media_type, data: b.source.data } }));
     contents.push({ role: m.role === "assistant" ? "model" : "user", parts });
   }
-  const generationConfig: Record<string, unknown> = {
-    maxOutputTokens: req.max_tokens,
-    thinkingConfig: { thinkingLevel: req.output_config?.effort === "high" ? "high" : req.output_config?.effort === "medium" ? "medium" : "low" },
-  };
+  // effort "minimal" (fast chat): Flash models can skip most internal reasoning; if a model refuses that level we resend at "low".
+  const level = req.output_config?.effort === "high" ? "high" : req.output_config?.effort === "medium" ? "medium"
+    : req.output_config?.effort === "minimal" && /flash/i.test(model) ? "minimal" : "low";
+  const generationConfig: Record<string, unknown> = { maxOutputTokens: req.max_tokens, thinkingConfig: { thinkingLevel: level } };
   if (req.output_config?.format?.schema) {
     generationConfig.responseMimeType = "application/json";
     generationConfig.responseJsonSchema = geminiSchema(req.output_config.format.schema);
   }
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  let res: Response;
-  try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY() },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: req.system }] }, contents, generationConfig }),
-      signal: ctl.signal,
-    });
-  } finally {
-    clearTimeout(timer);
+  const deadline = Date.now() + timeoutMs;
+  const send = async () => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), Math.max(1_000, deadline - Date.now()));
+    try {
+      return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY() },
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: req.system }] }, contents, generationConfig }),
+        signal: ctl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  let res = await send();
+  let body = await res.json().catch(() => ({}));
+  if (res.status === 400 && level === "minimal" && /think/i.test(String(body?.error?.message ?? ""))) {
+    generationConfig.thinkingConfig = { thinkingLevel: "low" };
+    res = await send();
+    body = await res.json().catch(() => ({}));
   }
-  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = String(body?.error?.message ?? res.statusText).slice(0, 300);
     console.error(`gemini ${model} ${res.status}: ${msg}`);

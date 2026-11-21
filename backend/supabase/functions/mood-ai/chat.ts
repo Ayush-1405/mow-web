@@ -115,9 +115,11 @@ export async function chat(userId: string, input: ChatInput) {
     let lastErr: unknown = new AiError("auth", 503, "The AI service is not configured yet");
     for (const route of routes) {
       try {
-        r = await aiClient({ provider: route.provider, feature: "mood-ai-chat", userId, timeoutMs: 60_000, maxRetries: 1 }).messages.create({
+        // chat must feel quick: one try per provider, 40 s each; Gemini Flash at "minimal" thinking when chat effort is low
+        const effort = rt?.chat_effort ?? "low";
+        r = await aiClient({ provider: route.provider, feature: "mood-ai-chat", userId, timeoutMs: 40_000, maxRetries: 0 }).messages.create({
           model: route.model, max_tokens: 1500, system,
-          output_config: { effort: rt?.chat_effort ?? "low", format: { type: "json_schema", schema: SCHEMA } },
+          output_config: { effort: route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema: SCHEMA } },
           messages: turns,
         });
         break;
