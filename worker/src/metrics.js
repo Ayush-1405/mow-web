@@ -4,6 +4,7 @@ import os from "node:os";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { cpuPercent } from "./policy.js";
+import { ollamaStatus } from "./ollama.js";
 
 const run = (cmd, args, ms = 4000) => new Promise((resolve) => {
   execFile(cmd, args, { timeout: ms, windowsHide: true }, (err, stdout) => resolve(err ? null : String(stdout).trim()));
@@ -43,11 +44,11 @@ async function power() {
 }
 
 export async function readMetrics() {
-  const [cpu_pct, g, p] = await Promise.all([sampleCpu(), gpu(), power()]);
+  const [cpu_pct, g, p, ollama] = await Promise.all([sampleCpu(), gpu(), power(), ollamaStatus()]);
   return {
     cpu_pct, cpu_cores: os.cpus().length, cpu_model: os.cpus()[0]?.model?.trim(),
     ram_total_gb: +(os.totalmem() / 1024 ** 3).toFixed(1), ram_free_gb: +(os.freemem() / 1024 ** 3).toFixed(1),
-    gpu: g, disks: disks(), on_ac: p.on_ac, battery_pct: p.battery_pct,
+    gpu: g, ollama, disks: disks(), on_ac: p.on_ac, battery_pct: p.battery_pct,
     os_uptime_h: +(os.uptime() / 3600).toFixed(1), worker_uptime_min: +(process.uptime() / 60).toFixed(1),
     worker_ram_mb: Math.round(process.memoryUsage().rss / 1e6),
   };
