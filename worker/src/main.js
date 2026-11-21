@@ -12,6 +12,7 @@ import { readMetrics } from "./metrics.js";
 import { backoffMs, decide } from "./policy.js";
 import { PermanentError, runJob } from "./jobs.js";
 import { startOllama, stopOllama } from "./ollamaProcess.js";
+import { findClaude, workOnRequest } from "./devAgent.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
@@ -44,7 +45,7 @@ function loadEnv() {
   }
   for (const k of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "MOOD_AI_WORKER_TOKEN"]) if (!env[k]) throw new Error(`${k} is missing in worker/.env`);
   if (!/^https:\/\//.test(env.SUPABASE_URL)) throw new Error("SUPABASE_URL must be https");
-  for (const k of ["OLLAMA_EMBED_MODEL", "OLLAMA_CHAT_MODEL"]) if (env[k]) process.env[k] = env[k]; // optional model overrides
+  for (const k of ["OLLAMA_EMBED_MODEL", "OLLAMA_CHAT_MODEL", "CLAUDE_EXE"]) if (env[k]) process.env[k] = env[k]; // optional overrides
   return env;
 }
 
@@ -64,16 +65,24 @@ async function main() {
   log("INFO", `Mood AI worker ${VERSION} starting on ${os.hostname()} (Node ${process.version}), priority below normal`);
   pruneLogs();
   const ollama = await startOllama(log, LOG_DIR);
+  // laptop developer: Claude Code from VS Code + this repository (DEV_REPO in worker/.env to override; DEV_AGENT=off to disable here)
+  const devRepo = env.DEV_REPO || path.resolve(ROOT, "..");
+  const claudeExe = env.DEV_AGENT === "off" ? null : findClaude();
+  const devReady = !!claudeExe && fs.existsSync(path.join(devRepo, ".git"));
+  log("INFO", devReady ? `Laptop developer ready (Claude Code: ${path.basename(path.dirname(path.dirname(path.dirname(claudeExe))))}, repo ${devRepo})`
+    : "Laptop developer not available (Claude Code or the repository not found)");
+  let devBusy = null; // ref of the request being built
   process.on("exit", () => stopOllama(ollama));
 
   while (!stopping) {
     let wait = HEARTBEAT_MS;
     try {
       const metrics = await readMetrics();
+      metrics.claude = { up: devReady, busy: devBusy };
       cpuHistory.push(metrics.cpu_pct); if (cpuHistory.length > 5) cpuHistory.shift();
       // report the state judged with the server's last answer (pause / stop / limits); the new answer then decides this round
       const local = decide({ server: ctx.server || {}, metrics, cpuHistory, limits: ctx.limits });
-      const server = await api.heartbeat(metrics, busy ? "RUNNING" : local.state, local.reason, VERSION, os.hostname(), startedAt);
+      const server = await api.heartbeat(metrics, busy || devBusy ? "RUNNING" : local.state, devBusy ? `Building ${devBusy}` : local.reason, VERSION, os.hostname(), startedAt);
       ctx.server = server;
       ctx.limits = server.limits;
       if (failures) log("INFO", `Reconnected after ${failures} failed attempt(s)`);
@@ -81,7 +90,16 @@ async function main() {
       if (server.restart) { log("INFO", "Restart requested from the Control Center"); process.exitCode = 3; break; }
       const d = decide({ server, metrics, cpuHistory, limits: server.limits });
       if (d.state !== lastState) { log("INFO", `State: ${d.state}${d.reason ? ` (${d.reason})` : ""}`); lastState = d.state; }
-      if (d.run && !busy) {
+      // approved developer requests (one at a time, in the background; heartbeats continue meanwhile)
+      if (d.run && devReady && !devBusy && !busy) {
+        const req = await api.devClaim();
+        if (req) {
+          devBusy = req.ref;
+          log("INFO", `Developer request ${req.ref} picked up: ${req.title}`);
+          workOnRequest(req, { api, repo: devRepo, exe: claudeExe, log }).finally(() => { devBusy = null; });
+        }
+      }
+      if (d.run && !busy && !devBusy) {
         const job = await api.claim();
         if (job) {
           busy = true;

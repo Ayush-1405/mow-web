@@ -1,6 +1,6 @@
 {
   "name": "mood-ai-worker",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Optional Mood AI laptop worker: takes background jobs from the Supabase queue over outbound HTTPS.",
   "type": "module",
