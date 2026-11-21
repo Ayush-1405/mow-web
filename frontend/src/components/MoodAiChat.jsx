@@ -63,7 +63,13 @@ export default function MoodAiChat({ lang, departments, management }) {
   useEffect(() => {
     if (!open) return;
     refreshStatus();
-    if (threadId && !messages.length) chatThread(threadId).then(setMessages).catch(() => { setThreadId(null); saveThread(null); });
+    // reopen the conversation kept for this tab, unless it was cleared (hidden) since
+    if (threadId && !messages.length) {
+      chatThreads().then((list) => {
+        if (!list.some((t) => t.id === threadId)) { setThreadId(null); saveThread(null); return; }
+        chatThread(threadId).then(setMessages).catch(() => { setThreadId(null); saveThread(null); });
+      }).catch(() => { setThreadId(null); saveThread(null); });
+    }
     if (!isTouch()) setTimeout(() => inputRef.current?.focus(), 50); // on phones, don't throw the keyboard up on open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

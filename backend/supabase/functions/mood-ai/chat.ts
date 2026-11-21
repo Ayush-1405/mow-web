@@ -31,6 +31,17 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
+// For the Owner / backup the normal answer also says whether the message asks to change the app itself; if so the same message is
+// turned into a developer request straight away (no need to switch the chat to "Developer request").
+const OWNER_SCHEMA = {
+  ...SCHEMA,
+  properties: {
+    ...SCHEMA.properties,
+    app_change: { type: "boolean", description: "true when the Owner asks to build, add, change, improve, fix or remove something in the app or in Mood AI itself (work for the developer); false for questions about how to use the app, data questions or writing help." },
+  },
+  required: [...SCHEMA.required, "app_change"],
+};
+
 // "Developer request" mode (Owner / backup only): turn a wish into a precise prompt for the developer (Claude Code).
 // Saved as a DRAFT; nothing is built until the Owner submits it with the authenticator app.
 const DEV_SCHEMA = {
@@ -92,9 +103,9 @@ Facts about this app (use these; never contradict them):
 - Only describe screens and buttons that are in the page list below or in these facts. If you are not sure something exists,
   say you are not sure instead of guessing.
 
-${p.isOwner ? `This person is the Owner. When they ask to change, build or fix something in the app itself, explain that you will turn it
-into a developer request if they switch the chat to "Developer request" (the 🛠 button above the message box) and send it again;
-after they approve it with their authenticator app, the developer builds it on a branch and they get a notification at every step.
+${p.isOwner ? `This person is the Owner. When they ask to build, add, change, improve, fix or remove something in the app or in Mood AI
+itself, set app_change to true: the system then writes the developer request for them automatically (they never need to switch modes).
+Never tell the Owner to switch the chat mode or to send the message again.
 ` : ""}When a request could mean two different things, ask one short question back instead of guessing. Example: "app update karvi che"
 could mean "get the newest version on my phone" or "make changes to the app" - ask which (you may briefly answer the first).
 
@@ -178,39 +189,48 @@ export async function chat(userId: string, input: ChatInput, token: string) {
       : { provider: "anthropic" as Provider, model: "claude-opus-5-5" },
   ].filter((x) => providerHasKey(x.provider));
   const provider = routes[0]?.provider ?? primary;
-  try {
-    let r: Awaited<ReturnType<ReturnType<typeof aiClient>["messages"]["create"]>> | null = null;
+  type Reply = Awaited<ReturnType<ReturnType<typeof aiClient>["messages"]["create"]>>;
+  // one try per provider (80 s chat / 120 s developer request: Gemini free tier can be slow); Gemini Flash at "minimal" thinking for low effort
+  const ask = async (sys: string, schema: Record<string, unknown>, asDev: boolean): Promise<Reply> => {
     let lastErr: unknown = new AiError("auth", 503, "The AI service is not configured yet");
     for (const route of routes) {
       try {
-        // one try per provider (80 s chat / 120 s developer request: Gemini free tier can be slow); Gemini Flash at "minimal" thinking for low-effort chat
         const effort = rt?.chat_effort ?? "low";
-        r = await aiClient({ provider: route.provider, feature: dev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: dev ? 120_000 : 80_000, maxRetries: 0 }).messages.create({
-          model: route.model, max_tokens: dev ? 4000 : 1500, system,
-          output_config: { effort: route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema: dev ? DEV_SCHEMA : SCHEMA } },
+        return await aiClient({ provider: route.provider, feature: asDev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: asDev ? 120_000 : 80_000, maxRetries: 0 }).messages.create({
+          model: route.model, max_tokens: asDev ? 4000 : 1500, system: sys,
+          output_config: { effort: route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema } },
           messages: turns,
         });
-        break;
       } catch (e) {
         lastErr = e;
         if (e instanceof AiError && e.kind === "stopped") throw e;
         console.error(`mood-ai chat: ${route.provider} failed (${aiFailureReason(e)}), trying the next provider`);
       }
     }
-    if (!r) throw lastErr;
-    const raw = r.content.map((b) => b.text).join("");
+    throw lastErr;
+  };
+  // deno-lint-ignore no-explicit-any
+  const parse = (r: Reply): any => { const raw = r.content.map((b) => b.text).join(""); try { return JSON.parse(raw); } catch { return { reply: raw, links: [] }; } };
+  try {
+    let r = await ask(system, dev ? DEV_SCHEMA : isOwner ? OWNER_SCHEMA : SCHEMA, dev);
     // deno-lint-ignore no-explicit-any
-    let parsed: any = {};
-    try { parsed = JSON.parse(raw); } catch { parsed = { reply: raw, links: [] }; }
+    let parsed: any = parse(r);
+    let asDev = dev;
+    if (!dev && isOwner && parsed.app_change === true) {
+      // the Owner asked for an app change in normal chat: write the developer request now
+      asDev = true;
+      r = await ask(devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")), DEV_SCHEMA, true);
+      parsed = parse(r);
+    }
     let reply = String(parsed.reply ?? "").trim() || (r.stop_reason === "refusal" ? "Sorry, I can't help with that." : "Sorry, I couldn't write an answer. Please try again.");
     let links: { path: string; label: string }[];
     let devRequest: unknown = null;
-    if (dev) {
+    if (asDev) {
       if (!parsed.prompt || !parsed.title) throw new Error("The developer request came back incomplete");
       const { data: d, error: dErr } = await admin.rpc("mai_dev_draft_internal", { p_user: userId, p_thread: threadId, p_raw: message, p: parsed, p_model: r.model });
       if (dErr || !d) throw new Error("Could not save the developer request");
       devRequest = { ...d, goal: parsed.goal, acceptance: parsed.acceptance, questions: parsed.questions };
-      reply = `${reply}\n\n[${d.ref}] ${d.title} (risk ${d.risk}). Saved as a draft: nothing is built until you submit it.`;
+      reply = `${reply}\n\n[${d.ref}] ${d.title} (risk ${d.risk}). Approve it below with your authenticator code and the laptop developer starts building it; nothing goes live without your yes.`;
       links = [{ path: "/mood-ai", label: "Developer requests" }];
     } else {
       const okPaths = new Set(allowedPages.map((p) => p.path));
