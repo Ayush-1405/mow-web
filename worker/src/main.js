@@ -103,7 +103,8 @@ async function main() {
       }
     } catch (e) {
       if (e instanceof NotAuthorized) {
-        log("ERROR", `${e.message}. Stopping (not restarting). Register or rotate the worker in the Mood AI Control Center.`);
+        log("ERROR", `${e.message}. Stopping (not restarting). Make a New token in the Mood AI Control Center and run set-token.cmd.`);
+        stopOllama(ollama); // the Ollama child would otherwise keep Node (and itself) alive
         process.exitCode = 0;
         return;
       }
