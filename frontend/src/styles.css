@@ -2196,3 +2196,5 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mai-toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
 .mai-toggle input { width: auto; margin: 0; }
 .mai-verify img { display: block; margin: 8px 0; }
+.mai-worker { border: 1px solid var(--border); border-left: 5px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 10px 12px; margin-top: 10px; }
+.mai-worker.on { border-left-color: var(--success); }
