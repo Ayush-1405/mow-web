@@ -66,3 +66,22 @@ export async function chatSend({ thread_id, message, page, departments, manageme
   }
   return data;
 }
+
+// ---- developer requests (v3_23). Owner / backup only. Submitting (= approval to build on a branch) needs the authenticator app.
+export const devList = () => rpc("mai_dev_list");
+export const devSubmit = (id, note) => rpc("mai_dev_submit", { p_id: id, p_note: note ?? null });
+export const devEdit = (id, title, prompt) => rpc("mai_dev_edit", { p_id: id, p_title: title, p_prompt: prompt });
+export const devCancel = (id, note) => rpc("mai_dev_cancel", { p_id: id, p_note: note ?? null });
+export const devAnswer = (id, answer) => rpc("mai_dev_answer", { p_id: id, p_answer: answer });
+// Runs an owner action; if the session is not verified yet, asks for the 6-digit authenticator code once and retries.
+export async function withOwnerVerification(action, askCode) {
+  try { return await action(); } catch (e) {
+    if (!/authenticator/i.test(e?.message || "")) throw e;
+    const st = await mfaState();
+    if (!st.enrolled) throw new Error("Set up the authenticator app in the Mood AI Control Center first.");
+    const code = await askCode();
+    if (!code) throw new Error("Not submitted: the authenticator code is needed.");
+    await mfaVerify(st.factorId, code);
+    return await action();
+  }
+}
