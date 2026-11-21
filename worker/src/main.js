@@ -67,9 +67,10 @@ async function main() {
     try {
       const metrics = await readMetrics();
       cpuHistory.push(metrics.cpu_pct); if (cpuHistory.length > 5) cpuHistory.shift();
-      // first heartbeat with the state we can judge locally; the server answer then decides pause / stop / restart
-      const local = decide({ metrics, cpuHistory, limits: ctx.limits });
+      // report the state judged with the server's last answer (pause / stop / limits); the new answer then decides this round
+      const local = decide({ server: ctx.server || {}, metrics, cpuHistory, limits: ctx.limits });
       const server = await api.heartbeat(metrics, busy ? "RUNNING" : local.state, local.reason, VERSION, os.hostname(), startedAt);
+      ctx.server = server;
       ctx.limits = server.limits;
       if (failures) log("INFO", `Reconnected after ${failures} failed attempt(s)`);
       failures = 0;
