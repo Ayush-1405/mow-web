@@ -73,7 +73,7 @@ Known screens (path - name: purpose):
 ${pages}`;
 }
 
-function systemPrompt(p: { name: string; role: string; dept: string; pagePath: string; pageName: string; pageAbout: string; pages: string; today: string }) {
+function systemPrompt(p: { isOwner?: boolean; name: string; role: string; dept: string; pagePath: string; pageName: string; pageAbout: string; pages: string; today: string }) {
   return `You are Mood AI, the assistant inside the staff app of Mood of Wood, an Indian furniture and interiors company
 (showrooms/retail, interior projects, a furniture factory, godown and dispatch, procurement, and office departments).
 
@@ -92,7 +92,10 @@ Facts about this app (use these; never contradict them):
 - Only describe screens and buttons that are in the page list below or in these facts. If you are not sure something exists,
   say you are not sure instead of guessing.
 
-When a request could mean two different things, ask one short question back instead of guessing. Example: "app update karvi che"
+${p.isOwner ? `This person is the Owner. When they ask to change, build or fix something in the app itself, explain that you will turn it
+into a developer request if they switch the chat to "Developer request" (the 🛠 button above the message box) and send it again;
+after they approve it with their authenticator app, the developer builds it on a branch and they get a notification at every step.
+` : ""}When a request could mean two different things, ask one short question back instead of guessing. Example: "app update karvi che"
 could mean "get the newest version on my phone" or "make changes to the app" - ask which (you may briefly answer the first).
 
 Language: reply in the language and script the person writes in. English -> English. Hindi in Devanagari -> Hindi in Devanagari.
@@ -125,10 +128,11 @@ export async function chat(userId: string, input: ChatInput, token: string) {
   const pagePath = String(input.page?.path ?? "/").slice(0, 200);
 
   const dev = input.mode === "dev";
+  // Owner / backup? asked as the signed-in person (mai_chat_status.is_owner); the database checks again when saving a request
+  const { data: st } = await userScopedClient(token).rpc("mai_chat_status");
+  const isOwner = st?.is_owner === true;
   if (dev) {
-    // Owner / backup check as the signed-in person (mai_chat_status.is_owner); the database checks again when saving
-    const { data: st } = await userScopedClient(token).rpc("mai_chat_status");
-    if (!st?.is_owner) return { status: 403, body: { ok: false, code: "not_allowed", error: "Only the Owner or the backup approver can ask for app changes." } };
+    if (!isOwner) return { status: 403, body: { ok: false, code: "not_allowed", error: "Only the Owner or the backup approver can ask for app changes." } };
   }
   const { data: begun, error: beginErr } = await admin.rpc("mai_chat_begin", {
     p_user: userId, p_thread: input.thread_id || null, p_text: message, p_page: pagePath,
@@ -149,7 +153,7 @@ export async function chat(userId: string, input: ChatInput, token: string) {
   const rt = await aiRuntime();
   const today = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
 
-  const system = dev ? devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")) : systemPrompt({
+  const system = dev ? devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")) : systemPrompt({ isOwner,
     name: (prof as any)?.full_name ?? "a staff member", role: (prof as any)?.roles?.name_en ?? "staff", dept: (prof as any)?.departments?.name_en ?? "unknown",
     pagePath, pageName: here?.name ?? String(input.page?.title ?? "").slice(0, 80) ?? "a page", pageAbout: here?.about ?? "",
     pages: allowedPages.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n"), today,
@@ -179,9 +183,9 @@ export async function chat(userId: string, input: ChatInput, token: string) {
     let lastErr: unknown = new AiError("auth", 503, "The AI service is not configured yet");
     for (const route of routes) {
       try {
-        // chat must feel quick: one try per provider, 40 s each; Gemini Flash at "minimal" thinking when chat effort is low
+        // one try per provider (80 s chat / 120 s developer request: Gemini free tier can be slow); Gemini Flash at "minimal" thinking for low-effort chat
         const effort = rt?.chat_effort ?? "low";
-        r = await aiClient({ provider: route.provider, feature: dev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: dev ? 75_000 : 40_000, maxRetries: 0 }).messages.create({
+        r = await aiClient({ provider: route.provider, feature: dev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: dev ? 120_000 : 80_000, maxRetries: 0 }).messages.create({
           model: route.model, max_tokens: dev ? 4000 : 1500, system,
           output_config: { effort: !dev && route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema: dev ? DEV_SCHEMA : SCHEMA } },
           messages: turns,
