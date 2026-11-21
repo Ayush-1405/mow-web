@@ -103,6 +103,8 @@ const MyPerformance = lazy(() => import("./screens/performance/MyPerformance.jsx
 const PerformanceReport = lazy(() => import("./screens/performance/PerformanceReport.jsx"));
 const TeamPerformance = lazy(() => import("./screens/performance/TeamPerformance.jsx"));
 const PerformanceControlTower = lazy(() => import("./screens/performance/PerformanceControlTower.jsx"));
+// v3_19 Mood AI Core
+const MoodAiControlCenter = lazy(() => import("./screens/moodai/MoodAiControlCenter.jsx"));
 const RetailDashboard = lazy(() => import("./screens/retail/RetailDashboard.jsx"));
 const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
@@ -507,6 +509,7 @@ export default function App() {
       { route: "/reports", icon: "📄", name_en: t("reportsNav", "en"), name_gu: t("reportsNav", "gu") },
       { route: "/analytics", icon: "📈", name_en: t("analyticsNav", "en"), name_gu: t("analyticsNav", "gu") },
       { route: "/performance/control", icon: "🛰️", name_en: "AI Performance", name_gu: "AI પ્રદર્શન" },
+      { route: "/mood-ai", icon: "🧠", name_en: "Mood AI", name_gu: "Mood AI" },
       { route: "/company-settings", icon: "🏢", name_en: "Company & settings", name_gu: "કંપની અને સેટિંગ" },
     ];
   }, [access]);
@@ -808,6 +811,8 @@ export default function App() {
         ["/performance/report/:id", <PerformanceReport key="perf-report" lang={lang} />],
         ["/performance/team", <TeamPerformance key="perf-team" lang={lang} lookups={lookups} />],
         ["/performance/control", <ProtectedRoute key="perf-control" allowed={controlTowerAllowed} lang={lang}><PerformanceControlTower lang={lang} lookups={lookups} /></ProtectedRoute>],
+        // Mood AI Control Center (v3_19): Owner + Management; mai_control_center() re-checks on the server.
+        ["/mood-ai", <ProtectedRoute key="mood-ai" allowed={controlTowerAllowed} lang={lang}><MoodAiControlCenter lang={lang} /></ProtectedRoute>],
         ["/orders/:id/edit", <OrderForm key="order-edit" lang={lang} profile={profile} lookups={lookups} />],
         ["/purchase-requests/new", <Navigate key="new" to="/orders/new" replace />],
         ["/purchase-requests/:id/edit", <PurchaseRequestForm key="edit" lang={lang} profile={profile} lookups={lookups} />],

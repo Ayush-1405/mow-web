@@ -323,7 +323,7 @@ Deno.serve(async (req) => {
     if (text.length > MAX_TEXT_CHARS) text = text.slice(0, MAX_TEXT_CHARS) + "\n[truncated]";
     content.push({ type: "text", text });
 
-    const client = aiClient({ timeoutMs: 110_000, maxRetries: 0 });
+    const client = aiClient({ timeoutMs: 110_000, maxRetries: 0, feature: "factory-ai-extract", userId: user.id });
     let parsed: unknown = null;
     let lastReason = "";
     let usage: { input_tokens: number; output_tokens: number } | null = null;

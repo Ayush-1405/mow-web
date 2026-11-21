@@ -261,7 +261,7 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
     content.push({ type: "text", text: userText.slice(0, 120_000) });
 
     const schema = buildSchema([...deptRef.keys()], [...userRef.keys()], [...projRef.keys()], taskTypes);
-    const client = aiClient({ timeoutMs: AI_TIMEOUT_MS, maxRetries: 0 });
+    const client = aiClient({ timeoutMs: AI_TIMEOUT_MS, maxRetries: 0, feature: "ai-task-draft", userId: user.id });
     const resp = await client.messages.create({
       model: MODEL,
       max_tokens: 8000,
@@ -331,6 +331,7 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
     console.error("ai-task-draft failed:", e instanceof Error ? `${e.name}: ${e.message}`.slice(0, 300) : "unknown error");
     await record({ status: "failed", failure_reason: e instanceof Error ? e.message.slice(0, 300) : "error" });
     if (e instanceof Error && e.name === "AbortError") return fail(504, "ai_timeout", "The AI took too long. Please try again.", origin);
+    if (e instanceof AiError && e.kind === "stopped") return fail(423, "ai_stopped", e.message, origin);
     if (e instanceof AiError && e.kind === "rate_limit") return fail(429, "ai_busy", "The AI service is busy or its daily limit is reached. Please retry later.", origin);
     if (e instanceof AiError && e.kind === "auth") return fail(502, "ai_auth", "The AI service credentials are invalid. Contact your administrator.", origin);
     if (e instanceof AiError) return fail(502, "ai_provider_error", "The AI service returned an error. Please try again.", origin);

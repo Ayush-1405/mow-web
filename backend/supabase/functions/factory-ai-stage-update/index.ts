@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
     ].join("\n");
     content.push({ type: "text", text: context });
 
-    const client = aiClient({ timeoutMs: 120_000, maxRetries: 0 });
+    const client = aiClient({ timeoutMs: 120_000, maxRetries: 0, feature: "factory-ai-stage-update", userId: user.id });
     const resp = await client.messages.create({
       model: MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, thinking: { type: "adaptive" },
       output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
@@ -198,6 +198,7 @@ Deno.serve(async (req) => {
     console.error("factory-ai-stage-update failed:", e instanceof Error ? e.message : e);
     await record({ status: "failed", failure_reason: e instanceof Error ? e.message.slice(0, 300) : "error" });
     const busy = e instanceof AiError && e.kind === "rate_limit";
-    return okResponse({ ok: false, reason: busy ? "AI is busy. Please retry shortly." : "The AI could not read this. Please use the stage buttons." }, origin, 200);
+    const stopped = e instanceof AiError && e.kind === "stopped";
+    return okResponse({ ok: false, reason: stopped ? (e as AiError).message : busy ? "AI is busy. Please retry shortly." : "The AI could not read this. Please use the stage buttons." }, origin, 200);
   }
 });
