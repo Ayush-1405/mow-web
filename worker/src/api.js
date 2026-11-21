@@ -29,5 +29,9 @@ export function makeApi({ url, anonKey, token, timeoutMs = 15_000 }) {
     claim: () => call("mai_worker_claim", {}),
     complete: (jobId, ok, result, error, retryable = true) =>
       call("mai_worker_complete", { p_job: jobId, p_ok: ok, p_result: result ?? null, p_error: error ?? null, p_retryable: retryable }),
+    // laptop developer (v3_24): approved developer requests only; can report IN_PROGRESS / NEEDS_INFO / READY_FOR_REVIEW / REJECTED
+    devClaim: () => call("mai_worker_dev_claim", {}),
+    devReport: (ref, status, note, branch, commit) =>
+      call("mai_worker_dev_report", { p_ref: ref, p_status: status, p_note: String(note).slice(0, 3900), p_branch: branch ?? null, p_commit: commit ?? null }),
   };
 }
