@@ -108,6 +108,7 @@ function jobSummary(j) {
   const r = j.result || {};
   if (j.job_type === "SELFTEST" && r.db_round_trip_ms !== undefined) return `${r.hostname} · DB ${r.db_round_trip_ms} ms · CPU ${r.metrics?.cpu_pct}%`;
   if (j.job_type === "LOCAL_GENERATE") return `${r.model} · ${(r.ms / 1000).toFixed(1)} s · ${r.tokens_per_s ?? "—"} tok/s — “${String(r.text || "").slice(0, 160)}”`;
+  if (j.job_type === "LOCAL_CHAT") return `Chat answer · ${r.model ?? "local model"} · ${((r.ms || 0) / 1000).toFixed(1)} s`;
   if (j.job_type === "LOCAL_EMBED") return `${r.model} · ${r.count} × ${r.dimensions} · ${r.ms} ms`;
   return "";
 }

@@ -145,7 +145,33 @@ export function looksLikeAppChange(text: string): boolean {
   return DO_VERB.test(t);
 }
 
+// The whole answer must fit inside the edge function's time limit (about 150 s), or the person gets a gateway error instead of
+// a message. Every AI call gets only the time that is left; the laptop fallback keeps a share for itself when it is available.
+const DEADLINE_MS = 140_000;
+const LOCAL_RESERVE_MS = 60_000;
+const LOCAL_NOTE = "\n\n(Answered by the backup model on the office laptop because the cloud AI services are not answering right now; answers may be simpler.)";
+
+// What the laptop model gets: the same instructions (trimmed), a JSON answer format, and the last few turns.
+export function localChatPayload(system: string, turns: { role: "user" | "assistant"; content: string }[]) {
+  const sys = `${system.slice(0, 14_000)}
+
+Answer ONLY with one JSON object, no other text: {"reply": "<your answer>", "links": [{"path": "<a path from the page list>", "label": "<page name>"}]}
+Use an empty links list when no page helps.`;
+  const msgs: { role: "user" | "assistant"; content: string }[] = [];
+  let total = 0;
+  for (const t of [...turns].reverse()) {
+    const content = t.content.slice(0, 2_000);
+    if (msgs.length >= 6 || total + content.length > 10_000) break;
+    msgs.unshift({ role: t.role, content });
+    total += content.length;
+  }
+  while (msgs.length && msgs[0].role !== "user") msgs.shift();
+  return { system: sys, messages: msgs, max_tokens: 700, json: true };
+}
+
 export async function chat(userId: string, input: ChatInput, token: string) {
+  const startedAt = Date.now();
+  const timeLeft = () => DEADLINE_MS - (Date.now() - startedAt);
   const admin = adminClient();
   const message = String(input.message ?? "").trim();
   const pagePath = String(input.page?.path ?? "/").slice(0, 200);
@@ -201,14 +227,20 @@ export async function chat(userId: string, input: ChatInput, token: string) {
       : { provider: "anthropic" as Provider, model: "claude-opus-5-5" },
   ].filter((x) => providerHasKey(x.provider));
   const provider = routes[0]?.provider ?? primary;
+  // the laptop (Ollama) answers ordinary chat when the cloud services cannot; never developer requests (too important for a small model)
+  const { data: localReady } = dev ? { data: false } : await admin.rpc("mai_chat_local_ready");
+  const reserve = localReady === true ? LOCAL_RESERVE_MS : 0;
   type Reply = Awaited<ReturnType<ReturnType<typeof aiClient>["messages"]["create"]>>;
-  // one try per provider (80 s chat / 120 s developer request: Gemini free tier can be slow); Gemini Flash at "minimal" thinking for low effort
+  // one try per provider (up to 80 s chat / 120 s developer request: Gemini free tier can be slow), never past the time limit;
+  // Gemini Flash at "minimal" thinking for low effort
   const ask = async (sys: string, schema: Record<string, unknown>, asDev: boolean): Promise<Reply> => {
     let lastErr: unknown = new AiError("auth", 503, "The AI service is not configured yet");
     for (const route of routes) {
+      const budget = Math.min(asDev ? 120_000 : 80_000, timeLeft() - reserve - 3_000);
+      if (budget < 8_000) { lastErr = new Error("timed out: no time left for this AI service"); break; }
       try {
         const effort = rt?.chat_effort ?? "low";
-        return await aiClient({ provider: route.provider, feature: asDev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: asDev ? 120_000 : 80_000, maxRetries: 0 }).messages.create({
+        return await aiClient({ provider: route.provider, feature: asDev ? "mood-ai-dev-request" : "mood-ai-chat", userId, timeoutMs: budget, maxRetries: 0 }).messages.create({
           model: route.model, max_tokens: asDev ? 4000 : 1500, system: sys,
           output_config: { effort: route.provider === "gemini" && effort === "low" ? "minimal" : effort, format: { type: "json_schema", schema } },
           messages: turns,
@@ -221,14 +253,53 @@ export async function chat(userId: string, input: ChatInput, token: string) {
     }
     throw lastErr;
   };
+  // The laptop fallback: queue the question for the laptop and wait for its answer while time is left.
+  const askLocal = async (cloudErr: unknown): Promise<Reply> => {
+    const { data: job } = await admin.rpc("mai_chat_local_enqueue", { p_user: userId, p_payload: localChatPayload(system, turns) });
+    if (!job) throw cloudErr;
+    let done = false;
+    try {
+      while (timeLeft() > 3_000) {
+        await new Promise((res) => setTimeout(res, 1_500));
+        const { data: t } = await admin.rpc("mai_chat_local_take", { p_job: job });
+        if (!t || t.status === "QUEUED" || t.status === "RUNNING") continue;
+        done = true;
+        if (t.status !== "DONE" || typeof t.result?.text !== "string") {
+          console.error(`mood-ai chat: laptop fallback ${t.status} (${t.error ?? "no answer"})`);
+          throw cloudErr;
+        }
+        const res = t.result;
+        return {
+          content: [{ type: "text", text: res.text }], stop_reason: "end_turn", provider: "ollama", model: String(res.model ?? "local"),
+          usage: { input_tokens: Number(res.input_tokens) || 0, output_tokens: Number(res.output_tokens) || 0 }, latency_ms: Number(res.ms) || 0,
+        } as unknown as Reply;
+      }
+      console.error("mood-ai chat: laptop fallback did not answer in time");
+      throw cloudErr;
+    } finally {
+      if (!done) await admin.rpc("mai_chat_local_cancel", { p_job: job });
+    }
+  };
   // deno-lint-ignore no-explicit-any
   const parse = (r: Reply): any => { const raw = r.content.map((b) => b.text).join(""); try { return JSON.parse(raw); } catch { return { reply: raw, links: [] }; } };
   try {
-    let r = await ask(system, dev ? DEV_SCHEMA : isOwner ? OWNER_SCHEMA : SCHEMA, dev);
+    let r: Reply;
+    try {
+      r = await ask(system, dev ? DEV_SCHEMA : isOwner ? OWNER_SCHEMA : SCHEMA, dev);
+    } catch (e) {
+      if (dev || localReady !== true || (e instanceof AiError && e.kind === "stopped")) throw e;
+      console.error(`mood-ai chat: cloud services failed (${aiFailureReason(e)}), asking the laptop`);
+      r = await askLocal(e);
+    }
+    const local = (r.provider as string) === "ollama";
     // deno-lint-ignore no-explicit-any
     let parsed: any = parse(r);
     let asDev = dev;
-    if (!dev && isOwner && (parsed.app_change === true || looksLikeAppChange(message))) {
+    if (local) {
+      parsed.reply = `${String(parsed.reply ?? "").trim()}${isOwner && looksLikeAppChange(message)
+        ? "\n\nThis looks like a change to the app: the developer request can only be written by the cloud AI, so please send it again once it is back."
+        : ""}${LOCAL_NOTE}`;
+    } else if (!dev && isOwner && (parsed.app_change === true || looksLikeAppChange(message))) {
       // the Owner asked for an app change in normal chat: write the developer request now
       asDev = true;
       r = await ask(devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")), DEV_SCHEMA, true);

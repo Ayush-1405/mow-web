@@ -3,7 +3,7 @@
 // Model names can be changed in worker/.env (OLLAMA_EMBED_MODEL, OLLAMA_CHAT_MODEL).
 
 const BASE = "http://127.0.0.1:11434";
-export const LIMITS = { embedTexts: 64, embedChars: 8_000, promptChars: 12_000, systemChars: 2_000, maxOutputTokens: 1_024 };
+export const LIMITS = { embedTexts: 64, embedChars: 8_000, promptChars: 12_000, systemChars: 2_000, chatSystemChars: 16_000, maxOutputTokens: 1_024 };
 
 export function models(env = process.env) {
   return { embed: env.OLLAMA_EMBED_MODEL || "nomic-embed-text", chat: env.OLLAMA_CHAT_MODEL || "qwen3:4b-instruct" };
@@ -51,14 +51,15 @@ export async function embed(texts, env = process.env) {
   return { model, vectors: out.embeddings, dimensions: out.embeddings?.[0]?.length ?? 0, ms: Date.now() - started };
 }
 
-export async function generate({ prompt, system, maxTokens, json }, env = process.env) {
+// One answer from the chat model: a single prompt, or a whole conversation (messages) for the chat fallback.
+export async function generate({ prompt, system, messages: turns, maxTokens, json, numCtx = 4096, timeoutMs = 8 * 60_000 }, env = process.env) {
   const model = models(env).chat;
   const started = Date.now();
-  const messages = [...(system ? [{ role: "system", content: system }] : []), { role: "user", content: prompt }];
+  const messages = [...(system ? [{ role: "system", content: system }] : []), ...(turns ?? [{ role: "user", content: prompt }])];
   const out = await call("/api/chat", {
     model, messages, stream: false, think: false, ...(json ? { format: "json" } : {}),
-    options: { num_ctx: 4096, num_predict: maxTokens, temperature: 0.3 },
-  }, 8 * 60_000);
+    options: { num_ctx: numCtx, num_predict: maxTokens, temperature: 0.3 },
+  }, timeoutMs);
   return {
     model, text: out.message?.content ?? "", ms: Date.now() - started,
     input_tokens: out.prompt_eval_count ?? null, output_tokens: out.eval_count ?? null,

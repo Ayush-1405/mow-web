@@ -1,6 +1,6 @@
 // deno test mood-ai/chat_detect_test.ts -- the Owner's app-change detection backup
 import { assertEquals } from "jsr:@std/assert@1";
-import { looksLikeAppChange } from "./chat.ts";
+import { localChatPayload, looksLikeAppChange } from "./chat.ts";
 
 Deno.test("instructions to change the app are detected", () => {
   for (const t of [
@@ -23,4 +23,15 @@ Deno.test("questions and chat are not", () => {
     "thank you",
     "What is a job card",
   ]) assertEquals(looksLikeAppChange(t), false, t);
+});
+
+Deno.test("the laptop gets trimmed instructions, a JSON answer format and the last turns, starting with a question", () => {
+  const turns = Array.from({ length: 9 }, (_, i) => ({ role: (i % 2 ? "assistant" : "user") as "user" | "assistant", content: `turn ${i} ` + "x".repeat(i === 7 ? 5000 : 10) }));
+  const p = localChatPayload("S".repeat(20_000), turns);
+  assertEquals(p.system.startsWith("S".repeat(14_000)) && !p.system.includes("S".repeat(14_001)), true);
+  assertEquals(p.system.includes('{"reply"'), true);
+  assertEquals(p.json, true);
+  assertEquals(p.messages[0].role, "user");
+  assertEquals(p.messages[p.messages.length - 1].content.startsWith("turn 8"), true);
+  assertEquals(p.messages.length <= 6 && p.messages.every((m) => m.content.length <= 2000), true);
 });
