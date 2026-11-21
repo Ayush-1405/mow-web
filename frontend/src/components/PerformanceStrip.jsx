@@ -5,12 +5,17 @@ import { L, fmtScore, perfMySummary, scoreBand } from "../lib/perfApi";
 // "My AI performance" strip shown on every department dashboard, the Control Tower and Today's Tasks (v3_17).
 // One small database call (perf_my_summary) returns this person's score for the running month and what else they may open.
 // If the performance module is not installed yet, or anything fails, the strip simply does not show.
+// Moving between dashboards reuses the last answer for a minute instead of asking the server again each time.
+let cached = null; // { at, data }
+const FRESH_MS = 60_000;
+
 export default function PerformanceStrip({ lang }) {
   const navigate = useNavigate();
-  const [s, setS] = useState(null);
+  const [s, setS] = useState(cached?.data || null);
   useEffect(() => {
+    if (cached && Date.now() - cached.at < FRESH_MS) return undefined;
     let live = true;
-    perfMySummary().then((d) => { if (live) setS(d || null); }).catch(() => { if (live) setS(null); });
+    perfMySummary().then((d) => { cached = { at: Date.now(), data: d || null }; if (live) setS(d || null); }).catch(() => { if (live) setS(null); });
     return () => { live = false; };
   }, []);
   if (!s) return null;
