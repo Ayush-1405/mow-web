@@ -9,9 +9,9 @@
 // browser then shows it for one-tap confirmation and applies each item with
 // the existing factory_update_stage RPC under the worker's own permissions.
 //
-// Secrets: ANTHROPIC_API_KEY (required); FACTORY_AI_MODEL (optional).
+// Secrets: GEMINI_API_KEY (or ANTHROPIC_API_KEY); GEMINI_MODEL / FACTORY_AI_MODEL optional -- see _shared/ai.ts.
 
-import Anthropic from "npm:@anthropic-ai/sdk";
+import { aiClient, aiConfigured, aiModel, AiError, type AiBlock } from "../_shared/ai.ts";
 import { handlePreflight } from "../_shared/cors.ts";
 import { errorResponse, okResponse } from "../_shared/response.ts";
 import { MSG } from "../_shared/messages.ts";
@@ -19,7 +19,7 @@ import { adminClient, extractBearerToken, userScopedClient, verifyCaller } from 
 import { isUuid } from "../_shared/validation.ts";
 
 const PROMPT_VERSION = "stage-update-v1";
-const MODEL = Deno.env.get("FACTORY_AI_MODEL") ?? "claude-opus-5";
+const MODEL = aiModel(Deno.env.get("FACTORY_AI_MODEL") ?? "claude-opus-5");
 const MAX_TEXT_CHARS = 4000;
 const MAX_FILES = 3;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -129,15 +129,14 @@ Deno.serve(async (req) => {
     return data?.id as string | undefined;
   };
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) {
-    await record({ status: "failed", failure_reason: "ANTHROPIC_API_KEY missing" });
+  if (!aiConfigured()) {
+    await record({ status: "failed", failure_reason: "AI key missing (GEMINI_API_KEY / ANTHROPIC_API_KEY)" });
     return okResponse({ ok: false, reason: "AI is not set up yet. Please use the stage buttons below." }, origin, 200);
   }
 
   try {
     const { data: stages } = await uc.from("production_stage_updates").select("stage, status, quantity_completed").eq("job_id", jobId);
-    const content: Anthropic.ContentBlockParam[] = [];
+    const content: AiBlock[] = [];
     let total = 0;
     for (const f of files) {
       const mime = String(f.mime ?? "").toLowerCase();
@@ -156,7 +155,7 @@ Deno.serve(async (req) => {
     ].join("\n");
     content.push({ type: "text", text: context });
 
-    const client = new Anthropic({ apiKey });
+    const client = aiClient({ timeoutMs: 120_000, maxRetries: 0 });
     const resp = await client.messages.create({
       model: MODEL, max_tokens: 4000, system: SYSTEM_PROMPT, thinking: { type: "adaptive" },
       output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
@@ -198,7 +197,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("factory-ai-stage-update failed:", e instanceof Error ? e.message : e);
     await record({ status: "failed", failure_reason: e instanceof Error ? e.message.slice(0, 300) : "error" });
-    const busy = e instanceof Anthropic.RateLimitError;
+    const busy = e instanceof AiError && e.kind === "rate_limit";
     return okResponse({ ok: false, reason: busy ? "AI is busy. Please retry shortly." : "The AI could not read this. Please use the stage buttons." }, origin, 200);
   }
 });

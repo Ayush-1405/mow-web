@@ -13,18 +13,18 @@
 // user confirms, through the existing staff_create_task RPC under that
 // user's own permissions.
 //
-// Secrets (server-side only): ANTHROPIC_API_KEY (required), AI_TASK_MODEL
+// Secrets (server-side only): GEMINI_API_KEY (or ANTHROPIC_API_KEY), GEMINI_MODEL / AI_TASK_MODEL -- see _shared/ai.ts
 // (optional, default claude-opus-5). SUPABASE_* are injected automatically.
 
-import Anthropic from "npm:@anthropic-ai/sdk";
+import { aiClient, aiConfigured, aiModel, AiError, type AiBlock } from "../_shared/ai.ts";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { buildCorsHeaders, handlePreflightStrict, rejectDisallowedOrigin } from "../_shared/cors.ts";
 import { adminClient, extractBearerToken, userScopedClient, verifyCaller } from "../_shared/clients.ts";
 
 const PROMPT_VERSION = "task-draft-v1";
-const MODEL = Deno.env.get("AI_TASK_MODEL") ?? "claude-opus-5";
-const AI_TIMEOUT_MS = 90_000;
+const MODEL = aiModel(Deno.env.get("AI_TASK_MODEL") ?? "claude-opus-5");
+const AI_TIMEOUT_MS = 120_000;
 const MAX_TEXT_CHARS = 20_000;
 const MAX_FILES = 3;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -188,9 +188,8 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
     return data?.id as string | undefined;
   };
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) {
-    await record({ status: "failed", failure_reason: "ANTHROPIC_API_KEY missing" });
+  if (!aiConfigured()) {
+    await record({ status: "failed", failure_reason: "AI key missing (GEMINI_API_KEY / ANTHROPIC_API_KEY)" });
     return fail(503, "ai_not_configured", "The AI service is not configured yet. Please create the task manually for now.", origin);
   }
 
@@ -226,7 +225,7 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
       projects.length ? "PROJECTS:" : "", ...[...projRef].map(([r, p]) => `${r} = ${p.project_code} - ${p.customer} (${p.location ?? "no site"})`),
     ].filter(Boolean).join("\n");
 
-    const content: Anthropic.ContentBlockParam[] = [];
+    const content: AiBlock[] = [];
     const docParts: string[] = [];
     for (const f of files) {
       const name = String(f.name);
@@ -262,7 +261,7 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
     content.push({ type: "text", text: userText.slice(0, 120_000) });
 
     const schema = buildSchema([...deptRef.keys()], [...userRef.keys()], [...projRef.keys()], taskTypes);
-    const client = new Anthropic({ apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 });
+    const client = aiClient({ timeoutMs: AI_TIMEOUT_MS, maxRetries: 0 });
     const resp = await client.messages.create({
       model: MODEL,
       max_tokens: 8000,
@@ -331,10 +330,10 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
     // Never log document content, tokens or secrets -- only the error class/message.
     console.error("ai-task-draft failed:", e instanceof Error ? `${e.name}: ${e.message}`.slice(0, 300) : "unknown error");
     await record({ status: "failed", failure_reason: e instanceof Error ? e.message.slice(0, 300) : "error" });
-    if (e instanceof Anthropic.APIConnectionTimeoutError) return fail(504, "ai_timeout", "The AI took too long. Please try again.", origin);
-    if (e instanceof Anthropic.RateLimitError) return fail(429, "ai_busy", "The AI service is busy. Please retry shortly.", origin);
-    if (e instanceof Anthropic.AuthenticationError) return fail(502, "ai_auth", "The AI service credentials are invalid. Contact your administrator.", origin);
-    if (e instanceof Anthropic.APIError) return fail(502, "ai_provider_error", "The AI service returned an error. Please try again.", origin);
+    if (e instanceof Error && e.name === "AbortError") return fail(504, "ai_timeout", "The AI took too long. Please try again.", origin);
+    if (e instanceof AiError && e.kind === "rate_limit") return fail(429, "ai_busy", "The AI service is busy or its daily limit is reached. Please retry later.", origin);
+    if (e instanceof AiError && e.kind === "auth") return fail(502, "ai_auth", "The AI service credentials are invalid. Contact your administrator.", origin);
+    if (e instanceof AiError) return fail(502, "ai_provider_error", "The AI service returned an error. Please try again.", origin);
     return fail(500, "server_error", "Something went wrong reading this. Please create the task manually.", origin);
   }
 }
