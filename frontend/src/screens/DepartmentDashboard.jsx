@@ -7,6 +7,7 @@ import { getModuleRoute } from "../lib/moduleRegistry";
 import ModuleInfoModal from "../components/ModuleInfoModal.jsx";
 
 import { taskChatUnread } from "../lib/chatApi";
+import PerformanceStrip from "../components/PerformanceStrip.jsx";
 // Who sees the real roster/head-name/location-count on a department page,
 // instead of the "not authorized" fallback. supervisor is capped to their
 // OWN department by RLS (user_profiles_select_hod_scope) — unlike
@@ -206,6 +207,8 @@ export default function DepartmentDashboard({ lang, profile, department, onOpenL
           )}
         </div>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       {/* Team-tracking KPIs/roster — Super Admin, Management, Dept Head,
           Accounts Head/CFO, and Supervisor only. A plain Department Member

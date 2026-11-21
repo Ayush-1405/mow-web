@@ -21,6 +21,7 @@ import { DateNavigator, QuickDateChips, TaskSearchBar, FilterButton, FilterField
 import { activeFilterList } from "../lib/taskFilters";
 import { useBreakpoint } from "../lib/useBreakpoint";
 import { procurementRoles } from "../lib/procurementRules";
+import PerformanceStrip from "../components/PerformanceStrip.jsx";
 
 const CLOSED_STATUS_CODES = new Set(["COMPLETED", "VERIFIED", "CLOSED"]);
 const DATE_FILTER_STORAGE_KEY = "todayTasks.dateFilter.v1";
@@ -1211,6 +1212,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           {t("refresh", lang)}
         </button>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       {/* ---------------- Which list: personal vs department vs bridge ---------------- */}
       <div className="fx-tabs mobile-tab-list" role="tablist" aria-label="Task lists" ref={scopeTabsRef} style={{ marginBottom: 8 }}>

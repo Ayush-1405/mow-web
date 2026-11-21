@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { t } from "../lib/i18n";
 import { buildOrderedDepartments } from "../lib/departmentConfig";
+import PerformanceStrip from "../components/PerformanceStrip.jsx";
 
 // Management Control Tower — Phase 1 executive dashboard. Reachable only by
 // Management (departments.is_control_tower is gated in lib/access.js and
@@ -170,6 +171,8 @@ export default function ManagementControlTower({ lang, lookups, departments }) {
           <div className="sub">{lookups.departmentById && Object.values(lookups.departmentById).find((d) => d.is_control_tower)?.[lang === "gu" ? "name_en" : "name_gu"]}</div>
         </div>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       <div className="card">
         <h2>{t("filters", lang)}</h2>

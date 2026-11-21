@@ -7,6 +7,7 @@ import {
 import { subscribeTable } from "../../lib/realtime";
 import { friendlyError } from "../../lib/friendlyError";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
+import PerformanceStrip from "../../components/PerformanceStrip.jsx";
 
 // The Factory home: seven sections with counters, one list. A Factory Head sees every card; a Factory employee sees new
 // cards (to accept) and their own; any other department sees the cards it sent (same sections, so it can follow them).
@@ -63,6 +64,8 @@ export default function FactoryJobCards({ lang, profile, lookups }) {
           {isFactory && <Link className="btn btn-outline" style={{ width: "auto" }} to="/factory/advanced">{L(lang, "Advanced tools", "વધુ સાધનો")}</Link>}
         </div>
       </div>
+
+      <PerformanceStrip lang={lang} />
 
       <div className="fjc-sections">
         {SECTIONS.map((s) => (

@@ -98,6 +98,11 @@ const FactoryDashboard = lazy(() => import("./screens/factory/FactoryDashboard.j
 const FactoryJobCards = lazy(() => import("./screens/factoryjobs/FactoryJobCards.jsx"));
 const FactoryJobCardForm = lazy(() => import("./screens/factoryjobs/FactoryJobCardForm.jsx"));
 const FactoryJobCardDetail = lazy(() => import("./screens/factoryjobs/FactoryJobCardDetail.jsx"));
+// v3_17 AI Employee Performance
+const MyPerformance = lazy(() => import("./screens/performance/MyPerformance.jsx"));
+const PerformanceReport = lazy(() => import("./screens/performance/PerformanceReport.jsx"));
+const TeamPerformance = lazy(() => import("./screens/performance/TeamPerformance.jsx"));
+const PerformanceControlTower = lazy(() => import("./screens/performance/PerformanceControlTower.jsx"));
 const RetailDashboard = lazy(() => import("./screens/retail/RetailDashboard.jsx"));
 const FactoryMasterReport = lazy(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazy(() => import("./screens/factory/FactoryWipStages.jsx"));
@@ -501,6 +506,7 @@ export default function App() {
     return [
       { route: "/reports", icon: "📄", name_en: t("reportsNav", "en"), name_gu: t("reportsNav", "gu") },
       { route: "/analytics", icon: "📈", name_en: t("analyticsNav", "en"), name_gu: t("analyticsNav", "gu") },
+      { route: "/performance/control", icon: "🛰️", name_en: "AI Performance", name_gu: "AI પ્રદર્શન" },
       { route: "/company-settings", icon: "🏢", name_en: "Company & settings", name_gu: "કંપની અને સેટિંગ" },
     ];
   }, [access]);
@@ -796,6 +802,12 @@ export default function App() {
         ["/factory-job-cards", <FactoryJobCards key="fjc-list" lang={lang} profile={profile} lookups={lookups} />],
         ["/factory-job-cards/new", <FactoryJobCardForm key="fjc-new" lang={lang} profile={profile} lookups={lookups} />],
         ["/factory-job-cards/:id", <FactoryJobCardDetail key="fjc-detail" lang={lang} profile={profile} lookups={lookups} />],
+        // AI Employee Performance (v3_17): the perf_* database functions decide whose data each person may see.
+        ["/performance", <MyPerformance key="perf-me" lang={lang} />],
+        ["/performance/person/:userId", <MyPerformance key="perf-person" lang={lang} />],
+        ["/performance/report/:id", <PerformanceReport key="perf-report" lang={lang} />],
+        ["/performance/team", <TeamPerformance key="perf-team" lang={lang} lookups={lookups} />],
+        ["/performance/control", <ProtectedRoute key="perf-control" allowed={controlTowerAllowed} lang={lang}><PerformanceControlTower lang={lang} lookups={lookups} /></ProtectedRoute>],
         ["/orders/:id/edit", <OrderForm key="order-edit" lang={lang} profile={profile} lookups={lookups} />],
         ["/purchase-requests/new", <Navigate key="new" to="/orders/new" replace />],
         ["/purchase-requests/:id/edit", <PurchaseRequestForm key="edit" lang={lang} profile={profile} lookups={lookups} />],
