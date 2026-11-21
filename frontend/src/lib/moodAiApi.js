@@ -43,6 +43,18 @@ export async function mfaStartEnroll() {
   if (error) throw error;
   return { factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret };
 }
+// Replace the authenticator (new phone): only from a session already verified with the current code (Supabase requires aal2 to
+// remove a verified factor). Removes the old registration(s), then starts a new one (QR code).
+export async function mfaReplace() {
+  const { data: factors, error } = await supabase.auth.mfa.listFactors();
+  if (error) throw error;
+  for (const f of factors?.all || []) {
+    if (f.factor_type !== "totp") continue;
+    const { error: e } = await supabase.auth.mfa.unenroll({ factorId: f.id });
+    if (e) throw e;
+  }
+  return mfaStartEnroll();
+}
 export async function mfaVerify(factorId, code) {
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: String(code).trim() });
   if (error) throw error;

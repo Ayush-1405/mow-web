@@ -2322,3 +2322,6 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mai-chat-form textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mai-chat-meta-row .mai-voice-lang { width: auto; max-width: 60%; flex: 0 0 auto; min-height: 0; }
 .mai-chat-meta-row .mai-chat-count { white-space: nowrap; flex: 0 0 auto; }
+.mai-lost-mfa { margin-top: 10px; font-size: 13.5px; }
+.mai-lost-mfa summary { cursor: pointer; color: var(--brand-dark); font-weight: 600; }
+.mai-lost-mfa ol { margin: 6px 0 8px; padding-left: 20px; }

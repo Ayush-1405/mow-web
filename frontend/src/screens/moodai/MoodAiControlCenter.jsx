@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import {
-  controlCenter, emergencyStop, fmtMs, fmtUsd, mfaStartEnroll, mfaState, mfaVerify, resumeAi, runHealthCheck, setAgent, setBackup, setModelPrice, updateSettings,
+  controlCenter, emergencyStop, fmtMs, fmtUsd, mfaReplace, mfaStartEnroll, mfaState, mfaVerify, resumeAi, runHealthCheck, setAgent, setBackup, setModelPrice, updateSettings,
 } from "../../lib/moodAiApi";
 import { friendlyError } from "../../lib/friendlyError";
 import LaptopServerPanel from "./LaptopServerPanel.jsx";
@@ -224,8 +224,15 @@ function OwnerCard({ lang, d, reload }) {
         "માલિક સ્તરનાં કામ ફક્ત માલિક/બેકઅપ પોતાના ખાતાથી અને ઓથેન્ટિકેટર એપથી કરી શકે.")}</p>}
       {me.is_owner && (
         <div className="mai-verify">
-          {me.owner_verified ? <p className="msg success" style={{ margin: "8px 0" }}>✓ {L(lang, "Verified with your authenticator app for this sign-in.", "આ સાઇન-ઇન માટે ખાતરી થઈ.")}</p>
-            : mfa && !mfa.enrolled && !enroll ? (
+          {me.owner_verified && !enroll ? (
+              <>
+                <p className="msg success" style={{ margin: "8px 0" }}>✓ {L(lang, "Verified with your authenticator app for this sign-in.", "આ સાઇન-ઇન માટે ખાતરી થઈ.")}</p>
+                <button type="button" className="btn btn-outline btn-sm" style={{ width: "auto" }} onClick={async () => {
+                  if (!window.confirm(L(lang, "Connect a new authenticator app? The current one stops working as soon as you scan the new QR code and confirm it.", "નવી ઓથેન્ટિકેટર એપ જોડવી?"))) return;
+                  try { setEnroll(await mfaReplace()); } catch (e) { setMsg({ ok: false, t: friendlyError(e?.message) }); }
+                }}>{L(lang, "Connect a new authenticator app (new phone)", "નવી ઓથેન્ટિકેટર એપ જોડો")}</button>
+              </>
+            ) : mfa && !mfa.enrolled && !enroll ? (
               <>
                 <p>{L(lang, "Owner actions need a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator…). Set it up once:", "માલિક કામ માટે ઓથેન્ટિકેટર એપનો 6 અંકનો કોડ જોઈએ. એક વાર સેટ કરો:")}</p>
                 <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={async () => { try { setEnroll(await mfaStartEnroll()); } catch (e) { setMsg({ ok: false, t: friendlyError(e?.message) }); } }}>{L(lang, "Set up authenticator app", "ઓથેન્ટિકેટર સેટ કરો")}</button>
@@ -243,6 +250,18 @@ function OwnerCard({ lang, d, reload }) {
                 <input inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
                 <button type="button" className="btn btn-primary btn-sm" disabled={code.trim().length !== 6} onClick={() => verify(mfa.factorId)}>{L(lang, "Verify", "ખાતરી કરો")}</button></div>
             ) : <p className="sub">…</p>}
+          {mfa?.enrolled && !me.owner_verified && !enroll && (
+            <details className="mai-lost-mfa">
+              <summary>{L(lang, "Lost your authenticator app? Connect a new one", "ઓથેન્ટિકેટર ખોવાઈ? નવી જોડો")}</summary>
+              <p className="sub">{L(lang, "Still have the code on an old phone? Verify above first, then use \"Connect a new authenticator app\". Lost it completely? For safety the old registration can only be removed by you in Supabase:", "સુરક્ષા માટે જૂની નોંધણી Supabase માં દૂર કરો:")}</p>
+              <ol className="sub">
+                <li>{L(lang, "supabase.com/dashboard → project \"mood- of- wood- interior\" → Authentication → Users", "supabase.com/dashboard → પ્રોજેક્ટ → Authentication → Users")}</li>
+                <li>{L(lang, "Open your user → Multi-factor authentication → delete \"Mood AI owner\"", "તમારો યુઝર → MFA → \"Mood AI owner\" કાઢો")}</li>
+                <li>{L(lang, "Come back here and press Check again — the new QR code appears", "અહીં પાછા આવી ફરી તપાસો દબાવો")}</li>
+              </ol>
+              <button type="button" className="btn btn-outline btn-sm" style={{ width: "auto" }} onClick={async () => { try { setMfa(await mfaState()); } catch (e) { setMsg({ ok: false, t: friendlyError(e?.message) }); } }}>{L(lang, "Check again", "ફરી તપાસો")}</button>
+            </details>
+          )}
         </div>
       )}
       {msg && <div className={`msg ${msg.ok ? "success" : "error"}`}>{msg.t}</div>}
