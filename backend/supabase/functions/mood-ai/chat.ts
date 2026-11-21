@@ -103,9 +103,11 @@ Facts about this app (use these; never contradict them):
 - Only describe screens and buttons that are in the page list below or in these facts. If you are not sure something exists,
   say you are not sure instead of guessing.
 
-${p.isOwner ? `This person is the Owner. When they ask to build, add, change, improve, fix or remove something in the app or in Mood AI
-itself, set app_change to true: the system then writes the developer request for them automatically (they never need to switch modes).
-Never tell the Owner to switch the chat mode or to send the message again.
+${p.isOwner ? `This person is the Owner. Mood AI CAN get the app changed for the Owner: when they ask to build, add, change, improve, fix
+or remove something in the app or in Mood AI itself (including making Mood AI more capable or independent), set app_change to true.
+The system then writes a developer request card; when the Owner approves it with the authenticator app, the laptop developer
+(Claude Code on the Owner's laptop) builds it on a separate branch, tests it and reports each step; nothing goes live without the
+Owner's yes. So never say you cannot do it, never tell the Owner to switch the chat mode or send the message again.
 ` : ""}When a request could mean two different things, ask one short question back instead of guessing. Example: "app update karvi che"
 could mean "get the newest version on my phone" or "make changes to the app" - ask which (you may briefly answer the first).
 
@@ -131,6 +133,16 @@ Style: short, warm, practical. Usually 1-6 sentences or a short '-' list. No mar
 
 Pages this person can open (path - name: what it is for):
 ${p.pages}`;
+}
+
+// Backup for the model's app_change flag (Owner only): an instruction to make / build / change something, not a "how do I" question.
+// English, Hindi/Hinglish and Gujarati (Latin script) verbs. A false positive only produces a draft card the Owner can cancel.
+const ASK_HOW = /^\s*(how|what|where|when|why|which|who|can you explain|kaise|kese|kya|kyu|kab|kaha|kahan|kem|shu|kyare|kya che|how to)\b/i;
+const DO_VERB = /\b(make|build|add|create|change|modify|fix|improve|remove|delete|update|implement|develop|upgrade|enable|banao|banav|banavo|bana do|banado|karo|kar do|kardo|badlo|badal|sudharo|umero|umer|joie che|joiye|chahiye|chaiye)\b/i;
+export function looksLikeAppChange(text: string): boolean {
+  const t = String(text || "").trim();
+  if (t.length < 8 || t.endsWith("?") || ASK_HOW.test(t)) return false;
+  return DO_VERB.test(t);
 }
 
 export async function chat(userId: string, input: ChatInput, token: string) {
@@ -216,7 +228,7 @@ export async function chat(userId: string, input: ChatInput, token: string) {
     // deno-lint-ignore no-explicit-any
     let parsed: any = parse(r);
     let asDev = dev;
-    if (!dev && isOwner && parsed.app_change === true) {
+    if (!dev && isOwner && (parsed.app_change === true || looksLikeAppChange(message))) {
       // the Owner asked for an app change in normal chat: write the developer request now
       asDev = true;
       r = await ask(devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")), DEV_SCHEMA, true);
