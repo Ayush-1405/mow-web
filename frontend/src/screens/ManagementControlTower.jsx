@@ -53,13 +53,16 @@ export default function ManagementControlTower({ lang, lookups, departments }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // A burst of task changes (one action can touch the task, its bridge and assignees) reloads once, not once per event.
   useEffect(() => {
+    let timer = null;
+    const soon = () => { window.clearTimeout(timer); timer = window.setTimeout(() => load(), 1500); };
     const channel = supabase
       .channel("control_tower")
-      .on("postgres_changes", { event: "*", schema: "public", table: "staff_tasks" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "bridges" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_tasks" }, soon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "bridges" }, soon)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { window.clearTimeout(timer); supabase.removeChannel(channel); };
   }, [load]);
 
   const profileById = useMemo(() => Object.fromEntries(profiles.map((p) => [p.id, p])), [profiles]);
