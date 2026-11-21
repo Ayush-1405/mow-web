@@ -50,3 +50,19 @@ export async function mfaVerify(factorId, code) {
 
 export const fmtUsd = (v) => (v === null || v === undefined ? "—" : `$${Number(v).toFixed(Number(v) < 1 ? 4 : 2)}`);
 export const fmtMs = (v) => (v === null || v === undefined ? "—" : Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(1)} s` : `${Math.round(Number(v))} ms`);
+
+// ---- floating chat (v3_22, Phase C). History is private to each person; replies are written by the server only.
+export const chatStatus = () => rpc("mai_chat_status");
+export const chatThreads = () => rpc("mai_chat_threads_list");
+export const chatThread = (id) => rpc("mai_chat_thread", { p_thread: id });
+export const chatHideThread = (id) => rpc("mai_chat_hide_thread", { p_thread: id });
+
+export async function chatSend({ thread_id, message, page, departments, management }) {
+  const { data, error } = await supabase.functions.invoke("mood-ai", { body: { action: "chat", thread_id, message, page, departments, management } });
+  if (error) {
+    let body = null;
+    try { body = await error?.context?.json?.(); } catch { /* not JSON */ }
+    return { ok: false, code: body?.code || "network", error: body?.error || "Could not reach Mood AI. Check your internet and try again.", thread_id: body?.thread_id };
+  }
+  return data;
+}

@@ -5,11 +5,15 @@
 //   (mai_models.last_ok_at / last_error, and a mai_usage row with real tokens and cost), and returns what happened.
 //   Respects the emergency stop: when Mood AI is stopped nothing is sent.
 //
-// Later phases add actions here ("chat" in Phase C, tools in Phase D). The browser never talks to a model directly.
+// POST { action: "chat", thread_id?, message, page: { path, title }, departments: [codes], management }   (any signed-in staff
+//   member allowed by the Owner's chat setting) -- the floating chat, Phase C: answers and explains, changes nothing. See chat.ts.
+//
+// Tools with approvals come in Phase D. The browser never talks to a model directly.
 
 import { aiClient, aiFailureReason, aiRuntime, AiError, type Provider } from "../_shared/ai.ts";
 import { buildCorsHeaders, handlePreflightStrict, rejectDisallowedOrigin } from "../_shared/cors.ts";
 import { adminClient, extractBearerToken, userScopedClient, verifyCaller } from "../_shared/clients.ts";
+import { chat, type ChatInput } from "./chat.ts";
 
 function reply(body: unknown, status: number, origin: string | null): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...buildCorsHeaders(origin) } });
@@ -46,8 +50,12 @@ async function handle(req: Request, origin: string | null): Promise<Response> {
   const token = extractBearerToken(req);
   const user = token ? await verifyCaller(token) : null;
   if (!token || !user) return fail(401, "unauthorized", "Please sign in again.", origin);
-  let body: { action?: string };
+  let body: { action?: string } & ChatInput;
   try { body = await req.json(); } catch { return fail(400, "bad_request", "Invalid request.", origin); }
+  if (body.action === "chat") {
+    const r = await chat(user.id, body);
+    return reply(r.body, r.status, origin);
+  }
   if (body.action === "health") {
     const { data: allowed } = await userScopedClient(token).rpc("mai_can_monitor");
     if (!allowed) return fail(403, "not_allowed", "Only the Owner and Management can run the model health check.", origin);
