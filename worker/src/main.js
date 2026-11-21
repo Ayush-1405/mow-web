@@ -17,6 +17,7 @@ import { findClaude, workOnRequest } from "./devAgent.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 const HEARTBEAT_MS = 30_000;
+const JOB_POLL_MS = 3_000; // between heartbeats, look for queued jobs this often (chat questions answered on this laptop wait on it)
 
 // ---- logging: console + logs/worker-YYYY-MM-DD.log, kept 14 days
 const LOG_DIR = path.join(ROOT, "logs");
@@ -74,8 +75,31 @@ async function main() {
   let devBusy = null; // ref of the request being built
   process.on("exit", () => stopOllama(ollama));
 
+  // take one queued job, run it, report it; true when a job was handled
+  const tryJob = async () => {
+    const job = await api.claim();
+    if (!job) return false;
+    busy = true;
+    log("INFO", `Job ${job.id} ${job.job_type} attempt ${job.attempt}: started`);
+    let outcome;
+    try {
+      const result = await runJob(job, ctx);
+      outcome = await api.complete(job.id, true, result, null);
+    } catch (e) {
+      if (e instanceof NotAuthorized) throw e;
+      log("WARN", `Job ${job.id} failed: ${e.message}`);
+      outcome = await api.complete(job.id, false, null, String(e.message).slice(0, 500), !(e instanceof PermanentError));
+    } finally {
+      busy = false;
+    }
+    log("INFO", `Job ${job.id}: ${outcome === "lost" ? "result discarded (the job was handed back to the queue)" : outcome}`);
+    return true;
+  };
+  const sleep = (ms) => new Promise((r) => { const t = setTimeout(r, ms); const check = setInterval(() => { if (stopping) { clearTimeout(t); clearInterval(check); r(); } }, 500); setTimeout(() => clearInterval(check), ms + 50); });
+
   while (!stopping) {
     let wait = HEARTBEAT_MS;
+    let canRun = false;
     try {
       const metrics = await readMetrics();
       metrics.claude = { up: devReady, busy: devBusy };
@@ -99,26 +123,8 @@ async function main() {
           workOnRequest(req, { api, repo: devRepo, exe: claudeExe, log }).finally(() => { devBusy = null; });
         }
       }
-      if (d.run && !busy && !devBusy) {
-        const job = await api.claim();
-        if (job) {
-          busy = true;
-          log("INFO", `Job ${job.id} ${job.job_type} attempt ${job.attempt}: started`);
-          let outcome;
-          try {
-            const result = await runJob(job, ctx);
-            outcome = await api.complete(job.id, true, result, null);
-          } catch (e) {
-            if (e instanceof NotAuthorized) throw e;
-            log("WARN", `Job ${job.id} failed: ${e.message}`);
-            outcome = await api.complete(job.id, false, null, String(e.message).slice(0, 500), !(e instanceof PermanentError));
-          } finally {
-            busy = false;
-          }
-          log("INFO", `Job ${job.id}: ${outcome === "lost" ? "result discarded (the job was handed back to the queue)" : outcome}`);
-          wait = 2_000; // look for the next job soon
-        }
-      }
+      canRun = d.run;
+      if (d.run && !busy && !devBusy && await tryJob()) wait = 2_000; // look for the next job soon
     } catch (e) {
       if (e instanceof NotAuthorized) {
         log("ERROR", `${e.message}. Stopping (not restarting). Make a New token in the Mood AI Control Center and run set-token.cmd.`);
@@ -130,7 +136,24 @@ async function main() {
       wait = backoffMs(failures);
       log("WARN", `Cannot reach Mood AI Core (${e.message}). Retrying in ${Math.round(wait / 1000)} s; the app keeps working without this laptop.`);
     }
-    await new Promise((r) => { const t = setTimeout(r, wait); const check = setInterval(() => { if (stopping) { clearTimeout(t); clearInterval(check); r(); } }, 500); setTimeout(() => clearInterval(check), wait + 50); });
+    // until the next heartbeat: check the queue every few seconds (only while allowed to run; network trouble waits for the heartbeat)
+    const until = Date.now() + wait;
+    while (!stopping && canRun && Date.now() + JOB_POLL_MS < until) {
+      await sleep(JOB_POLL_MS);
+      if (stopping || busy || devBusy) continue;
+      try {
+        await tryJob();
+      } catch (e) {
+        if (e instanceof NotAuthorized) {
+          log("ERROR", `${e.message}. Stopping (not restarting). Make a New token in the Mood AI Control Center and run set-token.cmd.`);
+          stopOllama(ollama);
+          process.exitCode = 0;
+          return;
+        }
+        break; // let the heartbeat round handle the reconnecting
+      }
+    }
+    if (!stopping) await sleep(Math.max(0, until - Date.now()));
   }
   stopOllama(ollama);
   log("INFO", "Mood AI worker stopped");

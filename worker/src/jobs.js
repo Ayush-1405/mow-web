@@ -26,6 +26,23 @@ export function checkGeneratePayload(p) {
   return { prompt: p.prompt, system: p.system || null, maxTokens, json: p.json === true };
 }
 
+// A chat question answered on this laptop when the cloud AI services fail: the app's instructions plus the last few turns.
+export function checkChatPayload(p) {
+  if (typeof p?.system !== "string" || !p.system.trim()) throw new PermanentError("LOCAL_CHAT needs the system instructions");
+  if (p.system.length > LIMITS.chatSystemChars) throw new PermanentError(`The instructions must be at most ${LIMITS.chatSystemChars} characters`);
+  const msgs = Array.isArray(p.messages) ? p.messages : [];
+  if (!msgs.length || msgs.length > 12) throw new PermanentError("LOCAL_CHAT needs 1-12 messages");
+  let total = 0;
+  for (const m of msgs) {
+    if (!m || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || !m.content.trim()) throw new PermanentError("Every message needs a role and text");
+    total += m.content.length;
+  }
+  if (total > LIMITS.promptChars) throw new PermanentError(`The conversation must be at most ${LIMITS.promptChars} characters`);
+  if (msgs[msgs.length - 1].role !== "user") throw new PermanentError("The last message must be the person's question");
+  const maxTokens = Math.min(LIMITS.maxOutputTokens, Math.max(64, Number(p.max_tokens) || 700));
+  return { system: p.system, messages: msgs.map((m) => ({ role: m.role, content: m.content })), maxTokens, json: p.json === true };
+}
+
 async function needModel(kind) {
   const s = await ollamaStatus();
   if (!s.up) throw new Error("Ollama is not running on this laptop"); // retryable: it may be starting
@@ -47,6 +64,13 @@ export const handlers = {
     const input = checkGeneratePayload(payload);
     await needModel("chat");
     return await generate(input);
+  },
+
+  // Mood AI chat fallback: one answer from the local model (text only, no tools, cannot change any record).
+  async LOCAL_CHAT(payload) {
+    const input = checkChatPayload(payload);
+    await needModel("chat");
+    return await generate({ ...input, numCtx: 8192, timeoutMs: 100_000 });
   },
 
   // Reports the laptop's real readings and connection time, proving the whole path (queue -> laptop -> result) works.
