@@ -4,6 +4,7 @@ import {
   controlCenter, emergencyStop, fmtMs, fmtUsd, mfaStartEnroll, mfaState, mfaVerify, resumeAi, runHealthCheck, setAgent, setBackup, setModelPrice, updateSettings,
 } from "../../lib/moodAiApi";
 import { friendlyError } from "../../lib/friendlyError";
+import LaptopServerPanel from "./LaptopServerPanel.jsx";
 
 const L = (lang, en, gu) => (lang === "gu" ? gu : en);
 const when = (t) => (t ? String(t).replace("T", " ").slice(0, 16) : "—");
@@ -65,6 +66,8 @@ export default function MoodAiControlCenter({ lang }) {
       </div>
 
       <OwnerCard lang={lang} d={d} reload={load} />
+
+      <LaptopServerPanel lang={lang} canOwner={canOwner} />
 
       <div className="card">
         <h3 className="perf-h">{L(lang, "Connected models", "જોડાયેલા મોડલ")}</h3>
