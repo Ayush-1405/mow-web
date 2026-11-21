@@ -43,6 +43,7 @@ function JobOrdersRedirect() {
 }
 
 const Bridges = lazy(() => import("./screens/Bridges.jsx"));
+const MoodAiChat = lazy(() => import("./components/MoodAiChat.jsx"));
 const Notifications = lazy(() => import("./screens/Notifications.jsx"));
 const UserCreation = lazy(() => import("./screens/UserCreation.jsx"));
 const ManagementDashboard = lazy(() => import("./screens/ManagementDashboard.jsx"));
@@ -644,6 +645,10 @@ export default function App() {
   return (
     <>
     <UpdateBanner lang={lang} />
+    {/* Mood AI floating chat (Phase C): outside the routes so it stays open while moving between pages */}
+    <Suspense fallback={null}>
+      <MoodAiChat lang={lang} departments={orderedAccessibleDepartments.map((d) => d.code).filter(Boolean)} management={controlTowerAllowed} />
+    </Suspense>
     <Suspense fallback={<RouteLoadingSkeleton />}>
     <Routes>
       <Route path="/management" element={
