@@ -13,8 +13,7 @@ begin
 
   v_log := public.zz_chk(v_log, 'Assistant, Developer agent and Application tools are marked built and on',
     (select count(*) from mai_agents where code in ('ASSISTANT', 'DEVELOPER', 'TOOLS') and is_built and enabled) = 3);
-  v_log := public.zz_chk(v_log, 'department agents (Phase H) not built yet stay off (built so far: Interior)',
-    not exists (select 1 from mai_agents where built_in_phase = 'H' and is_built and code not in ('INTERIOR')));
+  v_log := public.zz_chk(v_log, 'no agent can be on without being built', not exists (select 1 from mai_agents where enabled and not is_built));
 
   update mai_settings set ai_enabled = true where id = 1;
   v_log := public.zz_chk(v_log, 'tools switch on: the server sees it on', public.mai_agent_enabled('TOOLS'));

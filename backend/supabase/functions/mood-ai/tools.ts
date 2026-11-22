@@ -5,11 +5,17 @@
 // Actions (e.g. a new task) are only PREPARED as a draft that opens in the normal form; the person reviews and submits it there.
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { INTERIOR_TOOL_NAMES, type InteriorTool, runInteriorTool } from "./tools_interior.ts";
+import { INTERIOR_HELP, INTERIOR_TOOL_NAMES, type InteriorTool, runInteriorTool } from "./tools_interior.ts";
+import { FACTORY_HELP, FACTORY_TOOL_NAMES, type FactoryTool, runFactoryTool } from "./tools_factory.ts";
 
 export const BASE_TOOL_NAMES = ["my_open_tasks", "my_overdue_tasks", "my_due_today", "tasks_i_assigned", "find_tasks", "my_unread_notifications"] as const;
 // department agents (Phase H) add their own tools; each set is offered only while its agent is switched on
-export const TOOL_NAMES = [...BASE_TOOL_NAMES, ...INTERIOR_TOOL_NAMES] as const;
+export const TOOL_NAMES = [...BASE_TOOL_NAMES, ...INTERIOR_TOOL_NAMES, ...FACTORY_TOOL_NAMES] as const;
+// one entry per department agent: its code in mai_agents, its tools and the help the model gets while it is switched on
+export const DEPARTMENT_AGENTS: { code: string; tools: readonly string[]; help: string }[] = [
+  { code: "INTERIOR", tools: INTERIOR_TOOL_NAMES, help: INTERIOR_HELP },
+  { code: "FACTORY", tools: FACTORY_TOOL_NAMES, help: FACTORY_HELP },
+];
 export type ToolName = typeof TOOL_NAMES[number];
 
 export const TOOLS_HELP = `Live data tools (they read the app as this person; they only see what the app already shows them):
@@ -34,7 +40,8 @@ export function cleanNeed(need: unknown, search: unknown, allowed: readonly stri
   const tools = (Array.isArray(need) ? need : []).filter((n): n is ToolName => allowed.includes(String(n)));
   const uniq = [...new Set(tools)].slice(0, 3);
   const q = String(search ?? "").replace(/[%_,().:"*\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-  return { tools: uniq.filter((t) => (t !== "find_tasks" && t !== "interior_project_detail") || q.length >= 2), search: q };
+  const needsSearch = new Set(["find_tasks", "interior_project_detail", "factory_job_card_detail"]);
+  return { tools: uniq.filter((t) => !needsSearch.has(t) || q.length >= 2), search: q };
 }
 
 type Row = Record<string, unknown>;
@@ -91,6 +98,10 @@ export async function runTools(db: SupabaseClient, userId: string, tools: ToolNa
         list.slice(0, 5).forEach((t) => found.push({ id: String(t._id), title: `${t.task} ${t.title}`.slice(0, 60) }));
       } else if ((INTERIOR_TOOL_NAMES as readonly string[]).includes(tool)) {
         const r = await runInteriorTool(db, tool as InteriorTool, search, today);
+        results[tool] = r.result;
+        extraLinks.push(...r.links);
+      } else if ((FACTORY_TOOL_NAMES as readonly string[]).includes(tool)) {
+        const r = await runFactoryTool(db, tool as FactoryTool, search, today);
         results[tool] = r.result;
         extraLinks.push(...r.links);
       } else if (tool === "my_unread_notifications") {

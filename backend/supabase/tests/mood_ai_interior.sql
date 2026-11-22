@@ -20,7 +20,7 @@ begin
   update mai_settings set ai_enabled = false where id = 1;
   v_log := public.zz_chk(v_log, 'emergency stop: off', not public.mai_agent_enabled('INTERIOR'));
   update mai_settings set ai_enabled = true where id = 1;
-  v_log := public.zz_chk(v_log, 'the other department agents are still not built', not exists (select 1 from mai_agents where built_in_phase = 'H' and code <> 'INTERIOR' and is_built));
+  v_log := public.zz_chk(v_log, 'no agent can be on without being built', not exists (select 1 from mai_agents where enabled and not is_built));
 
   select count(*) into n_all from projects where not archived;
   select id into r_staff from roles where code not in ('management', 'admin', 'director', 'interior_head') and is_active order by code limit 1;

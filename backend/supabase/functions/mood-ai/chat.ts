@@ -8,8 +8,7 @@
 import { AiError, aiClient, aiFailureReason, aiRuntime, providerHasKey, type Provider } from "../_shared/ai.ts";
 import { adminClient, userScopedClient } from "../_shared/clients.ts";
 import { APP_PAGES, pageAt, pagesFor } from "../_shared/appMap.ts";
-import { BASE_TOOL_NAMES, cleanNeed, cleanTaskDraft, runTools, TOOL_NAMES, TOOLS_HELP } from "./tools.ts";
-import { INTERIOR_HELP, INTERIOR_TOOL_NAMES } from "./tools_interior.ts";
+import { BASE_TOOL_NAMES, cleanNeed, cleanTaskDraft, DEPARTMENT_AGENTS, runTools, TOOL_NAMES, TOOLS_HELP } from "./tools.ts";
 
 export interface ChatInput {
   thread_id?: string | null;
@@ -104,7 +103,7 @@ Known screens (path - name: purpose):
 ${pages}`;
 }
 
-function systemPrompt(p: { isOwner?: boolean; tools?: boolean; interior?: boolean; name: string; role: string; dept: string; pagePath: string; pageName: string; pageAbout: string; pages: string; today: string }) {
+function systemPrompt(p: { isOwner?: boolean; tools?: boolean; deptHelp?: string; name: string; role: string; dept: string; pagePath: string; pageName: string; pageAbout: string; pages: string; today: string }) {
   return `You are Mood AI, the assistant inside the staff app of Mood of Wood, an Indian furniture and interiors company
 (showrooms/retail, interior projects, a furniture factory, godown and dispatch, procurement, and office departments).
 
@@ -147,9 +146,9 @@ ${p.tools ? `- Read their live tasks and notifications with the tools below (onl
 What you cannot do: create, change, approve, send or delete anything yourself, or see other live records (orders, projects, stock,
 reports) - for those give the exact steps and the right link. Never invent numbers, names, dates or statuses: use only tool results.
 
-${TOOLS_HELP}${p.interior ? `
+${TOOLS_HELP}${p.deptHelp ? `
 
-${INTERIOR_HELP}` : ""}` : `What you cannot do yet: you cannot see the company's live records (tasks, orders, projects, stock, people, reports) and you cannot
+${p.deptHelp}` : ""}` : `What you cannot do yet: you cannot see the company's live records (tasks, orders, projects, stock, people, reports) and you cannot
 create, change, approve, send or delete anything. Never say or imply you looked something up, created, saved, sent, assigned or
 approved anything. Never invent numbers, names, dates or statuses from the records. If they ask for live data or an action, say
 plainly that Mood AI can't do that from chat yet (it is coming with approvals), then give the exact steps and the right link so they
@@ -256,11 +255,12 @@ export async function chat(userId: string, input: ChatInput, token: string) {
   // Application tools (Phase D) run only when that agent is switched on in the Control Center
   const toolsOn = !dev && (await admin.rpc("mai_agent_enabled", { p_code: "TOOLS" })).data === true;
   // department agents (Phase H) on top of the application tools
-  const interiorOn = toolsOn && (await admin.rpc("mai_agent_enabled", { p_code: "INTERIOR" })).data === true;
-  const allowedTools: readonly string[] = [...BASE_TOOL_NAMES, ...(interiorOn ? INTERIOR_TOOL_NAMES : [])];
+  const deptOn = toolsOn ? (await Promise.all(DEPARTMENT_AGENTS.map(async (a) => ((await admin.rpc("mai_agent_enabled", { p_code: a.code })).data === true ? a : null)))).filter((a) => a !== null) : [];
+  const allowedTools: readonly string[] = [...BASE_TOOL_NAMES, ...deptOn.flatMap((a) => a!.tools)];
+  const deptHelp = deptOn.map((a) => a!.help).join("\n\n");
   const today = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
 
-  const system = dev ? devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")) : systemPrompt({ isOwner, tools: toolsOn, interior: interiorOn,
+  const system = dev ? devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")) : systemPrompt({ isOwner, tools: toolsOn, deptHelp,
     name: (prof as any)?.full_name ?? "a staff member", role: (prof as any)?.roles?.name_en ?? "staff", dept: (prof as any)?.departments?.name_en ?? "unknown",
     pagePath, pageName: here?.name ?? String(input.page?.title ?? "").slice(0, 80) ?? "a page", pageAbout: here?.about ?? "",
     pages: allowedPages.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n"), today,
