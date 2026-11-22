@@ -1,6 +1,6 @@
 // deno test mood-ai/chat_detect_test.ts -- the Owner's app-change detection backup
 import { assertEquals } from "jsr:@std/assert@1";
-import { localChatPayload, looksLikeAppChange } from "./chat.ts";
+import { directDevDraft, localChatPayload, looksLikeAppChange } from "./chat.ts";
 
 Deno.test("instructions to change the app are detected", () => {
   for (const t of [
@@ -34,4 +34,14 @@ Deno.test("the laptop gets trimmed instructions, a JSON answer format and the la
   assertEquals(p.messages[0].role, "user");
   assertEquals(p.messages[p.messages.length - 1].content.startsWith("turn 8"), true);
   assertEquals(p.messages.length <= 6 && p.messages.every((m) => m.content.length <= 2000), true);
+});
+
+Deno.test("when the request writer is down, the Owner's own words become the request (any language), with a safe default", () => {
+  const msg = "Factory ma monthly wastage report add karo\nwith month filter";
+  const d = directDevDraft(msg);
+  assertEquals(d.title, "Factory ma monthly wastage report add karo");
+  assertEquals(d.prompt.includes(msg), true);
+  assertEquals(d.prompt.includes("NEEDS_INFO"), true);
+  assertEquals(d.risk, "MEDIUM");
+  assertEquals(directDevDraft("x".repeat(200)).title.length, 80);
 });
