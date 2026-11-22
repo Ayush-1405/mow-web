@@ -7,14 +7,16 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { INTERIOR_HELP, INTERIOR_TOOL_NAMES, type InteriorTool, runInteriorTool } from "./tools_interior.ts";
 import { FACTORY_HELP, FACTORY_TOOL_NAMES, type FactoryTool, runFactoryTool } from "./tools_factory.ts";
+import { PROCUREMENT_HELP, PROCUREMENT_TOOL_NAMES, type ProcurementTool, runProcurementTool } from "./tools_procurement.ts";
 
 export const BASE_TOOL_NAMES = ["my_open_tasks", "my_overdue_tasks", "my_due_today", "tasks_i_assigned", "find_tasks", "my_unread_notifications"] as const;
 // department agents (Phase H) add their own tools; each set is offered only while its agent is switched on
-export const TOOL_NAMES = [...BASE_TOOL_NAMES, ...INTERIOR_TOOL_NAMES, ...FACTORY_TOOL_NAMES] as const;
+export const TOOL_NAMES = [...BASE_TOOL_NAMES, ...INTERIOR_TOOL_NAMES, ...FACTORY_TOOL_NAMES, ...PROCUREMENT_TOOL_NAMES] as const;
 // one entry per department agent: its code in mai_agents, its tools and the help the model gets while it is switched on
 export const DEPARTMENT_AGENTS: { code: string; tools: readonly string[]; help: string }[] = [
   { code: "INTERIOR", tools: INTERIOR_TOOL_NAMES, help: INTERIOR_HELP },
   { code: "FACTORY", tools: FACTORY_TOOL_NAMES, help: FACTORY_HELP },
+  { code: "PROCUREMENT", tools: PROCUREMENT_TOOL_NAMES, help: PROCUREMENT_HELP },
 ];
 export type ToolName = typeof TOOL_NAMES[number];
 
@@ -40,7 +42,7 @@ export function cleanNeed(need: unknown, search: unknown, allowed: readonly stri
   const tools = (Array.isArray(need) ? need : []).filter((n): n is ToolName => allowed.includes(String(n)));
   const uniq = [...new Set(tools)].slice(0, 3);
   const q = String(search ?? "").replace(/[%_,().:"*\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-  const needsSearch = new Set(["find_tasks", "interior_project_detail", "factory_job_card_detail"]);
+  const needsSearch = new Set(["find_tasks", "interior_project_detail", "factory_job_card_detail", "procurement_request_detail"]);
   return { tools: uniq.filter((t) => !needsSearch.has(t) || q.length >= 2), search: q };
 }
 
@@ -102,6 +104,10 @@ export async function runTools(db: SupabaseClient, userId: string, tools: ToolNa
         extraLinks.push(...r.links);
       } else if ((FACTORY_TOOL_NAMES as readonly string[]).includes(tool)) {
         const r = await runFactoryTool(db, tool as FactoryTool, search, today);
+        results[tool] = r.result;
+        extraLinks.push(...r.links);
+      } else if ((PROCUREMENT_TOOL_NAMES as readonly string[]).includes(tool)) {
+        const r = await runProcurementTool(db, tool as ProcurementTool, search, today, userId);
         results[tool] = r.result;
         extraLinks.push(...r.links);
       } else if (tool === "my_unread_notifications") {
