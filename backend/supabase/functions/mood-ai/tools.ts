@@ -5,8 +5,11 @@
 // Actions (e.g. a new task) are only PREPARED as a draft that opens in the normal form; the person reviews and submits it there.
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { INTERIOR_TOOL_NAMES, type InteriorTool, runInteriorTool } from "./tools_interior.ts";
 
-export const TOOL_NAMES = ["my_open_tasks", "my_overdue_tasks", "my_due_today", "tasks_i_assigned", "find_tasks", "my_unread_notifications"] as const;
+export const BASE_TOOL_NAMES = ["my_open_tasks", "my_overdue_tasks", "my_due_today", "tasks_i_assigned", "find_tasks", "my_unread_notifications"] as const;
+// department agents (Phase H) add their own tools; each set is offered only while its agent is switched on
+export const TOOL_NAMES = [...BASE_TOOL_NAMES, ...INTERIOR_TOOL_NAMES] as const;
 export type ToolName = typeof TOOL_NAMES[number];
 
 export const TOOLS_HELP = `Live data tools (they read the app as this person; they only see what the app already shows them):
@@ -27,11 +30,11 @@ export function todayIST(now = new Date()): string {
 }
 
 // What the model may ask for, cleaned: known names only, at most 3 tools, a short search text.
-export function cleanNeed(need: unknown, search: unknown): { tools: ToolName[]; search: string } {
-  const tools = (Array.isArray(need) ? need : []).filter((n): n is ToolName => (TOOL_NAMES as readonly string[]).includes(String(n)));
+export function cleanNeed(need: unknown, search: unknown, allowed: readonly string[] = BASE_TOOL_NAMES): { tools: ToolName[]; search: string } {
+  const tools = (Array.isArray(need) ? need : []).filter((n): n is ToolName => allowed.includes(String(n)));
   const uniq = [...new Set(tools)].slice(0, 3);
   const q = String(search ?? "").replace(/[%_,().:"*\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-  return { tools: uniq.filter((t) => t !== "find_tasks" || q.length >= 2), search: q };
+  return { tools: uniq.filter((t) => (t !== "find_tasks" && t !== "interior_project_detail") || q.length >= 2), search: q };
 }
 
 type Row = Record<string, unknown>;
@@ -63,6 +66,7 @@ export async function runTools(db: SupabaseClient, userId: string, tools: ToolNa
 
   const results: Record<string, unknown> = { today };
   const found: { id: string; title: string }[] = [];
+  const extraLinks: { path: string; label: string }[] = [];
   for (const tool of tools) {
     try {
       if (tool === "my_open_tasks" || tool === "my_overdue_tasks" || tool === "my_due_today") {
@@ -85,6 +89,10 @@ export async function runTools(db: SupabaseClient, userId: string, tools: ToolNa
         const list = shape(data ?? []);
         results[tool] = { search, count: list.length, tasks: list.map(({ _id, _assigned_to, ...r }) => r) };
         list.slice(0, 5).forEach((t) => found.push({ id: String(t._id), title: `${t.task} ${t.title}`.slice(0, 60) }));
+      } else if ((INTERIOR_TOOL_NAMES as readonly string[]).includes(tool)) {
+        const r = await runInteriorTool(db, tool as InteriorTool, search, today);
+        results[tool] = r.result;
+        extraLinks.push(...r.links);
       } else if (tool === "my_unread_notifications") {
         const { data, error, count } = await db.from("notifications").select("title_en, created_at", { count: "exact" })
           .eq("recipient_id", userId).eq("is_read", false).order("created_at", { ascending: false }).limit(10);
@@ -96,7 +104,7 @@ export async function runTools(db: SupabaseClient, userId: string, tools: ToolNa
     }
   }
   // links straight to the tasks that were mentioned (the Today's Tasks screen focuses ?focus=<id>)
-  const links = found.slice(0, 3).map((t) => ({ path: `/?focus=${t.id}`, label: t.title }));
+  const links = [...found.slice(0, 3).map((t) => ({ path: `/?focus=${t.id}`, label: t.title })), ...extraLinks].slice(0, 4);
   return { results, links };
 }
 
