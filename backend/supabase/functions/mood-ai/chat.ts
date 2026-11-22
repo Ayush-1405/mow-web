@@ -169,6 +169,30 @@ Use an empty links list when no page helps.`;
   return { system: sys, messages: msgs, max_tokens: 700, json: true };
 }
 
+// When the AI request writer does not answer in time, the Owner's own words become the developer request: Claude Code on the
+// laptop reads them directly (any language) and asks back (NEEDS_INFO) when something is unclear. Nothing is lost or delayed.
+export function directDevDraft(message: string) {
+  const text = message.trim();
+  const firstLine = text.split(/\r?\n/)[0].trim();
+  return {
+    reply: "The AI request writer is not answering right now, so I saved your message exactly as you wrote it. The laptop developer (Claude Code) reads it directly and will ask you if anything is unclear.",
+    title: firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine,
+    goal: text.slice(0, 2000),
+    details: "",
+    acceptance: [],
+    areas: [],
+    risk: "MEDIUM",
+    questions: [],
+    prompt: `The Owner sent this request from the Mood AI chat (their own words, possibly Gujarati, Hindi or Hinglish; not rewritten by an AI):
+"""
+${text.slice(0, 8000)}
+"""
+First work out exactly what they want changed in this app (read the relevant code). If the meaning is unclear, or it touches money,
+permissions, deleting data or many users and the details matter, stop and ask one clear question (NEEDS_INFO) instead of guessing.
+Otherwise build it, with tests.`,
+  };
+}
+
 export async function chat(userId: string, input: ChatInput, token: string) {
   const startedAt = Date.now();
   const timeLeft = () => DEADLINE_MS - (Date.now() - startedAt);
@@ -236,7 +260,7 @@ export async function chat(userId: string, input: ChatInput, token: string) {
   const ask = async (sys: string, schema: Record<string, unknown>, asDev: boolean): Promise<Reply> => {
     let lastErr: unknown = new AiError("auth", 503, "The AI service is not configured yet");
     for (const route of routes) {
-      const budget = Math.min(asDev ? 120_000 : 80_000, timeLeft() - reserve - 3_000);
+      const budget = Math.min(asDev ? 70_000 : 80_000, timeLeft() - (asDev ? 5_000 : reserve) - 3_000);
       if (budget < 8_000) { lastErr = new Error("timed out: no time left for this AI service"); break; }
       try {
         const effort = rt?.chat_effort ?? "low";
@@ -282,27 +306,43 @@ export async function chat(userId: string, input: ChatInput, token: string) {
   };
   // deno-lint-ignore no-explicit-any
   const parse = (r: Reply): any => { const raw = r.content.map((b) => b.text).join(""); try { return JSON.parse(raw); } catch { return { reply: raw, links: [] }; } };
+  const devSystem = () => devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n"));
+  const direct = (): Reply => ({ content: [{ type: "text", text: JSON.stringify(directDevDraft(message)) }], stop_reason: "end_turn", provider: "direct",
+    model: "owner-words", usage: { input_tokens: 0, output_tokens: 0 }, latency_ms: Date.now() - startedAt } as unknown as Reply);
+  // the request writer, and if it cannot answer in time, the Owner's own words
+  const writeRequest = async (sys: string): Promise<Reply> => {
+    try {
+      return await ask(sys, DEV_SCHEMA, true);
+    } catch (e) {
+      if (e instanceof AiError && e.kind === "stopped") throw e;
+      console.error(`mood-ai chat: request writer failed (${aiFailureReason(e)}), saving the Owner's own words`);
+      return direct();
+    }
+  };
   try {
     let r: Reply;
-    try {
-      r = await ask(system, dev ? DEV_SCHEMA : isOwner ? OWNER_SCHEMA : SCHEMA, dev);
-    } catch (e) {
-      if (dev || localReady !== true || (e instanceof AiError && e.kind === "stopped")) throw e;
-      console.error(`mood-ai chat: cloud services failed (${aiFailureReason(e)}), asking the laptop`);
-      r = await askLocal(e);
+    // an Owner's message that clearly asks for an app change skips the normal answer and goes straight to the request writer
+    let asDev = dev || (isOwner && looksLikeAppChange(message));
+    if (asDev) {
+      r = await writeRequest(dev ? system : devSystem());
+    } else {
+      try {
+        r = await ask(system, isOwner ? OWNER_SCHEMA : SCHEMA, false);
+      } catch (e) {
+        if (localReady !== true || (e instanceof AiError && e.kind === "stopped")) throw e;
+        console.error(`mood-ai chat: cloud services failed (${aiFailureReason(e)}), asking the laptop`);
+        r = await askLocal(e);
+      }
     }
     const local = (r.provider as string) === "ollama";
     // deno-lint-ignore no-explicit-any
     let parsed: any = parse(r);
-    let asDev = dev;
     if (local) {
-      parsed.reply = `${String(parsed.reply ?? "").trim()}${isOwner && looksLikeAppChange(message)
-        ? "\n\nThis looks like a change to the app: the developer request can only be written by the cloud AI, so please send it again once it is back."
-        : ""}${LOCAL_NOTE}`;
-    } else if (!dev && isOwner && (parsed.app_change === true || looksLikeAppChange(message))) {
-      // the Owner asked for an app change in normal chat: write the developer request now
+      parsed.reply = `${String(parsed.reply ?? "").trim()}${LOCAL_NOTE}`;
+    } else if (!asDev && isOwner && parsed.app_change === true) {
+      // the model saw an app change the word list missed: write the developer request now
       asDev = true;
-      r = await ask(devPrompt(me?.full_name ?? "the Owner", today, APP_PAGES.map((p) => `${p.path} - ${p.name}: ${p.about}`).join("\n")), DEV_SCHEMA, true);
+      r = await writeRequest(devSystem());
       parsed = parse(r);
     }
     let reply = String(parsed.reply ?? "").trim() || (r.stop_reason === "refusal" ? "Sorry, I can't help with that." : "Sorry, I couldn't write an answer. Please try again.");
