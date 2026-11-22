@@ -33,5 +33,12 @@ export function makeApi({ url, anonKey, token, timeoutMs = 15_000 }) {
     devClaim: () => call("mai_worker_dev_claim", {}),
     devReport: (ref, status, note, branch, commit) =>
       call("mai_worker_dev_report", { p_ref: ref, p_status: status, p_note: String(note).slice(0, 3900), p_branch: branch ?? null, p_commit: commit ?? null }),
+    // v3_26 live build: log lines, the laptop's check report + branch diff, and Owner-approved merges (local main only)
+    devLog: (ref, lines) => call("mai_worker_dev_log", { p_ref: ref, p_lines: lines.slice(0, 200) }),
+    devResult: (ref, checks, diffStat, diffPatch) =>
+      call("mai_worker_dev_result", { p_ref: ref, p_checks: checks ?? [], p_diff_stat: diffStat ?? null, p_diff_patch: diffPatch ?? null }),
+    devMergeClaim: () => call("mai_worker_dev_merge_claim", {}),
+    devMergeReport: (ref, ok, note, mergedCommit) =>
+      call("mai_worker_dev_merge_report", { p_ref: ref, p_ok: !!ok, p_note: String(note).slice(0, 3900), p_merged_commit: mergedCommit ?? null }),
   };
 }

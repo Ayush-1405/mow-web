@@ -2,3 +2,7 @@
 .env*
 node_modules
 dist
+
+# Supabase CLI working files and Deno lock files written by local tool runs (machine-specific)
+backend/supabase/.temp/
+/deno.lock

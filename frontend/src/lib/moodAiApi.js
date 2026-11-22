@@ -85,6 +85,18 @@ export const devSubmit = (id, note) => rpc("mai_dev_submit", { p_id: id, p_note:
 export const devEdit = (id, title, prompt) => rpc("mai_dev_edit", { p_id: id, p_title: title, p_prompt: prompt });
 export const devCancel = (id, note) => rpc("mai_dev_cancel", { p_id: id, p_note: note ?? null });
 export const devAnswer = (id, answer) => rpc("mai_dev_answer", { p_id: id, p_answer: answer });
+// v3_26 live build: report, diff and log lines after `after` (0 = the latest 500)
+export const devDetail = (id, after = 0) => rpc("mai_dev_detail", { p_id: id, p_after: after });
+// Merge approval: always a fresh authenticator code in the app (even in an already-verified session); the database also
+// requires a verified session, a passing report and the exact commit shown on screen.
+export async function devApproveMerge(id, commit, askCode) {
+  const st = await mfaState();
+  if (!st.enrolled) throw new Error("Set up the authenticator app in the Mood AI Control Center first.");
+  const code = await askCode();
+  if (!code) throw new Error("Not merged: the authenticator code is needed.");
+  await mfaVerify(st.factorId, code);
+  return rpc("mai_dev_approve_merge", { p_id: id, p_commit: commit });
+}
 // Runs an owner action; if the session is not verified yet, asks for the 6-digit authenticator code once and retries.
 export async function withOwnerVerification(action, askCode) {
   try { return await action(); } catch (e) {

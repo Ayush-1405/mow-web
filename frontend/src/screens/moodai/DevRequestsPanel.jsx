@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { devAnswer, devCancel, devEdit, devList, devSubmit, withOwnerVerification } from "../../lib/moodAiApi";
+import DevBuildView from "./DevBuildView.jsx";
 
 // Developer requests (v3_23): what the Owner asked Mood AI to change in the app, the developer prompt it wrote, and every step
 // the developer reported since. Approving (submit / answer) needs the authenticator app. Owner and backup only.
 const L = (lang, en, gu) => (lang === "gu" ? gu : en);
 const STATUS = {
   DRAFT: ["Draft — not sent", "ASSIGNED"], SUBMITTED: ["Sent to developer", "IN_PROGRESS"], IN_PROGRESS: ["Being built", "IN_PROGRESS"],
-  NEEDS_INFO: ["Needs your answer", "ON_HOLD"], READY_FOR_REVIEW: ["Ready for your review", "ON_HOLD"], LIVE: ["Live", "COMPLETED"],
+  NEEDS_INFO: ["Needs your answer", "ON_HOLD"], READY_FOR_REVIEW: ["Ready for your review", "ON_HOLD"],
+  MERGE_APPROVED: ["Merge approved", "IN_PROGRESS"], MERGED: ["Merged on laptop (not live)", "COMPLETED"], LIVE: ["Live", "COMPLETED"],
   DONE: ["Done", "COMPLETED"], REJECTED: ["Not done", "RETURNED"], CANCELLED: ["Cancelled", "RETURNED"],
 };
 const when = (v) => (v ? new Date(v).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -51,6 +53,7 @@ export default function DevRequestsPanel({ lang }) {
                 {(r.questions || []).length > 0 && <><b>{L(lang, "Open questions", "પ્રશ્નો")}</b><ul>{r.questions.map((a) => <li key={a}>{a}</li>)}</ul></>}
                 {r.branch && <p className="sub">{L(lang, "Branch", "બ્રાન્ચ")}: {r.branch}{r.commit_ref ? ` · ${r.commit_ref}` : ""}</p>}
                 <details><summary>{L(lang, "Developer prompt", "ડેવલપર પ્રોમ્પ્ટ")}</summary><pre className="mai-dev-prompt">{r.prompt}</pre></details>
+                {r.status !== "DRAFT" && <DevBuildView request={r} lang={lang} onChanged={load} />}
                 <b>{L(lang, "History", "ઇતિહાસ")}</b>
                 <ul className="mai-dev-events">{(r.events || []).map((e, i) => <li key={i}><span className="sub">{when(e.at)} · {e.by}</span>{e.status ? ` · ${e.status}` : ""} — {e.note}</li>)}</ul>
                 <div className="btn-row">
@@ -69,7 +72,7 @@ export default function DevRequestsPanel({ lang }) {
                       act(() => withOwnerVerification(() => devAnswer(r.id, a), askCode(lang)), L(lang, "Answer sent.", "જવાબ મોકલ્યો."));
                     }}>{L(lang, "Answer the question", "જવાબ આપો")}</button>
                   )}
-                  {!["LIVE", "DONE", "CANCELLED"].includes(r.status) && (
+                  {!["LIVE", "DONE", "CANCELLED", "MERGED"].includes(r.status) && (
                     <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => { if (window.confirm(L(lang, `Cancel ${r.ref}?`, "રદ કરવું?"))) act(() => devCancel(r.id), L(lang, "Cancelled.", "રદ.")); }}>{L(lang, "Cancel request", "રદ કરો")}</button>
                   )}
                 </div>
