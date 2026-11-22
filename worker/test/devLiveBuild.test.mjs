@@ -95,7 +95,8 @@ test("checks: fixed commands, install only when needed, stop when the install fa
   assert.deepEqual(ran, ["frontend install"], "nothing else runs without dependencies");
   assert.equal(r.length, 1); assert.equal(r[0].ok, false);
   assert.equal(summarizeChecks([]), "No checks ran.");
-  for (const c of CHECKS) assert.equal(c.cmd, "npm", "checks are fixed npm commands");
+  for (const c of CHECKS) assert.ok(c.cmd === "npm" || c.cmd === "deno", "checks are fixed npm / deno commands");
+  assert.ok(CHECKS.some((c) => c.name === "server functions type check") && CHECKS.some((c) => c.name === "server functions tests"), "server functions are checked too");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

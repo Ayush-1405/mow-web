@@ -18,6 +18,7 @@
 
 import { aiClient, aiConfigured, aiModel, AiError, type AiBlock } from "../_shared/ai.ts";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+// @ts-ignore: esm.sh serves jszip with a default export, but its type file does not declare one (runs fine)
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { buildCorsHeaders, handlePreflightStrict, rejectDisallowedOrigin } from "../_shared/cors.ts";
 import { adminClient, extractBearerToken, userScopedClient, verifyCaller } from "../_shared/clients.ts";

@@ -42,6 +42,9 @@ export const CHECKS = [
   { name: "frontend lint", dir: "frontend", cmd: "npm", args: ["run", "lint"] },
   { name: "frontend tests", dir: "frontend", cmd: "npm", args: ["test"] },
   { name: "worker tests", dir: "worker", cmd: "npm", args: ["test"] },
+  // Phase F: the server (edge) functions -- every one type-checked, and their unit tests run (no network, no database)
+  { name: "server functions type check", dir: "backend/supabase/functions", cmd: "deno", args: ["check", "--node-modules-dir=none", "."] },
+  { name: "server functions tests", dir: "backend/supabase/functions", cmd: "deno", args: ["test", "--node-modules-dir=none", "--no-check", "--allow-read", "--allow-env"] },
 ];
 
 // Claude Code binary: CLAUDE_EXE in worker/.env, else the newest VS Code extension copy

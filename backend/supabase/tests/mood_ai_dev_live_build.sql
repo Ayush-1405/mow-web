@@ -157,7 +157,9 @@ begin
   exception when others then v_log := public.zz_chk(v_log, 'another laptop cannot report the merge', v is null); end;
   begin perform public.mai_worker_dev_report(tok, v_ref, 'LIVE', 'x'); v_log := public.zz_chk(v_log, 'the laptop still can never mark it live', false);
   exception when others then v_log := public.zz_chk(v_log, 'the laptop still can never mark it live', true); end;
-  select count(*) into n from notifications where recipient_id = u_own and entity_type = 'MOOD_AI';
+  reset role;
+  select count(*) into n from notifications where recipient_id = u_own and entity_type = 'MOOD_AI';  -- counted as the test itself, not as the laptop
+  perform public.zz_anon(); set local role anon;
   perform public.mai_worker_dev_merge_report(tok, v_ref, true, 'Merged into local main as def5678 (not pushed)', 'def5678');
   reset role;
   v_log := public.zz_chk(v_log, 'merged: MERGED (not LIVE), merged commit kept, lock released, Owner notified',
