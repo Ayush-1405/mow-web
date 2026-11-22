@@ -224,6 +224,13 @@ export default function App() {
     if (location.pathname !== "/") return;
     try { if (sessionStorage.getItem("mow.assign_draft")) setView("assign"); } catch { /* storage unavailable */ }
   }, [location.pathname]);
+  // a Mood AI task draft while this page is already open: show the form, re-created so it reads the new draft
+  const [assignKey, setAssignKey] = useState(0);
+  useEffect(() => {
+    const onDraft = () => { setView("assign"); setAssignKey((k) => k + 1); };
+    window.addEventListener("mow-assign-draft", onDraft);
+    return () => window.removeEventListener("mow-assign-draft", onDraft);
+  }, []);
   const [toast, setToast] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
   // Persistent bilingual error state for a failed profile/lookup/bootstrap
@@ -928,7 +935,7 @@ export default function App() {
         {profile.permissions.showManagementBadge && <ManagementBadge />}
         {toast && <div className={`msg ${toast.kind}`}>{toast.message}</div>}
         {view === "tasks" && <TodayTasks lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
-        {view === "assign" && <AssignTask lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
+        {view === "assign" && <AssignTask key={assignKey} lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
         {view === "bridges" && <Bridges lang={lang} profile={profile} lookups={lookups} showToast={showToast} />}
         {view === "notifications" && <Notifications lang={lang} showToast={showToast} />}
         {view === "users" && profile.permissions.canViewLeadershipScreens && (

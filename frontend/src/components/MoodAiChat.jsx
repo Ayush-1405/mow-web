@@ -107,6 +107,18 @@ export default function MoodAiChat({ lang, departments, management }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // A task Mood AI prepared: it opens in the normal Assign Task form (read once there); the person checks and submits it.
+  function openTaskDraft(t) {
+    try {
+      sessionStorage.setItem("mow.assign_draft", JSON.stringify({
+        title: t.title, description: t.description || "", priority_code: t.priority, due_date: t.due_date, assignee_name: t.assignee_name, from_mood_ai: true,
+      }));
+    } catch { /* storage blocked: the form simply opens empty */ }
+    window.dispatchEvent(new Event("mow-assign-draft"));
+    navigate("/");
+    if (isPhone()) setOpen(false);
+  }
+
   async function send(raw) {
     const msg = String(raw ?? text).trim();
     if (!msg || busy) return;
@@ -119,7 +131,7 @@ export default function MoodAiChat({ lang, departments, management }) {
     setBusy(false);
     if (r.thread_id && r.thread_id !== threadId) { setThreadId(r.thread_id); saveThread(r.thread_id); }
     if (r.ok) {
-      setMessages((m) => [...m, { id: `local-${Date.now()}-a`, role: "assistant", content: r.reply, links: r.links, cost_usd: r.cost_usd, latency_ms: r.latency_ms, model: r.model, dev: r.dev_request }]);
+      setMessages((m) => [...m, { id: `local-${Date.now()}-a`, role: "assistant", content: r.reply, links: r.links, cost_usd: r.cost_usd, latency_ms: r.latency_ms, model: r.model, dev: r.dev_request, task: r.task_draft }]);
       setStatus((s) => (s ? { ...s, used_today: r.used_today, daily_limit: r.daily_limit } : s));
     } else {
       setError(r.error || L(lang, "Mood AI could not answer. Please try again.", "Mood AI જવાબ આપી શક્યું નહીં."));
@@ -254,6 +266,18 @@ export default function MoodAiChat({ lang, departments, management }) {
                   {m.role === "assistant" && (m.links || []).length > 0 && (
                     <div className="mai-links">
                       {m.links.map((l) => <button type="button" key={l.path} className="mai-chip link" onClick={() => { navigate(l.path); if (isPhone()) setOpen(false); }}>↗ {l.label}</button>)}
+                    </div>
+                  )}
+                  {m.role === "assistant" && m.task && (
+                    <div className="mai-dev-card mai-task-card">
+                      <div><b>📝 {L(lang, "Task draft", "કાર્યનો ડ્રાફ્ટ")}</b> · {m.task.title}</div>
+                      <div className="sub">
+                        {[m.task.assignee_name && `${L(lang, "for", "માટે")} ${m.task.assignee_name}`, m.task.due_date && `${L(lang, "due", "તારીખ")} ${m.task.due_date}`, m.task.priority !== "NORMAL" && m.task.priority].filter(Boolean).join(" · ")}
+                      </div>
+                      <div className="sub">{L(lang, "Nothing is created yet: check it in the Assign Task form, pick the person and submit.", "હજી કંઈ બન્યું નથી: Assign Task ફોર્મમાં તપાસી, વ્યક્તિ પસંદ કરી સબમિટ કરો.")}</div>
+                      <div className="btn-row">
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => openTaskDraft(m.task)}>{L(lang, "Open in Assign Task", "Assign Task માં ખોલો")}</button>
+                      </div>
                     </div>
                   )}
                   {m.role === "assistant" && m.dev && (

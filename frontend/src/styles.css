@@ -2350,3 +2350,6 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mai-lost-mfa { margin-top: 10px; font-size: 13.5px; }
 .mai-lost-mfa summary { cursor: pointer; color: var(--brand-dark); font-weight: 600; }
 .mai-lost-mfa ol { margin: 6px 0 8px; padding-left: 20px; }
+
+/* Mood AI filled the Assign Task form (Phase D): a calm note above the form */
+.mai-draft-note { padding: 10px 12px; border-radius: 10px; background: var(--surface-2, #f6efe6); border: 1px solid var(--border, #e5d6c3); font-size: 14px; }

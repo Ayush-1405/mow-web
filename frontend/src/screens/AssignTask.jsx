@@ -101,11 +101,15 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
       if (raw) { chatDraft.current = JSON.parse(raw) || {}; sessionStorage.removeItem("mow.assign_draft"); }
     } catch { /* no draft */ }
   }
+  // Mood AI draft: the person's name as it was said; pre-typed into the assignee search once the department is chosen
+  const draftAssignee = typeof chatDraft.current.assignee_name === "string" ? chatDraft.current.assignee_name.slice(0, 60) : "";
+  const fromMoodAi = chatDraft.current.from_mood_ai === true;
+  useEffect(() => { if (draftAssignee) setAssigneeSearch(draftAssignee); }, [draftAssignee]);
   const [form, setForm] = useState({
     title: typeof chatDraft.current.title === "string" ? chatDraft.current.title : "",
     description: typeof chatDraft.current.description === "string" ? chatDraft.current.description : "",
     task_type_code: lookups.taskTypes[0]?.code || "",
-    priority_code: "NORMAL",
+    priority_code: ["LOW", "NORMAL", "HIGH", "URGENT"].includes(chatDraft.current.priority_code) ? chatDraft.current.priority_code : "NORMAL",
     proof_type_code: "none",
     // Defaults to the caller's own department. Only a management user with
     // no home department (profile.department_id === null) gets an editable
@@ -116,7 +120,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
     assigned_to: "",
     second_assignee: "",
     verifier_id: "",
-    due_date: "",
+    due_date: /^\d{4}-\d{2}-\d{2}$/.test(String(chatDraft.current.due_date || "")) ? chatDraft.current.due_date : "",
     due_time: "",
     reference_number: "",
     requirement_text: "",
@@ -295,7 +299,7 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // search text.
   function selectToDepartment(deptId) {
     setForm((f) => ({ ...f, to_department_id: deptId, assigned_to: "", second_assignee: "", verifier_id: "" }));
-    setAssigneeSearch("");
+    setAssigneeSearch(draftAssignee); // a Mood AI draft keeps the person's name in the search; otherwise empty
   }
 
   // Selecting an assignee sets only assigned_to — it must never overwrite
@@ -461,6 +465,13 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
         </div>
       ) : (
       <div className="card">
+        {fromMoodAi && (
+          <div className="mai-draft-note" style={{ marginBottom: 12 }}>
+            {lang === "gu"
+              ? `✨ Mood AI એ આ ફોર્મ ભર્યું છે${draftAssignee ? ` (${draftAssignee} માટે)` : ""}. વિભાગ અને વ્યક્તિ પસંદ કરો, તપાસો અને સબમિટ કરો.`
+              : `✨ Mood AI filled this in${draftAssignee ? ` (for ${draftAssignee})` : ""}. Choose the department and the person, check everything, then submit.`}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <fieldset className="fx-fieldset" disabled={busy || tv.taskPending}>
           <div className="form-grid">
