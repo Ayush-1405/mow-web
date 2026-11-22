@@ -33,7 +33,7 @@ export default function DevRequestsPanel({ lang }) {
   return (
     <div className="card" id="dev-requests">
       <h3 className="perf-h">🛠 {L(lang, "Developer requests", "ડેવલપર વિનંતીઓ")}</h3>
-      <p className="sub">{L(lang, "Ask for app changes in the Mood AI chat (🛠 Developer request). Mood AI writes the developer prompt; nothing is built until you approve it with your authenticator app, and nothing goes live without your separate yes. You get a notification at every step.",
+      <p className="sub">{L(lang, "Ask for app changes in the Mood AI chat (🛠 Developer request). Mood AI writes the developer prompt; nothing is built until you approve it with your authenticator app, and nothing goes live without your separate yes. You get a notification at every step. When the app records a new error, Mood AI drafts the fix request here for you (🩺) — approve it to have it built, or cancel it.",
         "Mood AI ચેટમાં (🛠) ફેરફાર માગો. મંજૂરી વગર કંઈ બનતું નથી.")}</p>
       {msg && <div className="msg">{msg}</div>}
       {list.length === 0 && <p className="sub">{L(lang, "No requests yet.", "હજુ કોઈ વિનંતી નથી.")}</p>}
@@ -43,7 +43,9 @@ export default function DevRequestsPanel({ lang }) {
         return (
           <div key={r.id} className="mai-dev-row">
             <button type="button" className="perf-mini-row mai-dev-head" onClick={() => setOpen(isOpen ? null : r.id)}>
-              <b>{r.ref}</b><span>{r.title}</span><span className={`badge ${badge}`}>{L(lang, label, label)}</span>
+              <b>{r.ref}</b><span>{r.title}</span>
+              {r.error_report_id && <span className="badge ON_HOLD" title={L(lang, "Drafted automatically when the app recorded this error", "એપ ભૂલ પરથી આપમેળે બનાવ્યું")}>🩺 {L(lang, "From an app error", "એપ ભૂલ પરથી")}</span>}
+              <span className={`badge ${badge}`}>{L(lang, label, label)}</span>
               <span className={`mai-risk ${r.risk}`}>{r.risk}</span><span className="sub">{when(r.updated_at)}</span>
             </button>
             {isOpen && (

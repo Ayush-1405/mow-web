@@ -155,13 +155,13 @@ function ModelRow({ m, lang, canOwner, onSave }) {
 
 function SettingsCard({ lang, s, models, canOwner, onSave }) {
   const [f, setF] = useState(null);
-  useEffect(() => { setF({ chat: `${s.chat_provider}/${s.chat_model}`, effort: s.chat_effort, doc: `${s.document_provider}/${s.document_model}`, ttl: s.approval_ttl_minutes, budget: s.monthly_budget_usd ?? "", audience: s.chat_audience ?? "everyone", daily: s.chat_daily_limit ?? 40, devAgent: s.dev_agent ?? "laptop" }); }, [s]);
+  useEffect(() => { setF({ chat: `${s.chat_provider}/${s.chat_model}`, effort: s.chat_effort, doc: `${s.document_provider}/${s.document_model}`, ttl: s.approval_ttl_minutes, budget: s.monthly_budget_usd ?? "", audience: s.chat_audience ?? "everyone", daily: s.chat_daily_limit ?? 40, devAgent: s.dev_agent ?? "laptop", autoFix: s.auto_fix_drafts !== false }); }, [s]);
   if (!f) return null;
   const opts = models.filter((m) => m.enabled).map((m) => <option key={`${m.provider}/${m.model}`} value={`${m.provider}/${m.model}`}>{m.label}</option>);
   const save = () => {
     const [cp, cm] = f.chat.split("/"); const [dp, dm] = f.doc.split("/");
     onSave({ chat_provider: cp, chat_model: cm, chat_effort: f.effort, document_provider: dp, document_model: dm, approval_ttl_minutes: Number(f.ttl), monthly_budget_usd: f.budget === "" ? "" : String(f.budget),
-      chat_audience: f.audience, chat_daily_limit: Number(f.daily), dev_agent: f.devAgent });
+      chat_audience: f.audience, chat_daily_limit: Number(f.daily), dev_agent: f.devAgent, ...("auto_fix_drafts" in s ? { auto_fix_drafts: f.autoFix } : {}) });
   };
   return (
     <div className="card">
@@ -178,6 +178,10 @@ function SettingsCard({ lang, s, models, canOwner, onSave }) {
         <label>{L(lang, "Chat messages per person per day", "વ્યક્તિ દીઠ દૈનિક સંદેશ")}<input type="number" min="0" max="500" value={f.daily} disabled={!canOwner} onChange={(e) => setF({ ...f, daily: e.target.value })} /></label>
         <label>{L(lang, "Approved developer requests are built by", "મંજૂર વિનંતીઓ કોણ બનાવે")}<select value={f.devAgent} disabled={!canOwner} onChange={(e) => setF({ ...f, devAgent: e.target.value })}>
           <option value="laptop">{L(lang, "The laptop developer (when the worker runs)", "લેપટોપ ડેવલપર")}</option><option value="off">{L(lang, "Nobody automatically (off)", "કોઈ નહીં (બંધ)")}</option></select></label>
+        {"auto_fix_drafts" in s && (
+          <label>{L(lang, "New app errors: draft a fix request for my approval", "નવી એપ ભૂલ: મારી મંજૂરી માટે સુધારો તૈયાર કરો")}<select value={f.autoFix ? "on" : "off"} disabled={!canOwner} onChange={(e) => setF({ ...f, autoFix: e.target.value === "on" })}>
+            <option value="on">{L(lang, "On (at most 5 a day)", "ચાલુ (દિવસે 5 સુધી)")}</option><option value="off">{L(lang, "Off", "બંધ")}</option></select></label>
+        )}
       </div>
       <p className="sub">{L(lang, "When the monthly budget is used up, every AI feature pauses until the Owner raises it.", "બજેટ પૂરું થાય ત્યારે AI અટકે છે.")}</p>
       {canOwner ? <button type="button" className="btn btn-primary" style={{ width: "auto" }} onClick={save}>{L(lang, "Save", "સાચવો")}</button>
