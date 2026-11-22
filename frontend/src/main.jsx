@@ -6,6 +6,7 @@ import App from "./App.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
 import AppErrorBoundary from "./components/AppErrorBoundary.jsx";
 import { installGlobalReporters } from "./lib/errorReporter";
+import { installStaleChunkRecovery } from "./lib/staleChunk";
 import "./styles.css";
 import "./factory.css";
 import "./chat.css";
@@ -20,6 +21,7 @@ const updateSW = registerSW({
 });
 window.__mowApplyUpdate = () => updateSW(true);
 installGlobalReporters();
+installStaleChunkRecovery();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

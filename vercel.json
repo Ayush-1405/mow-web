@@ -3,7 +3,7 @@
   "devCommand": "npm --prefix frontend run dev -- --port $PORT",
   "outputDirectory": "frontend/dist",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

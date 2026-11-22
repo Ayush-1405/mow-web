@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { isChunkLoadError, isReloadingForNewVersion } from "./staleChunk";
 
 // Records problems people hit in the app (v3_16, app_report_error) so the scheduled "app doctor" can find and fix them.
 // Never throws, never blocks the screen; the same problem is sent at most once per 10 minutes per browser tab. Personal
@@ -16,6 +17,7 @@ export function reportProblem(kind, message, detail) {
   try {
     const text = String(message || "").trim();
     if (!text || NOT_A_BUG.test(text)) return;
+    if (isChunkLoadError(text) && isReloadingForNewVersion()) return; // reloading into the new release
     const page = window.location.pathname;
     const key = `${kind}|${page}|${text}`;
     const now = Date.now();
