@@ -618,3 +618,13 @@ export async function loadImportantWork() {
     delayedJobs: delayedJobs.data || [], openComplaints: openComplaints.data || [],
   };
 }
+
+// Direct edits of a retail row (status, assignee, resolution). Row-level security silently skips rows the person may see but
+// not change, and Supabase then reports success with nothing saved -- so read back the changed row and say so plainly.
+export const NOT_ALLOWED_TO_CHANGE = "You don't have permission to change this. Ask the person it belongs to or your department head.";
+export async function updateRetailRow(table, id, patch) {
+  const { data, error } = await supabase.from(table).update(patch).eq("id", id).select("id");
+  if (error) return { error };
+  if (!data?.length) return { error: { message: NOT_ALLOWED_TO_CHANGE } };
+  return { error: null };
+}

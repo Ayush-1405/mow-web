@@ -8,6 +8,7 @@ import {
 } from "../../lib/perfApi";
 import { friendlyError } from "../../lib/friendlyError";
 import { MonthPicker } from "./PerfParts.jsx";
+import { askText } from "../../lib/askText";
 
 const TABS = [
   { key: "overview", en: "Overview", gu: "ઝાંખી" },
@@ -208,7 +209,7 @@ function Company({ lang, month }) {
   const [info, setInfo] = useState(null);
   const run = async (fn, msg) => { setBusy(true); setInfo(null); try { await fn(); await load(); if (msg) setInfo(msg); } catch (e) { setState((s) => ({ ...s, error: friendlyError(e?.message) })); } setBusy(false); };
   const ai = async () => { setBusy(true); setInfo(L(lang, "The AI is writing the summary — up to a minute…", "AI સારાંશ લખી રહ્યું છે…")); const r = await writeCompanyAi(c.id); await load(); setInfo(r.ok ? null : r.reason); setBusy(false); };
-  const regen = () => { const reason = window.prompt(L(lang, "Reason for regenerating (the current version is kept):", "ફરી બનાવવાનું કારણ:")); if (reason && reason.trim()) run(() => perfGenerateCompany(month, reason.trim())); };
+  const regen = async () => { const reason = await askText(L(lang, "Reason for regenerating (the current version is kept):", "ફરી બનાવવાનું કારણ:"), { lang }); if (reason && reason.trim()) run(() => perfGenerateCompany(month, reason.trim())); };
   const dl = async (kind) => { const mod = await import("../../lib/perfExport"); if (kind === "pdf") await mod.companyPdf(c); else await mod.companyExcel(c); };
   if (!isEndedMonth(month)) return <div className="card sub">{L(lang, "Pick a month that has ended.", "પૂરો થયેલો મહિનો પસંદ કરો.")}</div>;
   const m = c?.metrics || {}; const s = c?.ai_summary;

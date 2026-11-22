@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { devAnswer, devCancel, devEdit, devList, devSubmit, withOwnerVerification } from "../../lib/moodAiApi";
 import DevBuildView from "./DevBuildView.jsx";
+import { askText } from "../../lib/askText";
 
 // Developer requests (v3_23): what the Owner asked Mood AI to change in the app, the developer prompt it wrote, and every step
 // the developer reported since. Approving (submit / answer) needs the authenticator app. Owner and backup only.
@@ -12,7 +13,7 @@ const STATUS = {
   DONE: ["Done", "COMPLETED"], REJECTED: ["Not done", "RETURNED"], CANCELLED: ["Cancelled", "RETURNED"],
 };
 const when = (v) => (v ? new Date(v).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
-const askCode = (lang) => async () => window.prompt(L(lang, "Enter the 6-digit code from your authenticator app:", "ઓથેન્ટિકેટર કોડ (6 અંક):"));
+const askCode = (lang) => async () => askText(L(lang, "Enter the 6-digit code from your authenticator app:", "ઓથેન્ટિકેટર કોડ (6 અંક):"), { lang, inputMode: "numeric", maxLength: 6, okLabel: L(lang, "Approve", "મંજૂર") });
 
 export default function DevRequestsPanel({ lang }) {
   const [list, setList] = useState(null);
@@ -62,15 +63,15 @@ export default function DevRequestsPanel({ lang }) {
                   {r.status === "DRAFT" && <>
                     <button type="button" className="btn btn-primary btn-sm" disabled={busy}
                       onClick={() => act(() => withOwnerVerification(() => devSubmit(r.id), askCode(lang)), L(lang, `${r.ref} sent to the developer.`, "મોકલ્યું."))}>{L(lang, "Approve & send to developer", "મંજૂર કરી મોકલો")}</button>
-                    <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => {
-                      const t = window.prompt(L(lang, "Title", "શીર્ષક"), r.title); if (t === null) return;
-                      const pr = window.prompt(L(lang, "Developer prompt (edit if needed)", "પ્રોમ્પ્ટ"), r.prompt); if (pr === null) return;
+                    <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={async () => {
+                      const t = await askText(L(lang, "Title", "શીર્ષક"), { lang, defaultValue: r.title }); if (t === null) return;
+                      const pr = await askText(L(lang, "Developer prompt (edit if needed)", "પ્રોમ્પ્ટ"), { lang, defaultValue: r.prompt }); if (pr === null) return;
                       act(() => devEdit(r.id, t, pr), L(lang, "Saved.", "સાચવ્યું."));
                     }}>{L(lang, "Edit", "ફેરફાર")}</button>
                   </>}
                   {r.status === "NEEDS_INFO" && (
-                    <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => {
-                      const a = window.prompt(L(lang, "Your answer for the developer:", "ડેવલપર માટે જવાબ:")); if (!a) return;
+                    <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={async () => {
+                      const a = await askText(L(lang, "Your answer for the developer:", "ડેવલપર માટે જવાબ:"), { lang }); if (!a) return;
                       act(() => withOwnerVerification(() => devAnswer(r.id, a), askCode(lang)), L(lang, "Answer sent.", "જવાબ મોકલ્યો."));
                     }}>{L(lang, "Answer the question", "જવાબ આપો")}</button>
                   )}

@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
+import { updateRetailRow } from "../../lib/retailApi";
+import { friendlyError } from "../../lib/friendlyError";
 import { statusBadgeClass, fetchDepartmentMembers, notifyAssignment } from "../../lib/retailModules";
 
 // Display & Visual Merchandising — retail_vm_tasks.
 export default function RetailDisplay({ lang, lookups }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const [rows, setRows] = useState([]);
   const [members, setMembers] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -51,16 +54,18 @@ export default function RetailDisplay({ lang, lookups }) {
   }
 
   async function markDone(id) {
-    const { error: err } = await supabase.from("retail_vm_tasks").update({ status: "DONE" }).eq("id", id);
-    if (!err) load();
+    const { error: err } = await updateRetailRow("retail_vm_tasks", id, { status: "DONE" });
+    if (err) { setActionError(friendlyError(err)); return; }
+    setActionError(null);
+    load();
   }
 
   async function updateAssignee(id, assignedTo, title) {
-    const { error: err } = await supabase.from("retail_vm_tasks").update({ assigned_to: assignedTo || null }).eq("id", id);
-    if (!err) {
-      if (assignedTo) notifyAssignment(assignedTo, "retail_vm_task", id, `Display task assigned to you: ${title}`, `તમને ડિસ્પ્લે કાર્ય સોંપાયેલ: ${title}`);
-      load();
-    }
+    const { error: err } = await updateRetailRow("retail_vm_tasks", id, { assigned_to: assignedTo || null });
+    if (err) { setActionError(friendlyError(err)); return; }
+    setActionError(null);
+    if (assignedTo) notifyAssignment(assignedTo, "retail_vm_task", id, `Display task assigned to you: ${title}`, `તમને ડિસ્પ્લે કાર્ય સોંપાયેલ: ${title}`);
+    load();
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -75,6 +80,7 @@ export default function RetailDisplay({ lang, lookups }) {
 
   return (
     <div className="dept-dashboard">
+      {actionError && <div className="msg error" role="alert">{actionError}</div>}
       <div className="dept-header card">
         <div className="dept-header-icon" aria-hidden="true">🖼️</div>
         <div className="dept-header-text"><h1>{t("retailDisplayTitle", lang)}</h1></div>

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
+import { updateRetailRow } from "../../lib/retailApi";
+import { friendlyError } from "../../lib/friendlyError";
 import { formatCurrency, statusBadgeClass } from "../../lib/retailModules";
 import { confirmOrder, listFulfilmentItems, recordSalesPhotoMeta, getDelivery, getPackingForOrder, getDispatchForOrder, listDeliveryItems, listDeliveryProofs, getInstallationForOrder, getDeliveryChallanForOrder, confirmOrderForDelivery } from "../../lib/retailApi";
 import { subscribeTable } from "../../lib/realtime";
@@ -20,6 +22,7 @@ const MODES = ["STOCK", "FACTORY", "OUTSOURCE", "IMMEDIATE_DELIVERY"];
 export default function RetailOrders({ lang }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const [rows, setRows] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [items, setItems] = useState([]);
@@ -145,8 +148,10 @@ export default function RetailOrders({ lang }) {
   }
 
   async function updateStatus(id, status) {
-    const { error: err } = await supabase.from("retail_orders").update({ status }).eq("id", id);
-    if (!err) load();
+    const { error: err } = await updateRetailRow("retail_orders", id, { status });
+    if (err) { setActionError(friendlyError(err)); return; }
+    setActionError(null);
+    load();
   }
 
   // Sales Confirmation Product Photo (v2_93m) — once uploaded, recordSalesPhotoMeta() is also the automatic trigger:
@@ -184,6 +189,7 @@ export default function RetailOrders({ lang }) {
 
   return (
     <div className="dept-dashboard">
+      {actionError && <div className="msg error" role="alert">{actionError}</div>}
       <div className="dept-header card">
         <div className="dept-header-icon" aria-hidden="true">📦</div>
         <div className="dept-header-text"><h1>{t("retailOrdersTitle", lang)}</h1></div>

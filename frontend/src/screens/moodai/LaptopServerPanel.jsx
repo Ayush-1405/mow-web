@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { friendlyError } from "../../lib/friendlyError";
+import { askText } from "../../lib/askText";
 
 const L = (lang, en, gu) => (lang === "gu" ? gu : en);
 const when = (t) => (t ? String(t).replace("T", " ").slice(0, 19) : "—");
@@ -85,7 +86,7 @@ export default function LaptopServerPanel({ lang, canOwner }) {
         <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => act(() => rpc("mai_enqueue_job", { p_type: "SELFTEST", p_payload: { note: "from Control Center" }, p_dedupe: null }))}>{L(lang, "Send a test job", "ટેસ્ટ કામ મોકલો")}</button>
         <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => act(() => rpc("mai_enqueue_job", { p_type: "LOCAL_GENERATE", p_payload: { prompt: "In two short sentences, say what a carpenter checks before fitting a wardrobe shutter.", max_tokens: 120 }, p_dedupe: null }))}>{L(lang, "Test local chat model", "લોકલ ચેટ મૉડેલ ટેસ્ટ")}</button>
         <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => act(() => rpc("mai_enqueue_job", { p_type: "LOCAL_EMBED", p_payload: { texts: ["teak wood wardrobe with soft-close hinges", "factory dispatch delayed by polishing"] }, p_dedupe: null }))}>{L(lang, "Test local search model", "લોકલ સર્ચ મૉડેલ ટેસ્ટ")}</button>
-        {canOwner && <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => { const n = window.prompt(L(lang, "Name for this laptop worker:", "લેપટોપ વર્કરનું નામ:"), "Ayush laptop"); if (n && n.trim()) act(async () => setToken((await rpc("mai_worker_register", { p_name: n.trim() })).token)); }}>{L(lang, "Register a laptop worker", "લેપટોપ વર્કર નોંધો")}</button>}
+        {canOwner && <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={async () => { const n = await askText(L(lang, "Name for this laptop worker:", "લેપટોપ વર્કરનું નામ:"), { lang, defaultValue: "Ayush laptop" }); if (n && n.trim()) act(async () => setToken((await rpc("mai_worker_register", { p_name: n.trim() })).token)); }}>{L(lang, "Register a laptop worker", "લેપટોપ વર્કર નોંધો")}</button>}
       </div>
       {(p.recent || []).length > 0 && (
         <div style={{ marginTop: 10 }}>

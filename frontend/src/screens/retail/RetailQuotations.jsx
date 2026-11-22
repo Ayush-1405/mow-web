@@ -10,6 +10,7 @@ import {
 } from "../../lib/retailApi";
 import { getProofPhotoUrl } from "../../lib/api";
 import QRScanner from "../../components/QRScanner.jsx";
+import { askText } from "../../lib/askText";
 
 const STATUSES = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"];
 const emptyItem = () => ({ item_name: "", quantity: 1, unit_price: 0 });
@@ -214,7 +215,7 @@ export default function RetailQuotations({ lang, lookups, profile }) {
   async function decideDiscount(id, approve) {
     setBusyId(id);
     setActionMsg(null);
-    const reason = approve ? null : window.prompt(t("reasonForChangeLabel", lang)) || "";
+    const reason = approve ? null : (await askText(t("reasonForChangeLabel", lang), { lang })) || "";
     if (!approve && !reason.trim()) { setBusyId(null); return; }
     const { error: err } = await decideQuotationDiscountApproval(id, approve, reason);
     setBusyId(null);
@@ -223,7 +224,7 @@ export default function RetailQuotations({ lang, lookups, profile }) {
   }
 
   async function createRevision(id) {
-    const reason = window.prompt(t("revisionReasonPromptMsg", lang));
+    const reason = await askText(t("revisionReasonPromptMsg", lang), { lang });
     if (!reason || !reason.trim()) return;
     setBusyId(id);
     setActionMsg(null);

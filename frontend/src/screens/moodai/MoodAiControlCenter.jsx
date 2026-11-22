@@ -7,6 +7,7 @@ import { friendlyError } from "../../lib/friendlyError";
 import LaptopServerPanel from "./LaptopServerPanel.jsx";
 import DevRequestsPanel from "./DevRequestsPanel.jsx";
 import ReleasesPanel from "./ReleasesPanel.jsx";
+import { askText } from "../../lib/askText";
 
 const L = (lang, en, gu) => (lang === "gu" ? gu : en);
 const when = (t) => (t ? String(t).replace("T", " ").slice(0, 16) : "—");
@@ -29,8 +30,8 @@ export default function MoodAiControlCenter({ lang }) {
     try { await fn(); await load(); if (info) setState((s) => ({ ...s, info })); } catch (e) { setState((s) => ({ ...s, error: friendlyError(e?.message) })); }
     setBusy(false);
   };
-  const stop = () => {
-    const reason = window.prompt(L(lang, "Stop every AI feature now. Reason:", "બધી AI સુવિધા હમણાં બંધ કરો. કારણ:"));
+  const stop = async () => {
+    const reason = await askText(L(lang, "Stop every AI feature now. Reason:", "બધી AI સુવિધા હમણાં બંધ કરો. કારણ:"), { lang });
     if (reason && reason.trim()) run(() => emergencyStop(reason.trim()), L(lang, "Mood AI is stopped. Every AI feature refuses new requests.", "Mood AI બંધ."));
   };
   const check = async () => {

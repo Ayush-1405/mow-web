@@ -6,6 +6,7 @@ import { listAllFactoryProductionPlans, listAllInhouseProductionRequests, listIn
 import { exportRowsToExcel } from "../../lib/exportExcel";
 import { useIncludeTestData } from "../../lib/testDataVisibility";
 import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
+import { askText } from "../../lib/askText";
 
 const PAGE_SIZE = 20;
 const STATUSES = ["Draft", "Planned", "Released", "In Production", "On Hold", "Completed", "Cancelled"];
@@ -80,7 +81,7 @@ export default function FactoryProductionPlanning({ lang, profile }) {
   async function handleStatus(plan, status) {
     let reason = null;
     if (["On Hold", "Cancelled"].includes(status)) {
-      reason = window.prompt(`Reason to mark this plan "${status}" (required):`);
+      reason = await askText(`Reason to mark this plan "${status}" (required):`);
       if (!reason || !reason.trim()) return;
     }
     setMsg("");

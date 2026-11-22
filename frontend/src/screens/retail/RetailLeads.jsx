@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
+import { updateRetailRow } from "../../lib/retailApi";
+import { friendlyError } from "../../lib/friendlyError";
 import { statusBadgeClass, fetchDepartmentMembers, notifyAssignment } from "../../lib/retailModules";
 import { recordFollowUp } from "../../lib/retailApi";
 import { subscribeTable } from "../../lib/realtime";
@@ -21,6 +23,7 @@ export default function RetailLeads({ lang, profile, lookups }) {
   const urlFilter = searchParams.get("filter"); // due_today | overdue (from the dashboard KPI cards)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const [rows, setRows] = useState([]);
   const [members, setMembers] = useState([]);
   const [showWalkin, setShowWalkin] = useState(false);
@@ -72,11 +75,11 @@ export default function RetailLeads({ lang, profile, lookups }) {
   }
 
   async function updateAssignee(id, assignedTo, customerName) {
-    const { error: err } = await supabase.from("retail_leads").update({ assigned_to: assignedTo || null }).eq("id", id);
-    if (!err) {
-      if (assignedTo) notifyAssignment(assignedTo, "retail_lead", id, `Lead assigned to you: ${customerName}`, `તમને લીડ સોંપાયેલ: ${customerName}`);
-      load();
-    }
+    const { error: err } = await updateRetailRow("retail_leads", id, { assigned_to: assignedTo || null });
+    if (err) { setActionError(friendlyError(err)); return; }
+    setActionError(null);
+    if (assignedTo) notifyAssignment(assignedTo, "retail_lead", id, `Lead assigned to you: ${customerName}`, `તમને લીડ સોંપાયેલ: ${customerName}`);
+    load();
   }
 
   if (loading) {
@@ -93,6 +96,7 @@ export default function RetailLeads({ lang, profile, lookups }) {
 
   return (
     <div className="dept-dashboard">
+      {actionError && <div className="msg error" role="alert">{actionError}</div>}
       <div className="dept-header card">
         <div className="dept-header-icon" aria-hidden="true">🧾</div>
         <div className="dept-header-text"><h1>{t("retailLeadsTitle", lang)}</h1></div>
