@@ -6,6 +6,7 @@ import {
 import { friendlyError } from "../../lib/friendlyError";
 import LaptopServerPanel from "./LaptopServerPanel.jsx";
 import DevRequestsPanel from "./DevRequestsPanel.jsx";
+import ReleasesPanel from "./ReleasesPanel.jsx";
 
 const L = (lang, en, gu) => (lang === "gu" ? gu : en);
 const when = (t) => (t ? String(t).replace("T", " ").slice(0, 16) : "—");
@@ -69,6 +70,7 @@ export default function MoodAiControlCenter({ lang }) {
       <OwnerCard lang={lang} d={d} reload={load} />
 
       {me.is_owner && <DevRequestsPanel lang={lang} />}
+      {me.is_owner && <ReleasesPanel lang={lang} />}
       <LaptopServerPanel lang={lang} canOwner={canOwner} />
 
       <div className="card">

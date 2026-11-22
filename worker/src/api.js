@@ -38,6 +38,11 @@ export function makeApi({ url, anonKey, token, timeoutMs = 15_000 }) {
     devResult: (ref, checks, diffStat, diffPatch) =>
       call("mai_worker_dev_result", { p_ref: ref, p_checks: checks ?? [], p_diff_stat: diffStat ?? null, p_diff_patch: diffPatch ?? null }),
     devMergeClaim: () => call("mai_worker_dev_merge_claim", {}),
+    // deployment manager (v3_28): plan, run and roll back releases the Owner approved with the authenticator app
+    releaseClaim: () => call("mai_worker_release_claim", {}),
+    releasePlan: (ref, base, commit, plan, problem) => call("mai_worker_release_plan", { p_ref: ref, p_base: base, p_commit: commit, p_plan: plan, p_problem: problem }),
+    releaseStep: (ref, name, ok, note) => call("mai_worker_release_step", { p_ref: ref, p_name: name, p_ok: !!ok, p_note: String(note ?? "").slice(0, 1900) }),
+    releaseFinish: (ref, ok, note, backup) => call("mai_worker_release_finish", { p_ref: ref, p_ok: !!ok, p_note: String(note ?? "").slice(0, 1900), p_backup: backup }),
     devMergeReport: (ref, ok, note, mergedCommit) =>
       call("mai_worker_dev_merge_report", { p_ref: ref, p_ok: !!ok, p_note: String(note).slice(0, 3900), p_merged_commit: mergedCommit ?? null }),
   };

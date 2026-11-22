@@ -13,6 +13,7 @@ import { backoffMs, decide } from "./policy.js";
 import { PermanentError, runJob } from "./jobs.js";
 import { startOllama, stopOllama } from "./ollamaProcess.js";
 import { findClaude, mergeApproved, workOnRequest } from "./devAgent.js";
+import { handleRelease, releaseConfig } from "./release.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
@@ -73,6 +74,8 @@ async function main() {
   log("INFO", devReady ? `Laptop developer ready (Claude Code: ${path.basename(path.dirname(path.dirname(path.dirname(claudeExe))))}, repo ${devRepo})`
     : "Laptop developer not available (Claude Code or the repository not found)");
   let devBusy = null; // ref of the request being built
+  const relCfg = releaseConfig({ ...process.env, ...env });
+  log("INFO", relCfg.enabled ? `Releases ON (deployment manager): site ${relCfg.siteUrl}` : "Releases off (RELEASE=on in worker/.env to let this laptop put approved releases live)");
   const devSecrets = [env.MOOD_AI_WORKER_TOKEN, env.SUPABASE_ANON_KEY]; // scrubbed from every uploaded log line and diff
   process.on("exit", () => stopOllama(ollama));
 
@@ -104,6 +107,7 @@ async function main() {
     try {
       const metrics = await readMetrics();
       metrics.claude = { up: devReady, busy: devBusy };
+      metrics.release = { enabled: relCfg.enabled };
       cpuHistory.push(metrics.cpu_pct); if (cpuHistory.length > 5) cpuHistory.shift();
       // report the state judged with the server's last answer (pause / stop / limits); the new answer then decides this round
       const local = decide({ server: ctx.server || {}, metrics, cpuHistory, limits: ctx.limits });
@@ -117,6 +121,15 @@ async function main() {
       if (d.state !== lastState) { log("INFO", `State: ${d.state}${d.reason ? ` (${d.reason})` : ""}`); lastState = d.state; }
       // approved developer requests (one at a time, in the background; heartbeats continue meanwhile)
       // an Owner-approved merge (authenticator-verified, exact commit) goes first; it is quick and local (never pushed)
+      // releases the Owner approved (RELEASE=on in worker/.env only); they hold the main folder, so nothing else runs meanwhile
+      if (d.run && relCfg.enabled && !devBusy && !busy) {
+        const job = await api.releaseClaim().catch((e) => { if (e instanceof NotAuthorized) throw e; return null; });
+        if (job) {
+          devBusy = `${job.ref} (${job.action})`;
+          log("INFO", `Release ${job.ref}: ${job.action}`);
+          handleRelease(job, { api, repo: devRepo, cfg: relCfg, log }).finally(() => { devBusy = null; });
+        }
+      }
       if (d.run && devReady && !devBusy && !busy) {
         // (before the v3_26 migration is applied this function does not exist yet: building keeps working without it)
         const merge = await api.devMergeClaim().catch((e) => { if (e instanceof NotAuthorized) throw e; return null; });
