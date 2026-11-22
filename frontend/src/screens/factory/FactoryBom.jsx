@@ -9,6 +9,7 @@ import {
 import { exportRowsToExcel } from "../../lib/exportExcel";
 import { useIncludeTestData } from "../../lib/testDataVisibility";
 import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
+import { askText } from "../../lib/askText";
 
 const PAGE_SIZE = 20;
 const STATUS_BADGE = { Draft: "CLOSED", Submitted: "ASSIGNED", Approved: "VERIFIED", Rejected: "RETURNED", Revised: "ASSIGNED" };
@@ -191,7 +192,7 @@ function BomRow({ bom, expanded, onToggle, onChanged }) {
   async function handleDecide(decision) {
     let reason = null;
     if (decision === "Rejected") {
-      reason = window.prompt("Rejection reason (required):");
+      reason = await askText("Rejection reason (required):");
       if (!reason || !reason.trim()) return;
     }
     setMsg("");

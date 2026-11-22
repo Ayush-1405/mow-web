@@ -8,6 +8,7 @@ import { matchesView } from "../../lib/chatFilters";
 import { ProjectViewBar, TaskChip, TaskRefCard } from "./TaskContext.jsx";
 import { useForegroundRefresh } from "../../lib/useForegroundRefresh";
 import ChatButton from "../../components/ChatButton.jsx";
+import { askText } from "../../lib/askText";
 
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const dayKey = (iso) => new Date(iso).toDateString();
@@ -416,7 +417,7 @@ export default function ChatConversation({ conversationId, me, onBack, onRead, h
   const onDelete = useCallback(async (m) => {
     let reason = null;
     if (m.sender_id !== me) {
-      reason = window.prompt("Reason for removing this message (recorded in the moderation log):");
+      reason = await askText("Reason for removing this message (recorded in the moderation log):");
       if (!reason || !reason.trim()) return;
     } else if (!window.confirm("Delete this message?")) return;
     const { error: err } = await deleteMessage(m.id, reason);

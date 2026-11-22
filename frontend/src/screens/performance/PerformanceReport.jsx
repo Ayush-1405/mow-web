@@ -6,6 +6,7 @@ import {
 } from "../../lib/perfApi";
 import { friendlyError } from "../../lib/friendlyError";
 import { CategoryBars, MetricsGrid, ScoreBadge, TaskTable } from "./PerfParts.jsx";
+import { askText } from "../../lib/askText";
 
 // One saved monthly report (a permanent snapshot). Workflow: AI review written -> Head feedback + goals -> employee response
 // -> Management final. The numbers on this page never change; a correction is a new version (Recalculate) and the old one stays.
@@ -46,7 +47,7 @@ export default function PerformanceReport({ lang }) {
     run(() => perfHeadReview(id, feedback.trim(), g.goals), L(lang, "Review shared with the employee.", "સમીક્ષા કર્મચારીને મોકલી."));
   };
   const recalc = async () => {
-    const reason = window.prompt(L(lang, "Why must this month be recalculated? (e.g. a task record was corrected). The current version is kept.", "ફરી ગણતરીનું કારણ?"));
+    const reason = await askText(L(lang, "Why must this month be recalculated? (e.g. a task record was corrected). The current version is kept.", "ફરી ગણતરીનું કારણ?"), { lang });
     if (!reason || !reason.trim()) return;
     setBusy(true);
     try {

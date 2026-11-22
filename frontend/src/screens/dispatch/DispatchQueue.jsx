@@ -8,6 +8,7 @@ import {
 } from "../../lib/retailApi";
 import { statusBadgeClass } from "../../lib/retailModules.js";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
+import { askText } from "../../lib/askText";
 
 // Best-effort, non-blocking GPS capture (spec section 13): never blocks a legitimate delivery just because the
 // device/browser refuses or the signal is unavailable — the caller always gets a result, success or not.
@@ -128,7 +129,7 @@ export default function DispatchQueue({ lang }) {
     const res = await captureGps();
     if (res.ok) setGpsByOrder((m) => ({ ...m, [orderId]: { latitude: res.latitude, longitude: res.longitude } }));
     else {
-      const reason = window.prompt(t("locationUnverifiableReasonLabel", lang));
+      const reason = await askText(t("locationUnverifiableReasonLabel", lang), { lang, required: false });
       setGpsByOrder((m) => ({ ...m, [orderId]: { unverifiable: true, reason: reason || t("locationUnavailableDefaultMsg", lang) } }));
     }
   }

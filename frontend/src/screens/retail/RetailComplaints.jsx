@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { t } from "../../lib/i18n";
+import { updateRetailRow } from "../../lib/retailApi";
+import { friendlyError } from "../../lib/friendlyError";
 import { statusBadgeClass, fetchDepartmentMembers, notifyAssignment } from "../../lib/retailModules";
 
 const STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
@@ -11,6 +13,7 @@ const STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
 export default function RetailComplaints({ lang, lookups }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const [rows, setRows] = useState([]);
   const [members, setMembers] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -63,24 +66,28 @@ export default function RetailComplaints({ lang, lookups }) {
   }
 
   async function updateStatus(id, status) {
-    const { error: err } = await supabase.from("retail_complaints").update({ status }).eq("id", id);
-    if (!err) load();
+    const { error: err } = await updateRetailRow("retail_complaints", id, { status });
+    if (err) { setActionError(friendlyError(err)); return; }
+    setActionError(null);
+    load();
   }
 
   async function updateAssignee(id, assignedTo, customerName) {
-    const { error: err } = await supabase.from("retail_complaints").update({ assigned_to: assignedTo || null }).eq("id", id);
-    if (!err) {
-      if (assignedTo) notifyAssignment(assignedTo, "retail_complaint", id, `Complaint assigned to you: ${customerName}`, `તમને ફરિયાદ સોંપાયેલ: ${customerName}`);
-      load();
-    }
+    const { error: err } = await updateRetailRow("retail_complaints", id, { assigned_to: assignedTo || null });
+    if (err) { setActionError(friendlyError(err)); return; }
+    setActionError(null);
+    if (assignedTo) notifyAssignment(assignedTo, "retail_complaint", id, `Complaint assigned to you: ${customerName}`, `તમને ફરિયાદ સોંપાયેલ: ${customerName}`);
+    load();
   }
 
   async function resolve(id) {
     const notes = resolutionDraft[id] || "";
-    const { error: err } = await supabase.from("retail_complaints").update({
+    const { error: err } = await updateRetailRow("retail_complaints", id, {
       status: "RESOLVED", resolution_notes: notes, resolved_at: new Date().toISOString(),
-    }).eq("id", id);
-    if (!err) load();
+    });
+    if (err) { setActionError(friendlyError(err)); return; }
+    setActionError(null);
+    load();
   }
 
   if (loading) return <div className="dept-dashboard"><div className="skeleton-block" style={{ height: 60 }} /><div className="skeleton-block" style={{ height: 220 }} /></div>;
@@ -95,6 +102,7 @@ export default function RetailComplaints({ lang, lookups }) {
 
   return (
     <div className="dept-dashboard">
+      {actionError && <div className="msg error" role="alert">{actionError}</div>}
       <div className="dept-header card">
         <div className="dept-header-icon" aria-hidden="true">☎️</div>
         <div className="dept-header-text"><h1>{t("retailComplaintsTitle", lang)}</h1></div>

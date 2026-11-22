@@ -4,6 +4,7 @@ import { t } from "../../lib/i18n";
 import { startPacking, verifyPacking, sendToGodown, listPackingItems, listGodownStaff } from "../../lib/retailApi";
 import { statusBadgeClass } from "../../lib/retailModules.js";
 import ProofPhotoUpload from "../../components/ProofPhotoUpload.jsx";
+import { askText } from "../../lib/askText";
 
 // Packing (v2_93i): confirmed orders whose fulfilment items are Ready. "Ready for Godown" is only reachable through
 // retail_verify_packing(), which itself refuses without a real, already-uploaded packing photo — this screen cannot bypass that.
@@ -47,7 +48,7 @@ export default function RetailPacking({ lang }) {
     setBusyId(null);
     if (err) {
       if (!partialReason && /not Ready/i.test(err.message || "")) {
-        const reason = window.prompt(t("partialReasonPromptLabel", lang));
+        const reason = await askText(t("partialReasonPromptLabel", lang), { lang });
         if (reason) return beginPacking(orderId, reason);
       }
       setError(true);

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { t } from "../../lib/i18n";
 import { createWalkin, checkDuplicateCustomer, requestCustomerAccess } from "../../lib/retailApi";
 import { fetchDepartmentMembers } from "../../lib/retailModules";
+import { askText } from "../../lib/askText";
 
 const REQUIREMENTS = ["LOOSE_FURNITURE", "SOFA", "BED", "DINING", "OFFICE_FURNITURE", "MODULAR_KITCHEN", "WARDROBE", "COMPLETE_INTERIOR", "BULK_CORPORATE", "CUSTOMIZED", "OTHER"];
 const TEMPS = ["HOT", "WARM", "COLD"];
@@ -42,10 +43,11 @@ export default function WalkinModal({ lang, profile, lookups, onClose, onSaved }
   }
 
   async function doRequestAccess(customerId) {
-    const reason = window.prompt(t("reasonLabel", lang));
+    const reason = await askText(t("reasonLabel", lang), { lang });
     if (!reason) return;
     const { error: err } = await requestCustomerAccess(customerId, reason);
-    if (!err) setRequestedIds((ids) => [...ids, customerId]);
+    if (err) { setError(err.message); return; }
+    setRequestedIds((ids) => [...ids, customerId]);
   }
 
   const blockingDuplicates = duplicates.filter((d) => !requestedIds.includes(d.customer_id));

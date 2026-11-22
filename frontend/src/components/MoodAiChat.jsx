@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { chatHideThread, chatSend, chatStatus, chatThread, chatThreads, devCancel, devSubmit, withOwnerVerification } from "../lib/moodAiApi";
+import { askText } from "../lib/askText";
 
 // Mood AI floating chat (Phase C). Sits outside the page routes, so it stays open while you move between pages.
 // It answers and explains, in English, Hindi, Hinglish or Gujarati; it has no tools yet and changes nothing.
@@ -159,7 +160,7 @@ export default function MoodAiChat({ lang, departments, management }) {
     setError("");
     try {
       if (kind === "submit") {
-        await withOwnerVerification(() => devSubmit(dev.id), async () => window.prompt(L(lang, "Enter the 6-digit code from your authenticator app to approve this request:", "ઓથેન્ટિકેટર કોડ (6 અંક):")));
+        await withOwnerVerification(() => devSubmit(dev.id), async () => askText(L(lang, "Enter the 6-digit code from your authenticator app to approve this request:", "ઓથેન્ટિકેટર કોડ (6 અંક):"), { lang, inputMode: "numeric", maxLength: 6, okLabel: L(lang, "Approve", "મંજૂર") }));
       } else {
         if (!window.confirm(L(lang, `Cancel ${dev.ref}?`, `${dev.ref} રદ કરવું?`))) return;
         await devCancel(dev.id);

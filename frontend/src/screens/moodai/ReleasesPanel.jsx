@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { releaseApprove, releaseCancel, releaseList, releaseRequest, releaseRollback } from "../../lib/moodAiApi";
+import { askText } from "../../lib/askText";
 
 // Phase G deployment manager (v3_28): put what was merged on the laptop live, in fixed steps the laptop runs after the Owner
 // approves the exact plan with the authenticator app. Owner and backup only.
@@ -12,7 +13,7 @@ const STATUS = {
 };
 const BUSY = new Set(["REQUESTED", "APPROVED", "RUNNING", "ROLLBACK_APPROVED", "ROLLING_BACK"]);
 const when = (v) => (v ? new Date(v).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
-const askCode = (lang) => async () => window.prompt(L(lang, "Enter the 6-digit code from your authenticator app:", "ઓથેન્ટિકેટર કોડ (6 અંક):"));
+const askCode = (lang) => async () => askText(L(lang, "Enter the 6-digit code from your authenticator app:", "ઓથેન્ટિકેટર કોડ (6 અંક):"), { lang, inputMode: "numeric", maxLength: 6, okLabel: L(lang, "Approve", "મંજૂર") });
 const base = (p) => String(p).split("/").pop();
 
 export default function ReleasesPanel({ lang }) {

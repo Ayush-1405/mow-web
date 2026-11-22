@@ -13,6 +13,7 @@ import {
 import { useIncludeTestData } from "../../lib/testDataVisibility";
 import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
 import { ViewDownloadButton } from "../interior/InteriorWorkingDrawings.jsx";
+import { askText } from "../../lib/askText";
 
 // The Factory department's working screen — Interior's "Submit to Factory"
 // action (InteriorPurchaseManagement.jsx) creates one linked
@@ -817,9 +818,9 @@ function StagePanel({ job, btn, row, altRow, photos, factoryPeople, onStart, onH
       <div className="task-meta" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         <button type="button" className="btn btn-outline" disabled={busy || status === "completed"} onClick={() => run(() => onStart(assignedTo, stageData))}>Start Stage</button>
         <button type="button" className="btn btn-outline" disabled={busy}
-          onClick={() => { const r = window.prompt("Reason for putting this stage on hold:"); if (r?.trim()) run(() => onHold(r, assignedTo)); }}>Put On Hold</button>
+          onClick={async () => { const r = await askText("Reason for putting this stage on hold:"); if (r?.trim()) run(() => onHold(r, assignedTo)); }}>Put On Hold</button>
         <button type="button" className="btn btn-outline" disabled={busy}
-          onClick={() => { const r = window.prompt("Reason for marking this stage as rework:"); if (r?.trim()) run(() => onRework(r, assignedTo)); }}>Mark Rework</button>
+          onClick={async () => { const r = await askText("Reason for marking this stage as rework:"); if (r?.trim()) run(() => onRework(r, assignedTo)); }}>Mark Rework</button>
         <label className="btn btn-outline" style={{ cursor: "pointer" }}>
           {btn.fitting ? "Upload Before/After Photo" : "Upload Proof/Photo"}
           <input type="file" accept="image/*,.pdf" style={{ display: "none" }} disabled={busy}

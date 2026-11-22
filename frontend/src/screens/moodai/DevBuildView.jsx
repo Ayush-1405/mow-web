@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { devApproveMerge, devDetail } from "../../lib/moodAiApi";
 import { subscribeTable } from "../../lib/realtime";
 import { checksSummary, fmtDuration, isActive, lastLogId, logFromRow, mergeBlocker, mergeLogs, parseDiff } from "../../lib/devBuild";
+import { askText } from "../../lib/askText";
 
 // Live build view for one developer request (v3_26, DR-0008): the laptop's live log (Claude Code progress, stdout, stderr), the
 // check report it ran itself (build, lint, tests), the branch diff, and the Owner's merge approval (fresh authenticator code,
@@ -70,7 +71,7 @@ export default function DevBuildView({ request, lang, onChanged }) {
       `${request.ref} (કમિટ ${d.commit_ref}) લેપટોપ પર main માં મર્જ કરવું? લાઇવ નહીં થાય.`))) return;
     setBusy(true); setMsg("");
     try {
-      await devApproveMerge(id, d.commit_ref, async () => window.prompt(L(lang, "Enter the 6-digit code from your authenticator app to approve this merge:", "મર્જ મંજૂર કરવા ઓથેન્ટિકેટર કોડ (6 અંક):")));
+      await devApproveMerge(id, d.commit_ref, async () => askText(L(lang, "Enter the 6-digit code from your authenticator app to approve this merge:", "મર્જ મંજૂર કરવા ઓથેન્ટિકેટર કોડ (6 અંક):"), { lang, inputMode: "numeric", maxLength: 6, okLabel: L(lang, "Approve", "મંજૂર") }));
       setMsg(L(lang, "Merge approved. The laptop merges it into its main (not pushed, not live) and reports back here.", "મર્જ મંજૂર. લેપટોપ અહીં જણાવશે."));
       await refresh(false);
       onChanged?.();

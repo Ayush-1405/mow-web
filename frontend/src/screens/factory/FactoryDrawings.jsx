@@ -9,6 +9,7 @@ import {
 import { exportRowsToExcel } from "../../lib/exportExcel";
 import { useIncludeTestData } from "../../lib/testDataVisibility";
 import IncludeTestDataToggle from "../../components/IncludeTestDataToggle";
+import { askText } from "../../lib/askText";
 
 const PAGE_SIZE = 20;
 const CATEGORIES = FACTORY_DRAWING_TYPES;
@@ -87,7 +88,7 @@ export default function FactoryDrawings({ lang, profile }) {
   async function handleDecide(drawing, decision) {
     let notes = null;
     if (decision === "Revision Required") {
-      notes = window.prompt("Revision notes (required):");
+      notes = await askText("Revision notes (required):");
       if (!notes || !notes.trim()) return;
     }
     setMsg("");
