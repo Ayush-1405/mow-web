@@ -97,6 +97,19 @@ export async function devApproveMerge(id, commit, askCode) {
   await mfaVerify(st.factorId, code);
   return rpc("mai_dev_approve_merge", { p_id: id, p_commit: commit });
 }
+// Phase G releases (v3_28). Approving a release or a rollback always asks for a fresh authenticator code, like a merge.
+export const releaseList = () => rpc("mai_release_list", {});
+export const releaseRequest = () => rpc("mai_release_request", {});
+export const releaseCancel = (id) => rpc("mai_release_cancel", { p_id: id });
+async function freshCode(askCode, what) {
+  const st = await mfaState();
+  if (!st.enrolled) throw new Error("Set up the authenticator app in the Mood AI Control Center first.");
+  const code = await askCode();
+  if (!code) throw new Error(`Not ${what}: the authenticator code is needed.`);
+  await mfaVerify(st.factorId, code);
+}
+export async function releaseApprove(id, commit, askCode) { await freshCode(askCode, "approved"); return rpc("mai_release_approve", { p_id: id, p_commit: commit }); }
+export async function releaseRollback(id, askCode) { await freshCode(askCode, "rolled back"); return rpc("mai_release_rollback", { p_id: id }); }
 // Runs an owner action; if the session is not verified yet, asks for the 6-digit authenticator code once and retries.
 export async function withOwnerVerification(action, askCode) {
   try { return await action(); } catch (e) {
