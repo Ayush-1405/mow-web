@@ -2319,6 +2319,31 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 .mai-dev-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-height: 320px; overflow: auto; }
 .mai-dev-events { list-style: none; padding-left: 0; }
 .mai-dev-events li { padding: 3px 0; border-bottom: 1px dashed var(--border); }
+/* live build view (DR-0008) */
+.mai-build { margin: 10px 0; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+.mai-build summary { cursor: pointer; font-weight: 600; }
+.mai-build-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mai-live { color: var(--success); font-size: 12px; font-weight: 700; }
+.mai-build-filter { display: flex; gap: 6px; margin: 6px 0; }
+.mai-build-filter .btn { width: auto; }
+.mai-build-log { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; line-height: 1.45; background: #111; color: #ddd; border-radius: 8px; padding: 8px; max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mai-build-log .sub { color: #999; }
+.mai-log-progress { color: #8fd3ff; }
+.mai-log-stderr { color: #ff9b9b; }
+.mai-checks { list-style: none; padding-left: 0; margin: 6px 0; }
+.mai-checks li { padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.mai-diff-file { border-top: 1px solid var(--border); }
+.mai-diff-file .mai-dev-head { display: flex; gap: 8px; align-items: center; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.mai-diff-file .mai-dev-head > span:first-child { flex: 1; overflow-wrap: anywhere; }
+.mai-diff-add { color: var(--success); font-weight: 700; }
+.mai-diff-del { color: var(--danger); font-weight: 700; }
+.mai-diff { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; line-height: 1.4; margin: 0 0 8px; max-height: 480px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.mai-diff > div { white-space: pre; padding: 0 8px; }
+.mai-diff .mai-diff-add { background: var(--success-bg); color: inherit; font-weight: normal; }
+.mai-diff .mai-diff-del { background: var(--danger-bg); color: inherit; font-weight: normal; }
+.mai-diff .mai-diff-hunk { color: var(--muted, #777); background: var(--surface); }
+.mai-merge { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.mai-merge .btn { width: auto; align-self: flex-start; }
 .mai-chat-form textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mai-chat-meta-row .mai-voice-lang { width: auto; max-width: 60%; flex: 0 0 auto; min-height: 0; }
 .mai-chat-meta-row .mai-chat-count { white-space: nowrap; flex: 0 0 auto; }
