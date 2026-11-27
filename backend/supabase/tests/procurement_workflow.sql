@@ -280,7 +280,7 @@ begin
         v_log := public.zz_chk(v_log, 'the requester can cancel their draft (with reason)', (select proc_status from purchase_requests where id = v_rid2) = 'CANCELLED');
   exception when others then v_log := public.zz_chk(v_log, 'draft/cancel: ' || sqlerrm, false); end;
   reset role;
-  v_log := public.zz_chk(v_log, 'T15 PO numbers are unique (case-insensitive) in the database', exists (select 1 from pg_indexes where indexname = 'purchase_orders_po_number_idx'));
+  v_log := public.zz_chk(v_log, 'T15 PO / reference numbers may repeat across orders (v3_34: no unique index)', not exists (select 1 from pg_indexes where indexname = 'purchase_orders_po_number_idx'));
   v_log := public.zz_chk(v_log, 'T17 requests, orders and history are published for live updates',
     (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and tablename in ('purchase_requests', 'purchase_orders', 'purchase_request_status_history')) = 3);
 
