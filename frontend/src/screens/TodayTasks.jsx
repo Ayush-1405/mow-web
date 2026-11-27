@@ -813,6 +813,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
       busyId === id, detailsFor === id, proofFor === id, reassignFor === id, deleteConfirmFor === id,
       returnReasonFor === id && returnReason, holdReasonFor === id && holdReason, reopenReasonFor === id && reopenReason,
       returnReasonFor === id, holdReasonFor === id, reopenReasonFor === id,
+      deleteConfirmFor === id && deleteReason, // the order-delete reason box: without it typing never showed
     ];
     return <TaskCardSlot key={id} render={() => taskCardBody(task)} deps={deps} />;
   }
@@ -834,7 +835,8 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
     const orderId = task.source_module === "procurement" && String(task.system_key || "").startsWith("PROC_ORDER:") ? task.system_key.slice(11) : null;
     // A Factory Job Card task (v3_15) follows its card: everything is done on the Job Card page.
     const jobCardId = String(task.system_key || "").startsWith("FJC:") ? task.system_key.slice(4) : null;
-    const canDeleteTask = jobCardId ? false : orderId ? canCancelOrders : (iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership);
+    // An order can also be cancelled by a head of the department that raised it (proc_cancel_request v3_33 re-checks).
+    const canDeleteTask = jobCardId ? false : orderId ? (canCancelOrders || (profile.permissions?.isDepartmentHead && task.from_department_id === profile.department_id)) : (iCreatedIt || profile.permissions.canDelete || profile.permissions.isLeadership);
     const busy = busyId === task.id;
     // Undefined here means either an unrecognized proof_type_id or one
     // that's since been deactivated (e.g. "voice" — see
@@ -1074,7 +1076,7 @@ export default function TodayTasks({ lang, profile, lookups, showToast }) {
           <div className="msg error" style={{ marginTop: 10 }}>
             {lang === "gu"
               ? `આ ઓર્ડર ${task.reference_number || ""} રદ થશે અને કાર્ય બધાની યાદીમાંથી દૂર થશે. વિનંતી કરનાર અને વિભાગના વડાને જાણ થશે. ઇતિહાસ સચવાય છે.`
-              : `This cancels order ${task.reference_number || ""} and removes the task for everyone. The requester and their Department Head are notified. The history is kept.`}
+              : `This cancels order ${task.reference_number || ""} and removes the task for everyone. The requester, their Department Head and the buyer are notified (if it was already placed, inform the vendor). The history is kept.`}
             <textarea rows={2} style={{ marginTop: 8 }} value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)}
               placeholder={lang === "gu" ? "કારણ (જરૂરી)" : "Reason (required)"} />
             <div className="btn-row">

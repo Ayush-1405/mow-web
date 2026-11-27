@@ -25,6 +25,11 @@ import OrderTaskPanel from "./OrderTaskPanel";
 import VendorSelection from "./VendorSelection";
 import { amendOrder, canWorkOrder, completeOrder, getCompanyProfile, listOrderAllocations, listOrderItems, markDelivered, openOrderFile, uploadOrderFile } from "../../lib/procurementApi";
 
+// Stages Procurement, Management or the requesting department's head may cancel at (proc_cancel_request v3_33): until goods arrive.
+const CANCELLABLE_BY_STAFF = ["PENDING_DEPT_APPROVAL", "RETURNED_FOR_CORRECTION", "APPROVED_BY_DEPT_HEAD", "EMERGENCY_APPROVAL_PENDING", "SENT_TO_PROCUREMENT",
+  "CLARIFICATION_REQUIRED", "ON_HOLD", "ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED", "ORDER_PLACED", "VENDOR_CONFIRMED", "IN_PRODUCTION",
+  "READY_FOR_DISPATCH", "IN_TRANSIT", "DELAYED"];
+
 // DD-MM-YYYY HH:MM in IST, the format used across Procurement.
 const fmt = (d) => (d ? `${fmtDate(d)} ${new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}` : "—");
 const ORDER_EMPTY = {
@@ -113,6 +118,7 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
   // Same rule as proc_is_procurement_authorized(): a Procurement Department Head or Supervisor.
   const roles = useMemo(() => procurementRoles(profile, lookups.departments), [profile, lookups.departments]);
   const { canProcure, isManagement } = roles;
+  const isRequestingHead = !!profile.permissions?.isDepartmentHead && req?.requesting_department_id === profile.department_id;
   // Only the requesting department's own Head (or Management) decides -- the database checks the same; other Heads, e.g.
   // the Procurement Head, no longer see an approval card they cannot use.
   const canDeptDecide = req?.proc_status === "PENDING_DEPT_APPROVAL" && !isRequester
@@ -471,8 +477,10 @@ export default function PurchaseRequestDetail({ lang, profile, lookups }) {
         <PurchaseLifecyclePanels lang={lang} req={req} order={order} roles={roles} onChanged={load} />
       ) : null}
 
-      {/* The same stages proc_cancel_request accepts: before an order exists. */}
-      {(isRequester || canProcure || isManagement) && ["DRAFT", "PENDING_DEPT_APPROVAL", "RETURNED_FOR_CORRECTION", "CLARIFICATION_REQUIRED", "SENT_TO_PROCUREMENT", "ON_HOLD", "ACCEPTED_BY_PROCUREMENT", "DOCUMENT_GENERATED"].includes(status) && (
+      {/* The same rules as proc_cancel_request (v3_33): the requester while it is still with them; Procurement, Management or the
+          requesting department's head until goods arrive. */}
+      {((isRequester && ["DRAFT", "PENDING_DEPT_APPROVAL", "RETURNED_FOR_CORRECTION", "CLARIFICATION_REQUIRED"].includes(status))
+        || ((canProcure || isManagement || isRequestingHead) && CANCELLABLE_BY_STAFF.includes(status))) && (
         <details className="card">
           <summary>{L(lang, "Cancel this request", "આ વિનંતી રદ કરો")}</summary>
           <ActionCard lang={lang} remarks={remarks} setRemarks={setRemarks} placeholder={L(lang, "Reason (required)", "કારણ (જરૂરી)")} busy={busy} bare
