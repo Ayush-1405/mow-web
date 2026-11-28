@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { L, PRESETS, presetRange, STAGE, STOCK, connectionStatus, syncNow, when } from "../../lib/ecomApi";
 import { friendlyError } from "../../lib/friendlyError";
+import "./ecommerce.css";
 
 // Shared pieces of the E-commerce screens: page header, date range (company timezone), status badges, the Shopify connection
 // strip with Sync Now, small product image, empty / error states.

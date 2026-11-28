@@ -89,7 +89,36 @@ export default function EcomProducts({ lang, mode = "catalogue" }) {
       {list && list.length === 0 && <Empty lang={lang}>{mode === "low" ? L(lang, "No active product is low on stock.", "કોઈ પ્રોડક્ટ ઓછો નથી.")
         : mode === "out" ? L(lang, "No active product is out of stock.", "કોઈ પ્રોડક્ટ ખતમ નથી.") : L(lang, "No products match (or Shopify has not been synchronised yet).", "કોઈ પ્રોડક્ટ નથી.")}</Empty>}
       {list && list.length > 0 && (
-        <div className="card proc-table-wrap">
+        <div className="ecom-cards">
+          <div className="ecom-card-count">{list.length} {view === "products" ? L(lang, "products", "પ્રોડક્ટ") : L(lang, "variants", "વેરિયન્ટ")}</div>
+          {list.map((v) => {
+            const isP = view === "products";
+            return (
+              <button key={isP ? v.product_id : v.variant_id} type="button" className="ecom-card" onClick={() => navigate(`/ecommerce/products/${encodeURIComponent(v.product_id)}`)}>
+                <Thumb url={v.image_url} size={52} />
+                <div style={{ minWidth: 0 }}>
+                  <div className="ecom-card-top">
+                    <span className="ecom-card-title">{v.product_title}</span>
+                    <StockBadge lang={lang} status={isP ? v.worst : v.stock_status} />
+                  </div>
+                  <div className="ecom-card-line">
+                    {!isP && v.variant_title !== "Default Title" ? `${v.variant_title} · ` : ""}
+                    {(isP ? v.skus.slice(0, 2).join(", ") : v.sku) || L(lang, "no SKU", "SKU નથી")}{v.product_type ? ` · ${v.product_type}` : ""}
+                  </div>
+                  <div className="ecom-card-stats">
+                    <span>{L(lang, "Available", "ઉપલબ્ધ")} <strong>{v.available ?? "—"}</strong></span>
+                    <span>{L(lang, "Committed", "કમિટેડ")} <strong>{v.committed ?? "—"}</strong></span>
+                    <span>{L(lang, "Sold", "વેચાયા")} <strong>{v.units_sold}</strong></span>
+                    {isP && v.variants > 1 && <span>{v.variants} {L(lang, "variants", "વેરિયન્ટ")}</span>}
+                    {v.product_status !== "ACTIVE" && <span>{pretty(v.product_status)}</span>}
+                  </div>
+                </div>
+              </button>);
+          })}
+        </div>
+      )}
+      {list && list.length > 0 && (
+        <div className="card proc-table-wrap ecom-table-only">
           <div className="sub" style={{ marginBottom: 6 }}>{list.length} {view === "products" ? L(lang, "products", "પ્રોડક્ટ") : L(lang, "variants", "વેરિયન્ટ")}</div>
           <table className="proc-table">
             <thead><tr>
@@ -123,6 +152,8 @@ export default function EcomProducts({ lang, mode = "catalogue" }) {
     </EcomPage>
   );
 }
+
+const sum = (list, k) => list.reduce((a, x) => a + (Number(x[k]) || 0), 0);
 
 export function EcomProductDetail({ lang }) {
   const { id } = useParams();
@@ -159,6 +190,21 @@ export function EcomProductDetail({ lang }) {
               {p.images.map((im, i) => <img key={i} src={im.url} alt={im.alt || ""} loading="lazy" style={{ height: 120, borderRadius: 8 }} />)}
             </div>)}
           {msg && <div className="msg error">{msg}</div>}
+          <div className="card">
+            <div className="kpi-grid">
+              {[
+                ["📊", L(lang, "Available (all locations)", "ઉપલબ્ધ (બધા સ્થાન)"), sum(d.variants, "available")],
+                ["📌", L(lang, "Committed to orders", "ઓર્ડર માટે રોકાયેલ"), sum(d.variants, "committed")],
+                ["🛍️", L(lang, "Units sold", "વેચાયેલા નંગ"), sum(d.variants, "units_sold")],
+                ["🔢", L(lang, "Variants", "વેરિયન્ટ"), d.variants.length],
+                ["🟠", L(lang, "Variants low / out", "ઓછા / ખતમ વેરિયન્ટ"), d.variants.filter((v) => v.stock_status === "LOW" || v.stock_status === "OUT").length,
+                  d.variants.some((v) => v.stock_status === "OUT") ? "critical" : d.variants.some((v) => v.stock_status === "LOW") ? "warn" : null],
+              ].map(([icon, label, value, tone]) => (
+                <div key={label} className={`kpi-card${tone ? ` kpi-${tone}` : ""}${tone === "critical" ? " kpi-alert" : ""}`} style={{ cursor: "default" }}>
+                  <span className="kpi-icon" aria-hidden="true">{icon}</span><span className="kpi-value">{value}</span><span className="kpi-label">{label}</span>
+                </div>))}
+            </div>
+          </div>
           <div className="card proc-table-wrap">
             <div className="section-title" style={{ marginTop: 0 }}>{L(lang, "Variants and stock", "વેરિયન્ટ અને સ્ટોક")}</div>
             <table className="proc-table">
@@ -214,7 +260,7 @@ export function EcomProductDetail({ lang }) {
                   <th>{L(lang, "Change", "ફેરફાર")}</th><th>{L(lang, "After", "પછી")}</th><th>{L(lang, "Type", "પ્રકાર")}</th><th>{L(lang, "Reference", "સંદર્ભ")}</th></tr></thead>
                 <tbody>{d.moves.map((m) => (
                   <tr key={m.id}><td>{when(m.occurred_at)}</td><td>{vName(m.variant_id)}</td><td>{locName(m.location_id)}</td><td>{m.previous_qty ?? "—"}</td>
-                    <td>{m.movement_type === "BASELINE" ? "—" : m.change > 0 ? `+${m.change}` : m.change}</td><td>{m.new_qty}</td>
+                    <td style={{ fontWeight: 700, color: m.movement_type === "BASELINE" ? undefined : m.change > 0 ? "var(--success)" : m.change < 0 ? "var(--danger)" : undefined }}>{m.movement_type === "BASELINE" ? "—" : m.change > 0 ? `+${m.change}` : m.change}</td><td>{m.new_qty}</td>
                     <td>{L(lang, ...(MOVEMENT[m.movement_type] || [m.movement_type, m.movement_type]))}</td><td style={{ whiteSpace: "normal" }}>{m.reference || "—"}</td></tr>))}</tbody>
               </table>)}
           </div>

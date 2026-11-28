@@ -131,7 +131,7 @@ export function EcomMovements({ lang }) {
                   <td>{when(m.occurred_at)}</td>
                   <td>{v ? <>{v.product_title}{v.variant_title && v.variant_title !== "Default Title" ? <span className="sub"> · {v.variant_title}</span> : null}</> : <span className="sub">{L(lang, "(removed product)", "(કાઢેલ પ્રોડક્ટ)")}</span>}</td>
                   <td>{m.sku || v?.sku || "—"}</td><td>{locName(m.location_id)}</td><td>{m.previous_qty ?? "—"}</td>
-                  <td><strong>{m.movement_type === "BASELINE" ? "—" : m.change > 0 ? `+${m.change}` : m.change}</strong></td><td>{m.new_qty}</td>
+                  <td><strong style={{ color: m.movement_type === "BASELINE" ? undefined : m.change > 0 ? "var(--success)" : m.change < 0 ? "var(--danger)" : undefined }}>{m.movement_type === "BASELINE" ? "—" : m.change > 0 ? `+${m.change}` : m.change}</strong></td><td>{m.new_qty}</td>
                   <td>{L(lang, ...(MOVEMENT[m.movement_type] || [m.movement_type, m.movement_type]))}</td>
                   <td style={{ whiteSpace: "normal", minWidth: 180 }}>{m.reference || "—"}</td>
                   <td className="sub">{m.source.replace(/_/g, " ").toLowerCase()}</td>

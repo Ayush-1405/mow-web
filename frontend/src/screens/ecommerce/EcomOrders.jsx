@@ -88,7 +88,12 @@ export default function EcomOrders({ lang, mode = "orders" }) {
             </table>
           </div>)
       ) : list && list.length === 0 ? <Empty lang={lang}>{L(lang, "No orders match.", "કોઈ ઓર્ડર નથી.")}</Empty> : list && (
-        <div className="card proc-table-wrap">
+        <>
+        <div className="ecom-cards">
+          <div className="ecom-card-count">{list.length} {L(lang, "orders", "ઓર્ડર")}{list.length === 300 ? ` · ${L(lang, "latest 300", "છેલ્લા 300")}` : ""}</div>
+          {list.map((o) => <OrderCard key={o.shopify_id} lang={lang} o={o} showReturn={mode === "returns"} onOpen={() => navigate(`/ecommerce/orders/${encodeURIComponent(o.shopify_id)}`)} />)}
+        </div>
+        <div className="card proc-table-wrap ecom-table-only">
           <div className="sub" style={{ marginBottom: 6 }}>{list.length} {L(lang, "orders", "ઓર્ડર")}{list.length === 300 ? ` · ${L(lang, "showing the latest 300; narrow the filters", "છેલ્લા 300")}` : ""}</div>
           <table className="proc-table">
             <thead><tr>
@@ -123,8 +128,37 @@ export default function EcomOrders({ lang, mode = "orders" }) {
             })}</tbody>
           </table>
         </div>
+        </>
       )}
     </EcomPage>
+  );
+}
+
+// Phone layout of one order: first product image, order number + status, customer, products, quantity / amount / payment.
+function OrderCard({ lang, o, showReturn, onOpen }) {
+  const lines = o.ecom_order_lines || [];
+  const qty = lines.reduce((a, l) => a + (l.quantity || 0), 0);
+  const names = lines.map((l) => l.title + (l.variant_title ? ` · ${l.variant_title}` : "")).join(", ");
+  const track = (o.tracking || [])[0];
+  return (
+    <button type="button" className="ecom-card" onClick={onOpen}>
+      <Thumb url={lines[0]?.image_url} size={48} />
+      <div style={{ minWidth: 0 }}>
+        <div className="ecom-card-top">
+          <span className="ecom-card-title">{o.name}</span>
+          <StageBadge lang={lang} stage={o.stage} />
+        </div>
+        <div className="ecom-card-line">{when(o.shopify_created_at)}{o.customer_name ? ` · ${o.customer_name}` : ""}</div>
+        <div className="ecom-card-line">{names || "—"}</div>
+        <div className="ecom-card-stats">
+          <span>{L(lang, "Qty", "નંગ")} <strong>{qty}</strong></span>
+          <span><strong>{money(o.total, o.currency)}</strong></span>
+          <span>{pretty(o.financial_status)}</span>
+          {track && <span>{L(lang, "Tracking", "ટ્રેકિંગ")} <strong>{track.number || track.company}</strong></span>}
+          {showReturn && o.returned_qty > 0 && <span>{L(lang, "Returned", "પરત")} <strong>{o.returned_qty}</strong></span>}
+        </div>
+      </div>
+    </button>
   );
 }
 

@@ -1,0 +1,53 @@
+/* E-commerce department screens (v3_35). Uses the app's own tokens from styles.css only. */
+
+/* Amber "needs attention" tile (styles.css only defines the red critical/alert tones). */
+.kpi-card.kpi-warn { border-color: var(--accent); background: var(--accent-soft); }
+.kpi-card.kpi-warn .kpi-value { color: var(--accent-dark); }
+
+/* Summary row: three large numbers for the period. */
+.ecom-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ecom-summary .kpi-card { min-height: 88px; }
+.ecom-summary .kpi-value { font-size: 28px; }
+
+/* Order pipeline: Pending -> Processing -> Fulfilled -> Dispatched -> Delivered, arrows between steps. */
+.ecom-pipeline { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 18px; position: relative; }
+.ecom-pipeline > .kpi-card { position: relative; }
+.ecom-pipeline > .kpi-card:not(:last-child)::after {
+  content: "→"; position: absolute; right: -15px; top: 50%; transform: translateY(-50%);
+  color: var(--border-strong); font-size: 14px; font-weight: 700; pointer-events: none;
+}
+.ecom-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.ecom-section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 0 0 10px; }
+.ecom-section-head .section-title { margin: 0; }
+
+@media (max-width: 719px) {
+  /* Pipeline becomes a vertical list of rows on phones: icon, label, number. */
+  .ecom-pipeline { grid-template-columns: 1fr; gap: 6px; }
+  .ecom-pipeline > .kpi-card {
+    flex-direction: row; align-items: center; min-height: 48px; gap: 10px;
+  }
+  .ecom-pipeline > .kpi-card .kpi-label { order: 2; flex: 1; font-size: 13px; color: var(--ink); }
+  .ecom-pipeline > .kpi-card .kpi-value { order: 3; font-size: 20px; }
+  .ecom-pipeline > .kpi-card:not(:last-child)::after { content: none; }
+  .ecom-summary .kpi-value { font-size: 22px; }
+}
+
+/* Lists: a table on wider screens, cards on phones. */
+.ecom-cards { display: none; }
+@media (max-width: 719px) {
+  .ecom-table-only { display: none; }
+  .ecom-cards { display: grid; gap: 8px; }
+}
+.ecom-card {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start;
+  width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; font: inherit;
+  transition: box-shadow var(--ease);
+}
+.ecom-card:hover, .ecom-card:focus-visible { box-shadow: var(--shadow-sm); }
+.ecom-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.ecom-card-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ecom-card-line { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; overflow-wrap: anywhere; }
+.ecom-card-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12.5px; }
+.ecom-card-stats strong { color: var(--brand-dark); }
+.ecom-card-count { font-size: 12px; color: var(--ink-soft); margin: 0 0 2px 2px; }

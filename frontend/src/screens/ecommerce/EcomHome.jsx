@@ -22,17 +22,21 @@ export default function EcomHome(props) {
 
   const period = `preset=${range.preset}${range.preset === "custom" ? `&from=${range.from}&to=${range.to}` : ""}`;
   const go = (path) => navigate(path);
-  const tiles = d ? [
-    ["🧾", L(lang, "Total orders", "કુલ ઓર્ડર"), d.orders_total, `/ecommerce/orders?${period}`],
+  const summary = d ? [
+    ["🧾", L(lang, "Orders in this period", "આ સમયગાળાના ઓર્ડર"), d.orders_total, `/ecommerce/orders?${period}`],
     ["📅", L(lang, "Today's orders", "આજના ઓર્ડર"), d.today_orders, "/ecommerce/orders?preset=today"],
+    ["🛍️", L(lang, "Units sold", "વેચાયેલા નંગ"), d.units_sold, `/ecommerce/inventory?${period}`],
+  ] : [];
+  const pipeline = d ? [
     ["⏳", L(lang, "Pending", "બાકી"), d.pending, `/ecommerce/orders?${period}&stage=PENDING`, d.pending > 0 ? "warn" : null],
     ["⚙️", L(lang, "Processing", "પ્રોસેસિંગ"), d.processing, `/ecommerce/orders?${period}&stage=PROCESSING,PARTIALLY_FULFILLED`],
     ["📦", L(lang, "Fulfilled (not shipped)", "ફુલફિલ"), d.fulfilled, `/ecommerce/fulfilment?${period}&stage=FULFILLED`],
     ["🚚", L(lang, "Dispatched", "રવાના"), d.dispatched, `/ecommerce/fulfilment?${period}&stage=DISPATCHED`],
     ["✅", L(lang, "Delivered (confirmed)", "પહોંચાડ્યું"), d.delivered, `/ecommerce/fulfilment?${period}&stage=DELIVERED`],
+  ] : [];
+  const closed = d ? [
     ["✖️", L(lang, "Cancelled", "રદ"), d.cancelled, `/ecommerce/returns?${period}&tab=cancelled`],
     ["↩️", L(lang, "Returned", "પરત"), d.returned, `/ecommerce/returns?${period}&tab=returned`],
-    ["🛍️", L(lang, "Units sold", "વેચાયેલા નંગ"), d.units_sold, `/ecommerce/inventory?${period}`],
   ] : [];
   const stockTiles = d ? [
     ["🗂️", L(lang, "Total products", "કુલ પ્રોડક્ટ"), d.products_total, "/ecommerce/products"],
@@ -74,13 +78,20 @@ export default function EcomHome(props) {
         {d && (
           <>
             <div className="card">
-              <div className="section-title" style={{ marginTop: 0 }}>{L(lang, "Online orders in this period", "આ સમયગાળાના ઓનલાઇન ઓર્ડર")}</div>
-              <div className="kpi-grid">{tiles.map(Tile)}</div>
+              <div className="ecom-summary">{summary.map(Tile)}</div>
             </div>
             <div className="card">
-              <div className="section-title" style={{ marginTop: 0 }}>
-                {L(lang, "Products and stock — latest synchronised quantities", "પ્રોડક્ટ અને સ્ટોક — છેલ્લો સિંક")}
-                <span className="sub"> · {L(lang, "as of", "સમય")} {when(d.stock_as_of)}</span>
+              <div className="ecom-section-head">
+                <div className="section-title">{L(lang, "Where the orders are", "ઓર્ડર ક્યાં છે")}</div>
+                <span className="sub">{L(lang, "orders placed in this period, by their current status", "આ સમયગાળાના ઓર્ડર, હાલની સ્થિતિ મુજબ")}</span>
+              </div>
+              <div className="ecom-pipeline">{pipeline.map(Tile)}</div>
+              <div className="ecom-side">{closed.map(Tile)}</div>
+            </div>
+            <div className="card">
+              <div className="ecom-section-head">
+                <div className="section-title">{L(lang, "Products and stock", "પ્રોડક્ટ અને સ્ટોક")}</div>
+                <span className="sub">{L(lang, "latest synchronised quantities, as of", "છેલ્લો સિંક,")} {when(d.stock_as_of)}</span>
               </div>
               <div className="kpi-grid">{stockTiles.map(Tile)}</div>
             </div>
