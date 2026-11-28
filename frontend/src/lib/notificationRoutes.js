@@ -10,6 +10,8 @@ export function routeFor(n) {
     case "interior_task": return "/interior-projects/tasks";
     case "site_report": return "/interior-projects/daily-updates";
     case "retail_lead": return "/retail/leads";
+    case "ecom_stock_alert": return "/ecommerce/low-stock";
+    case "ecom_listing": return "/ecommerce/to-add";
     case "retail_complaint": return "/retail/complaints";
     case "retail_vm_task": return "/retail/display";
     case "FACTORY_AI_REQUEST": return "/factory-requests";

@@ -154,6 +154,8 @@ export function canAccessDepartment(profile, departments, dept) {
   if (dept.is_control_tower) return false;
 
   if (dept.id === profile.department_id) return true;
+  // v3_35: a department run by another one (E-commerce is run by Marketing) is open to that department's members
+  if (dept.managing_department_id && dept.managing_department_id === profile.department_id) return true;
 
   if (perms.isDepartmentHead && !dept.is_confidential_domain) {
     const ownDept = findDepartment(departments, profile.department_id);
