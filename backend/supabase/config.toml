@@ -42,3 +42,8 @@ verify_jwt = true
 
 [functions.factory-ai-stage-update]
 verify_jwt = true
+
+# shopify-sync receives Shopify webhooks (no Supabase token) and the 30-minute job; it checks every caller itself:
+# Shopify HMAC signature, the Vault cron key, or a signed-in user with E-commerce access (v3_35).
+[functions.shopify-sync]
+verify_jwt = false

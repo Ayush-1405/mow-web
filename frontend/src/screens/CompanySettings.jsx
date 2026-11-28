@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getApprovalLimits, getCompanyProfile, saveCompanyProfile, setApprovalThreshold } from "../lib/procurementApi";
 import { friendlyError } from "../lib/friendlyError";
 import { MOW_LOGO } from "../lib/brand";
@@ -16,6 +17,7 @@ const EMPTY = Object.fromEntries(FIELDS.map(([k]) => [k, ""]));
 
 export default function CompanySettings({ lang }) {
   const L = (en, gu) => (lang === "gu" ? gu : en);
+  const navigate = useNavigate();
   const [form, setForm] = useState(EMPTY);
   const [threshold, setThreshold] = useState("");
   const [state, setState] = useState({ loading: true, error: null });
@@ -107,6 +109,17 @@ export default function CompanySettings({ lang }) {
         <div className="field full btn-row">
           <button type="button" className="btn btn-primary" style={{ width: "auto" }} disabled={busy} onClick={() => saveThreshold(threshold)}>{L("Save", "સાચવો")}</button>
           <button type="button" className="btn btn-outline" style={{ width: "auto" }} disabled={busy} onClick={() => saveThreshold("")}>{L("Remove threshold", "મર્યાદા દૂર કરો")}</button>
+        </div>
+      </div>
+
+      <div className="card form-grid">
+        <h2 className="field full">{L("Shopify (E-commerce)", "Shopify (ઈ-કોમર્સ)")}</h2>
+        <div className="field full sub">
+          {L("The online store connection used by the E-commerce department: store address, credentials (kept encrypted on the server), connection test and sync history.",
+            "ઈ-કોમર્સ વિભાગનું ઓનલાઇન સ્ટોર જોડાણ.")}
+        </div>
+        <div className="field full btn-row">
+          <button type="button" className="btn btn-outline" style={{ width: "auto" }} onClick={() => navigate("/ecommerce/connection")}>{L("Open Shopify connection settings", "Shopify કનેક્શન સેટિંગ્સ ખોલો")}</button>
         </div>
       </div>
     </div>

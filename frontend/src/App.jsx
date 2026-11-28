@@ -108,6 +108,16 @@ const PerformanceControlTower = lazyWithRetry(() => import("./screens/performanc
 // v3_19 Mood AI Core
 const MoodAiControlCenter = lazyWithRetry(() => import("./screens/moodai/MoodAiControlCenter.jsx"));
 const RetailDashboard = lazyWithRetry(() => import("./screens/retail/RetailDashboard.jsx"));
+// E-commerce department (v3_35): Shopify overview, orders, catalogue, stock, listing checklist, connection settings
+const EcomHome = lazyWithRetry(() => import("./screens/ecommerce/EcomHome.jsx"));
+const EcomOrders = lazyWithRetry(() => import("./screens/ecommerce/EcomOrders.jsx"));
+const EcomOrderDetail = lazyWithRetry(() => import("./screens/ecommerce/EcomOrders.jsx").then((m) => ({ default: m.EcomOrderDetail })));
+const EcomProducts = lazyWithRetry(() => import("./screens/ecommerce/EcomProducts.jsx"));
+const EcomProductDetail = lazyWithRetry(() => import("./screens/ecommerce/EcomProducts.jsx").then((m) => ({ default: m.EcomProductDetail })));
+const EcomInventory = lazyWithRetry(() => import("./screens/ecommerce/EcomInventory.jsx"));
+const EcomMovements = lazyWithRetry(() => import("./screens/ecommerce/EcomInventory.jsx").then((m) => ({ default: m.EcomMovements })));
+const EcomToAdd = lazyWithRetry(() => import("./screens/ecommerce/EcomToAdd.jsx"));
+const EcomConnection = lazyWithRetry(() => import("./screens/ecommerce/EcomConnection.jsx"));
 const FactoryMasterReport = lazyWithRetry(() => import("./screens/factory/FactoryMasterReport.jsx"));
 const FactoryWipStages = lazyWithRetry(() => import("./screens/factory/FactoryWipStages.jsx"));
 const FactoryInProcessQC = lazyWithRetry(() => import("./screens/factory/FactoryInProcessQC.jsx"));
@@ -619,7 +629,7 @@ export default function App() {
     // at the route level, so DepartmentDashboard's own hooks are never
     // conditionally skipped for any department.
     // v3_15: the Factory home is the simple Job Cards board; the older Factory tools stay under /factory/advanced.
-    const Body = code === "FACTORY" ? FactoryJobCards : code === "RETAIL" ? RetailDashboard : DepartmentDashboard;
+    const Body = code === "FACTORY" ? FactoryJobCards : code === "RETAIL" ? RetailDashboard : code === "ECOMMERCE" ? EcomHome : DepartmentDashboard;
     return (
       <DeptShell lang={lang} items={orderedAccessibleDepartments} managementLinks={managementLinks} managementBadge={profile.permissions.showManagementBadge} onBackToTasks={() => navigate("/")} onLogout={handleLogout}>
         <ProtectedRoute allowed={allowed} lang={lang}>
@@ -768,6 +778,18 @@ export default function App() {
       <Route path="/franchise-dealer" element={deptPage("FRANCHISE")} />
       <Route path="/marketing" element={deptPage("MARKETING")} />
       <Route path="/ecommerce" element={deptPage("ECOMMERCE")} />
+      <Route path="/ecommerce/orders" element={deptModulePage("ECOMMERCE", <EcomOrders lang={lang} mode="orders" />)} />
+      <Route path="/ecommerce/orders/:id" element={deptModulePage("ECOMMERCE", <EcomOrderDetail lang={lang} />)} />
+      <Route path="/ecommerce/fulfilment" element={deptModulePage("ECOMMERCE", <EcomOrders lang={lang} mode="fulfilment" />)} />
+      <Route path="/ecommerce/returns" element={deptModulePage("ECOMMERCE", <EcomOrders lang={lang} mode="returns" />)} />
+      <Route path="/ecommerce/products" element={deptModulePage("ECOMMERCE", <EcomProducts lang={lang} mode="catalogue" />)} />
+      <Route path="/ecommerce/products/:id" element={deptModulePage("ECOMMERCE", <EcomProductDetail lang={lang} />)} />
+      <Route path="/ecommerce/low-stock" element={deptModulePage("ECOMMERCE", <EcomProducts lang={lang} mode="low" />)} />
+      <Route path="/ecommerce/out-of-stock" element={deptModulePage("ECOMMERCE", <EcomProducts lang={lang} mode="out" />)} />
+      <Route path="/ecommerce/inventory" element={deptModulePage("ECOMMERCE", <EcomInventory lang={lang} />)} />
+      <Route path="/ecommerce/movements" element={deptModulePage("ECOMMERCE", <EcomMovements lang={lang} />)} />
+      <Route path="/ecommerce/to-add" element={deptModulePage("ECOMMERCE", <EcomToAdd lang={lang} />)} />
+      <Route path="/ecommerce/connection" element={deptModulePage("ECOMMERCE", <EcomConnection lang={lang} />)} />
       <Route path="/interior-projects" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorHeadDashboard lang={lang} staffProfile={profile} /></InteriorProfileGate>)} />
       <Route path="/interior-projects/quotation" element={deptModulePage("INTERIOR", <InteriorProfileGate lang={lang}><InteriorAttachments lang={lang} stage="Quotation" titleKey="interiorAttachmentsTitle" /></InteriorProfileGate>)} />
       <Route path="/interior-projects/design" element={<RedirectToWorkingDrawings />} />

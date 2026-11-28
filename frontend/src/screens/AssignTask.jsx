@@ -246,8 +246,13 @@ export default function AssignTask({ lang, profile, lookups, showToast }) {
   // by both the assignee list (search-filtered) and the verifier list
   // (unfiltered) so the two stay in sync with the same authorized set.
   const usersInToDepartment = useMemo(
-    () => (restrictToLeadership ? segmentLeadership : allUsers.filter((u) => u.department_id === form.to_department_id)),
-    [allUsers, form.to_department_id, restrictToLeadership, segmentLeadership],
+    // v3_35: a department run by another one (E-commerce by Marketing) can be assigned to that department's members too
+    () => {
+      if (restrictToLeadership) return segmentLeadership;
+      const runBy = lookups.departments.find((d) => d.id === form.to_department_id)?.managing_department_id || null;
+      return allUsers.filter((u) => u.department_id === form.to_department_id || (runBy && u.department_id === runBy));
+    },
+    [allUsers, form.to_department_id, restrictToLeadership, segmentLeadership, lookups.departments],
   );
 
   const noActiveStaffInSelectedDept =

@@ -80,6 +80,20 @@ export const MODULE_ROUTES = {
 // Procurement's 19 cards, each with its honest build status. ACTIVE: everything the card promises exists and has passed the
 // database tests (backend/supabase/tests/procurement_*.sql) and the end-to-end run through the real screens. IN_PROGRESS:
 // it works and is tested, but part of what the card promises is not built yet (noted per card). SETUP_PENDING: nothing yet.
+// E-commerce (v3_35): every card opens a real Shopify-backed screen.
+MODULE_ROUTES.ECOMMERCE = {
+  "E-commerce Overview": "/ecommerce",
+  "Online Orders": "/ecommerce/orders",
+  "Product Catalogue": "/ecommerce/products",
+  "Inventory Sync": "/ecommerce/inventory",
+  "Stock Movement History": "/ecommerce/movements",
+  "Low Stock": "/ecommerce/low-stock",
+  "Out of Stock": "/ecommerce/out-of-stock",
+  "Products to Add": "/ecommerce/to-add",
+  "Fulfilment Tracking": "/ecommerce/fulfilment",
+  "Cancellations and Returns": "/ecommerce/returns",
+  "Shopify Connection Settings": "/ecommerce/connection",
+};
 // Factory Job Cards for the other selling / design departments (v3_15).
 for (const code of ["ECOMMERCE", "FRANCHISE", "B2B_B2G", "RND", "MARKETING"]) {
   MODULE_ROUTES[code] = { ...(MODULE_ROUTES[code] || {}), "Create Factory Job Card": "/factory-job-cards/new", "Factory Job Cards": "/factory-job-cards" };
